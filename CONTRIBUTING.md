@@ -19,14 +19,10 @@ TODO: Write automated testing instructions
 
 ## Branching ##
 
-Branches should have a short prefix describing what type of changes are contained in it.
-These prefixes should be one of the following:
-
-* **feature/** -- for changes which add/affect a feature.
-* **doc/** -- for changes to the documentation.
-* **hotfix/** -- for quick bugfixes.
-
-Branches must also contain the name of the contributor, i.e. `doc/terry/...`.
+Branching will be done in accordance with the git-flow style of branching. 
+There is a master branch and a develop branch. Most features will be developed in feature branches off the develop branch.
+Features will be merged into the develop branch when complete.
+The develop branch will be merged into a release branch for final bugfixes before a release. When ready for a release it will be merged to the master branch.
 
 ## Version Numbering ##
 
