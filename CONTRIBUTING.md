@@ -20,9 +20,9 @@ TODO: Write automated testing instructions
 ## Branching ##
 
 Branching should be done in accordance with the [git-flow](http://nvie.com/posts/a-successful-git-branching-model/) style of branching. 
-There is a master branch and a develop branch. Most features will be developed in feature branches off the develop branch.
+There is a master branch and a develop branch. All features will be developed in feature branches off the develop branch.
 Features will be merged into the develop branch when complete.
-The develop branch will be merged into a release branch for final bugfixes before a release. When ready for a release it will be merged to the master branch.
+A release branch will be branched from the develop branch for final bugfixes before a release. When ready for a release it will be merged to the master branch.
 
 ## Version Numbering ##
 
