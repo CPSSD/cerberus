@@ -35,7 +35,7 @@ Questions/Challenges:
 
 * Completed reduce tasks are stored in a global file system. Would we make our own filesystem for this or would we use something that already exists? If so, what would we use?
 
-* How much work is there here? Can the project last a full 8 months? With a team of 4 people, it seems like it would be easy to get everything done pretty quickly.
+* How much work is there here? Can the project last a full 8 months? With a team of 5 people, it seems like it would be easy to get everything done pretty quickly.
 
 First Sprint/How to get started:
 ---------------------
