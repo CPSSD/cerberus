@@ -11,7 +11,9 @@ All `rust` code checked into the repository must be formatted according to `rust
 
 ## Commenting ##
 
-TODO: Write commenting instructions
+Commenting will be done in accordance with the standard `rustdoc` style used for generating documentation. 
+You should write comments to explain any code you write that does something in a way that may not be obvious.
+An explaination of standard Rust commenting practice and `rustdoc` can be found [here](https://doc.rust-lang.org/book/first-edition/documentation.html).
 
 ## Automated Testing ##
 
