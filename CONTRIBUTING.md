@@ -3,7 +3,8 @@ Writing Code for Cerberus
 
 ## Code Style ##
 
-TODO: Decide on code style guidelines and add them here.
+Rust does not have an offical code style guide. We will use the style guide currently in the rust-lang-nursery. 
+This style guide can be found [here](https://github.com/rust-lang-nursery/fmt-rfcs/blob/master/guide/guide.md).
 
 ## Code Formatting ##
 
