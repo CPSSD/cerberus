@@ -19,7 +19,7 @@ An explaination of standard Rust commenting practice and `rustdoc` can be found 
 ## Automated Testing ##
 
 Automated unit/integration tests should be written using the rust testing framework. 
-Tests will be automatically ran for each pull request and pull requests will failling tests will not be merged.
+Tests will be automatically ran for each pull request and pull requests with failling tests will not be merged.
 
 ## Branching ##
 
@@ -44,6 +44,6 @@ All code must be submitted via pull requests, *not* checked straight into the re
 A pull request will be from a single feature branch, which will not be used for any other
 features after merging. Ideally, it will be deleted after a merge.
 
-All pull requests must be reviewed by at least one person who is not the submitter. You can
+All pull requests must be reviewed by at least two people who are not the submitter. You can
 ask in Slack for a review, or use Github's assign feature to assign the pull request to a
 specific person.
