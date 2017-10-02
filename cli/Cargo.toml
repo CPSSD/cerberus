@@ -1,4 +1,4 @@
 [package]
 name = "cli"
-version = "0.1.0"
-authors = ["Cerberus Authors <maintainers@cerberus.io>"]
+version = "0.0.0"
+authors = ["Cerberus Authors <cerberus@cpssd.net>"]
