@@ -15,7 +15,8 @@ TODO: Write commenting instructions
 
 ## Automated Testing ##
 
-TODO: Write automated testing instructions
+Automated unit/integration tests should be written using the rust testing framework. 
+Tests will be automatically ran for each pull request and pull requests will failling tests will not be merged.
 
 ## Branching ##
 
@@ -23,6 +24,10 @@ Branching should be done in accordance with the [git-flow](http://nvie.com/posts
 There is a master branch and a develop branch. All features will be developed in feature branches off the develop branch.
 Features will be merged into the develop branch when complete.
 A release branch will be branched from the develop branch for final bugfixes before a release. When ready for a release it will be merged to the master branch.
+
+## Merging ##
+Before merging a branch into develop, all commits should be sqaushed to keep the history clean. 
+This can be done using the merge and squash feature on github or the commits can be squashed locally.
 
 ## Version Numbering ##
 
