@@ -54,7 +54,7 @@ message MapReduceStatusRequest {
     string mapreduce_id = 2;
 }
 
-// Response of
+// Response with the status of the requested map reduce.
 message MapReduceStatusResponse {
     // TODO(voy): Consider unnesting this message.
     message MapReduceReport {
@@ -70,7 +70,7 @@ message MapReduceStatusResponse {
         Status status = 2;
         int64 queue_length = 3;
         // Unix timestamp at which the MapReduce has been scheduled.
-        int64 scheduled_timestamp = 6;
+        int64 scheduled_timestamp = 4;
         // Unix timestamp at which the MapReduce has been started.
         int64 started_timestamp = 5;
         // Unix timestamp at which the MapReduce has been finished.
@@ -80,7 +80,7 @@ message MapReduceStatusResponse {
     repeated MapReduceReport reports = 1;
 }
 
-message ClusterHealthResponse {
+message ClusterStatusResponse {
     // Amount of workers in the cluster.
     int64 workers = 1;
     int64 place_in_queue = 2;

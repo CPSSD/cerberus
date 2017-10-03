@@ -5,7 +5,7 @@ setup:
 	cargo install grpcio-compiler
 
 clean:
-	@rmdir mapreduce
+	@rm -rf mapreduce/
 
 mapreduce:
 	@mkdir mapreduce
