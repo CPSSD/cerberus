@@ -13,7 +13,7 @@ service MapReduce {
     // Performs the map reduce using a payload already uploaded to the cluster.
     rpc PerformMapReduce (MapReduceRequest) returns (EmptyMessage) {}
     // Get the status and result of a started map reduce operation.
-    rpc MapReduceStatus (MapReduceStatusRequest) return (EmptyMessage)
+    rpc MapReduceStatus (MapReduceStatusRequest) return (MapReduceStatusResponse)
     // Gets the status of the cluster. Used to check if it is in use or not.
     rpc ClusterStatus (EmptyMessage) returns (ClusterStatusResponse) {}
 }
@@ -31,7 +31,7 @@ message EmptyMessage {}
 message MapReduceRequest {
     string map_reduce_id = 1;    // required
     string output_directory = 2; // required
-    bool await_completion = 3;   // optional
+    bool await_completion = 3;   // required 
 }
 
 message ClusterStatusResponse {
@@ -41,6 +41,10 @@ message ClusterStatusResponse {
 
 message MapReduceStatusRequest {
     string map_reduce_id = 1; // required
-    bool download_result = 2; // required
+}
+
+message MapReduceStatusResponse {
+    bool complete = 1;           // required
+    string output_directory = 2; // optional 
 }
 ```
