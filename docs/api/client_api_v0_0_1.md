@@ -22,7 +22,7 @@ message PayloadChunk {
     string map_reduce_id = 1; // required
     string file_name = 2;     // required
     bytes data = 3;           // required
-	// The file_hash must be sent with the last chunk
+    // The file_hash must be sent with the last chunk
     string file_hash = 4;     // optional
 }
 
@@ -36,7 +36,7 @@ message MapReduceRequest {
 
 message ClusterStatusResponse {
     int64 queue_size = 1;   // required
-	int64 cluster_size = 2; // required
+    int64 cluster_size = 2; // required
 }
 
 message MapReduceStatusRequest {
