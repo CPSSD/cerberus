@@ -5,8 +5,8 @@ package mapreduce;
 // Map reduce service is responsible for scheduling jobs on the cluster
 // and getting information about the running jobs.
 service MapReduceService {
-    // Runs the map reduce. Returns various gRPC error codes if the operation
-    // failed before even starting.
+    // Schedules a map reduce. Returns various gRPC error codes if the
+    // operation failed before even starting.
     // TODO(voy): Decide do we want to return more information about scheduled
     //            request.
     rpc PerformMapReduce (MapReduceRequest) returns (MapReduceResponse);
@@ -63,6 +63,7 @@ message MapReduceStatusResponse {
             DONE = 1;
             IN_PROGRESS = 2;
             IN_QUEUE = 3;
+            FAILED = 4;
         };
 
         string mapreduce_id = 1;
