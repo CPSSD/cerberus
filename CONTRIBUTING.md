@@ -30,7 +30,7 @@ A release branch will be branched from the develop branch for final bugfixes bef
 
 ## Merging ##
 Before merging a branch into develop, all commits should be sqaushed to keep the history clean. 
-This can be done using the merge and squash feature on github or the commits can be squashed locally.
+This should be done locally as the squash feature on github uses a fast forward merge.
 
 ## Version Numbering ##
 
