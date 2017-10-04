@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package mrworker;
+
+// The MRWorkerRegistrationService is implemented by the Master to allow workers to register with the Cluster.
+service MRWorkerRegistrationService {
+    // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
+    rpc RegisterWorker (RegisterWorkerRequest) returns (EmptyMessage);
+}
+
+// This message is used when the request or response does not send any data.
+message EmptyMessage {}
+
+message RegisterWorkerRequest {
+    // The workers ip and port where its MRWorkerService is exposed.
+    string worker_address = 1;
+}
+
+// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once 
+//              in the future.
+service MRWorkerService {
+    // Returns the status of a worker, is an operation in progress or if the worker is available.
+    rpc WorkerStatus (EmptyMessage) returns (WorkerStatusResponse);
+    
+    // Tells a worker to start a map operation with a certain set of data.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
+
+    // Returns the result of the completed map operation. 
+    // Throws an error if an operation is in progress or the last operation was not a map operation.
+    rpc GetMapResult (EmptyMessage) returns (MapResponse);
+
+    // Tells a worker to start a reduce operation for a certain key.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
+
+    // Returns the result of the completed reduce operation. 
+    // Throws an error if an operation is in progress or the last operation was not a reduce operation.
+    rpc GetReduceResult (EmptyMessage) returns (ReduceResponse);
+}
+
+message WorkerStatusResponse {
+    enum WorkerStatus {
+        AVAILABLE = 0;
+        BUSY = 1;
+    };
+    enum OperationStatus {
+        UNKNOWN = 0;
+        IN_PROGRESS = 1;
+        COMPLETE = 2;
+        FAILED = 3;
+    };
+    WorkerStatus worker_status = 1;
+    // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
+    OperationStatus operation_status = 2;
+}
+
+enum OperationStatus {
+    SUCCESS = 0;
+    FAILED = 1;
+};
+
+message PerformMapRequest {
+    // The path of the input file.
+    string input_file_path = 1;
+    // The path to the binary that performs the map operation.
+    string mapper_file_path = 2;
+}
+
+message MapResponse {
+    message MapResult {
+        string key = 1;
+        string output_file_path = 2;
+    }
+    OperationStatus status  = 1;
+    // The mapping of result keys to output files if the operation is a success.
+    repeated MapResult map_results = 2;
+}
+
+message PerformReduceRequest {
+    // The intermediate key to be reduced.
+    string intermediate_key = 1;
+    // The file paths of the intermediate files produced by the map operations.
+    repeated string input_file_paths = 2;
+    // The path to the binary that performs the reduce operation.
+    string reducer_file_path = 3;
+}
+
+message ReduceResponse {
+    OperationStatus status  = 1;
+    // The file path of the output file if the operation is a success.
+    string output_file_path = 2;
+}
