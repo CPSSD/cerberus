@@ -4,13 +4,21 @@ use serde::Serialize;
 use std::cmp::Eq;
 use std::hash::Hash;
 
+/// The Emit trait specifies structs which can key-value pairs to an in-memory data structure.
+///
+/// Since these in-memory data structures will eventually be serialised to disk, they must
+/// implement the `serde::Serialize` trait.
 pub trait Emit {
     type Key: Serialize;
     type Value: Serialize;
 
+    /// Takes ownership of a key-value pair and moves it somewhere else.
+    ///
+    /// Returns an empty `Result` used for error handling.
     fn emit(&mut self, key: Self::Key, value: Self::Value) -> Result<()>;
 }
 
+/// A struct implementing `Emit` which emits to a `multimap::MultiMap`.
 pub struct MultiMapEmitter<'a, K: 'a, V: 'a>
 where
     K: Serialize + Eq + Hash,
@@ -24,6 +32,11 @@ where
     K: Serialize + Eq + Hash,
     V: Serialize + Eq,
 {
+    /// Constructs a new `MultiMapEmitter` with a mutable reference to a given MultiMap.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - A mutable reference to the `MultiMap` to receive the emitted values.
     pub fn new(sink: &'a mut MultiMap<K, V>) -> Self {
         MultiMapEmitter { sink: sink }
     }
