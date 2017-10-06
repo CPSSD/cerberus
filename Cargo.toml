@@ -3,4 +3,5 @@ members = [
     "cli",
     "libcerberus",
     "master",
+    "proto",
 ]

@@ -1,0 +1,14 @@
+[package]
+name = "cerberus-proto"
+version = "0.1.0"
+build = "build.rs"
+
+[dependencies]
+protobuf = "1.4.1"
+grpcio = "0.1.1"
+futures = "0.1"
+
+[build-dependencies]
+protobuf = "1.4.1"
+protoc-rust = "1.4.1"
+grpcio-compiler = "0.1.0"
