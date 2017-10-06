@@ -1,4 +1,4 @@
-extern crate grpcio_compiler;
+extern crate grpc_compiler;
 extern crate protobuf;
 
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-use grpcio_compiler::codegen as grpc_gen;
+use grpc_compiler::codegen as grpc_gen;
 use protobuf::codegen as pb_gen;
 use protobuf::compiler_plugin::GenResult;
 use protobuf::descriptor::FileDescriptorSet;
