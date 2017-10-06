@@ -83,5 +83,5 @@ message MapReduceStatusResponse {
 message ClusterStatusResponse {
     // Amount of workers in the cluster.
     int64 workers = 1;
-    int64 place_in_queue = 2;
+    int64 queue_size = 2;
 }
