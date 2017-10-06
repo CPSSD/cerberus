@@ -5,10 +5,11 @@ build = "build.rs"
 
 [dependencies]
 protobuf = "1.4.1"
-grpcio = "0.1.1"
-futures = "0.1"
+grpc = "0.2.1"
+grpc-rust = "0.1.0"
+tls-api = "0.1.10"
 
 [build-dependencies]
 protobuf = "1.4.1"
 protoc-rust = "1.4.1"
-grpcio-compiler = "0.1.0"
+grpc-compiler = "0.2.1"
