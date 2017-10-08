@@ -10,3 +10,4 @@ mod errors {
 }
 
 pub mod emitter;
+pub mod mapper;
