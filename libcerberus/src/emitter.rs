@@ -15,6 +15,13 @@ pub trait Emit<K: Serialize, V: Serialize> {
     fn emit(&mut self, key: K, value: V) -> Result<()>;
 }
 
+/// The `Emitter` type is an alias for any boxed type which implements `Emit`.
+///
+/// Because types implementing `Emit` typically contain a mutable reference to an in-memory data
+/// structure, we want them to be used once and then go out of scope. Hence, we use a boxed trait
+/// object with a non-`static` lifetime.
+pub type Emitter<'a, K, V> = Box<Emit<K, V> + 'a>;
+
 /// A struct implementing `Emit` which emits to a `multimap::MultiMap`.
 pub struct MultiMapEmitter<'a, K: 'a, V: 'a>
 where
