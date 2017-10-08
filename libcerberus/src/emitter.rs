@@ -4,18 +4,15 @@ use serde::Serialize;
 use std::cmp::Eq;
 use std::hash::Hash;
 
-/// The `Emit` trait specifies structs which can key-value pairs to an in-memory data structure.
+/// The `Emit` trait specifies structs which can send key-value pairs to an in-memory data structure.
 ///
 /// Since these in-memory data structures will eventually be serialised to disk, they must
 /// implement the `serde::Serialize` trait.
-pub trait Emit {
-    type Key: Serialize;
-    type Value: Serialize;
-
+pub trait Emit<K: Serialize, V: Serialize> {
     /// Takes ownership of a key-value pair and moves it somewhere else.
     ///
     /// Returns an empty `Result` used for error handling.
-    fn emit(&mut self, key: Self::Key, value: Self::Value) -> Result<()>;
+    fn emit(&mut self, key: K, value: V) -> Result<()>;
 }
 
 /// A struct implementing `Emit` which emits to a `multimap::MultiMap`.
@@ -42,15 +39,12 @@ where
     }
 }
 
-impl<'a, K, V> Emit for MultiMapEmitter<'a, K, V>
+impl<'a, K, V> Emit<K, V> for MultiMapEmitter<'a, K, V>
 where
     K: Serialize + Eq + Hash,
     V: Serialize + Eq,
 {
-    type Key = K;
-    type Value = V;
-
-    fn emit(&mut self, key: Self::Key, value: Self::Value) -> Result<()> {
+    fn emit(&mut self, key: K, value: V) -> Result<()> {
         self.sink.insert(key, value);
         Ok(())
     }
@@ -81,15 +75,12 @@ where
     }
 }
 
-impl<'a, K, V> Emit for VecEmitter<'a, K, V>
+impl<'a, K, V> Emit<K, V> for VecEmitter<'a, K, V>
 where
     K: Serialize,
     V: Serialize,
 {
-    type Key = K;
-    type Value = V;
-
-    fn emit(&mut self, key: Self::Key, value: Self::Value) -> Result<()> {
+    fn emit(&mut self, key: K, value: V) -> Result<()> {
         self.sink.push((key, value));
         Ok(())
     }
