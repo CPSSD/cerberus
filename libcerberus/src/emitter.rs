@@ -1,81 +1,79 @@
 use errors::*;
-use multimap::MultiMap;
 use serde::Serialize;
-use std::cmp::Eq;
-use std::hash::Hash;
 
-/// The `Emit` trait specifies structs which can send key-value pairs to an in-memory data structure.
+/// The `EmitIntermediate` trait specifies structs which can send key-value pairs to an in-memory
+/// data structure.
 ///
-/// Since these in-memory data structures will eventually be serialised to disk, they must
-/// implement the `serde::Serialize` trait.
-pub trait Emit<K: Serialize, V: Serialize> {
-    /// Takes ownership of a key-value pair and moves it somewhere else.
+/// `EmitIntermediate` is intended for use in `Map` operations, for emitting an intermediate
+/// key-value pair. Since these in-memory data structures will eventually be serialised to disk,
+/// they must implement the `serde::Serialize` trait.
+pub trait EmitIntermediate<K: Serialize, V: Serialize> {
+    /// Takes ownership of a key-value pair and stores it in a sink.
     ///
     /// Returns an empty `Result` used for error handling.
     fn emit(&mut self, key: K, value: V) -> Result<()>;
 }
 
-/// A struct implementing `Emit` which emits to a `multimap::MultiMap`.
-pub struct MultiMapEmitter<'a, K: 'a, V: 'a>
-where
-    K: Serialize + Eq + Hash,
-    V: Serialize + Eq,
-{
-    sink: &'a mut MultiMap<K, V>,
+/// The `EmitFinal` trait specifies structs which can send values to an in-memory data structure.
+///
+/// `EmitFinal` is intended for use in `Reduce` operations, for emitting an intermediate key-value
+/// pair. Since these in-memory data structures will eventually be serialised to disk, they must
+/// implement the `serde::Serialize` trait.
+pub trait EmitFinal<V: Serialize> {
+    /// Takes ownership of a value and stores it in a sink.
+    ///
+    /// Returns an empty `Result` used for error handling.
+    fn emit(&mut self, value: V) -> Result<()>;
 }
 
-impl<'a, K, V> MultiMapEmitter<'a, K, V>
-where
-    K: Serialize + Eq + Hash,
-    V: Serialize + Eq,
-{
-    /// Constructs a new `MultiMapEmitter` with a mutable reference to a given `MultiMap`.
+/// A struct implementing `EmitFinal` which emits to a `std::vec::Vec`.
+pub struct FinalVecEmitter<'a, V: Serialize + 'a> {
+    sink: &'a mut Vec<V>,
+}
+
+impl<'a, V: Serialize> FinalVecEmitter<'a, V> {
+    /// Constructs a new `FinalVecEmitter` with a mutable reference to a given `Vec`.
     ///
     /// # Arguments
     ///
-    /// * `sink` - A mutable reference to the `MultiMap` to receive the emitted values.
-    pub fn new(sink: &'a mut MultiMap<K, V>) -> Self {
-        MultiMapEmitter { sink: sink }
+    /// * `sink` - A mutable reference to the `Vec` to receive the emitted values.
+    pub fn new(sink: &'a mut Vec<V>) -> Self {
+        FinalVecEmitter { sink: sink }
     }
 }
 
-impl<'a, K, V> Emit<K, V> for MultiMapEmitter<'a, K, V>
-where
-    K: Serialize + Eq + Hash,
-    V: Serialize + Eq,
-{
-    fn emit(&mut self, key: K, value: V) -> Result<()> {
-        self.sink.insert(key, value);
+impl<'a, V: Serialize> EmitFinal<V> for FinalVecEmitter<'a, V> {
+    fn emit(&mut self, value: V) -> Result<()> {
+        self.sink.push(value);
         Ok(())
     }
 }
-/// A struct implementing `Emit` which emits to a `std::vec::Vec`.
-///
-/// Unlike the `MultiMapEmitter`, this does not automatically group together duplicate keys.
-pub struct VecEmitter<'a, K: 'a, V: 'a>
+
+/// A struct implementing `EmitIntermediate` which emits to a `std::vec::Vec`.
+pub struct IntermediateVecEmitter<'a, K, V>
 where
-    K: Serialize,
-    V: Serialize,
+    K: Serialize + 'a,
+    V: Serialize + 'a,
 {
     sink: &'a mut Vec<(K, V)>,
 }
 
-impl<'a, K, V> VecEmitter<'a, K, V>
+impl<'a, K, V> IntermediateVecEmitter<'a, K, V>
 where
     K: Serialize,
     V: Serialize,
 {
-    /// Constructs a new `VecEmitter` with a mutable reference to a given `Vec`.
+    /// Constructs a new `IntermediateVecEmitter` with a mutable reference to a given `Vec`.
     ///
     /// # Arguments
     ///
     /// * `sink` - A mutable reference to the `Vec` to receive the emitted values.
     pub fn new(sink: &'a mut Vec<(K, V)>) -> Self {
-        VecEmitter { sink: sink }
+        IntermediateVecEmitter { sink: sink }
     }
 }
 
-impl<'a, K, V> Emit<K, V> for VecEmitter<'a, K, V>
+impl<'a, K, V> EmitIntermediate<K, V> for IntermediateVecEmitter<'a, K, V>
 where
     K: Serialize,
     V: Serialize,
@@ -91,56 +89,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn multimap_emitter_with_string_string() {
-        let mut map: MultiMap<String, String> = MultiMap::new();
-
-        {
-            let mut emitter: MultiMapEmitter<String, String> = MultiMapEmitter::new(&mut map);
-            emitter.emit("foo".to_owned(), "bar".to_owned()).unwrap();
-        }
-
-        let pair = map.into_iter().next().unwrap();
-        assert_eq!("foo", pair.0);
-        assert_eq!("bar", pair.1[0]);
-    }
-
-    #[test]
-    fn multimap_emitter_with_map_inside_box() {
-        let mut boxed_map = Box::new(MultiMap::<u16, u16>::new());
-
-        {
-            let mut emitter: MultiMapEmitter<u16, u16> = MultiMapEmitter::new(&mut boxed_map);
-            emitter.emit(1337, 1338).unwrap();
-        }
-
-        let pair = boxed_map.into_iter().next().unwrap();
-        assert_eq!(1337, pair.0);
-        assert_eq!(1338, pair.1[0]);
-    }
-
-    #[test]
-    fn multimap_emitter_with_duplicate_keys() {
-        let mut map: MultiMap<u16, u16> = MultiMap::new();
-
-        {
-            let mut emitter: MultiMapEmitter<u16, u16> = MultiMapEmitter::new(&mut map);
-            emitter.emit(0xDEAD, 0xBEEF).unwrap();
-            emitter.emit(0xDEAD, 0xBABE).unwrap();
-        }
-
-        let mut pair = map.into_iter().next().unwrap();
-        pair.1.sort();
-        let expected_values = vec![0xBABE, 0xBEEF];
-        assert_eq!(0xDEAD, pair.0);
-        assert_eq!(expected_values.as_slice(), pair.1.as_slice());
-    }
-
-    #[test]
-    fn vec_emitter_with_string_string() {
+    fn intermediate_vec_emitter_with_string_string() {
         let mut vec: Vec<(String, String)> = Vec::new();
 
         {
-            let mut emitter: VecEmitter<String, String> = VecEmitter::new(&mut vec);
+            let mut emitter: IntermediateVecEmitter<String, String> =
+                IntermediateVecEmitter::new(&mut vec);
             emitter.emit("foo".to_owned(), "bar".to_owned()).unwrap();
         }
 
@@ -149,11 +103,12 @@ mod tests {
     }
 
     #[test]
-    fn vec_emitter_with_duplicate_keys() {
+    fn intermediate_vec_emitter_with_duplicate_keys() {
         let mut vec: Vec<(u16, u16)> = Vec::new();
 
         {
-            let mut emitter: VecEmitter<u16, u16> = VecEmitter::new(&mut vec);
+            let mut emitter: IntermediateVecEmitter<u16, u16> =
+                IntermediateVecEmitter::new(&mut vec);
             emitter.emit(0xDEAD, 0xBEEF).unwrap();
             emitter.emit(0xDEAD, 0xBABE).unwrap();
         }
@@ -163,15 +118,40 @@ mod tests {
     }
 
     #[test]
-    fn vec_emitter_with_vec_inside_box() {
+    fn intermediate_vec_emitter_with_vec_inside_box() {
         let mut boxed_vec = Box::new(Vec::<(u16, u16)>::new());
 
         {
-            let mut emitter: VecEmitter<u16, u16> = VecEmitter::new(&mut boxed_vec);
+            let mut emitter: IntermediateVecEmitter<u16, u16> =
+                IntermediateVecEmitter::new(&mut boxed_vec);
             emitter.emit(1337, 1338).unwrap();
         }
 
         assert_eq!(1337, boxed_vec[0].0);
         assert_eq!(1338, boxed_vec[0].1);
+    }
+
+    #[test]
+    fn final_vec_emitter_emit_value() {
+        let mut vec: Vec<String> = Vec::new();
+
+        {
+            let mut emitter: FinalVecEmitter<String> = FinalVecEmitter::new(&mut vec);
+            emitter.emit("foo".to_owned()).unwrap();
+        }
+
+        assert_eq!("foo", vec[0]);
+    }
+
+    #[test]
+    fn final_vec_emitter_with_vec_inside_box() {
+        let mut boxed_vec = Box::new(Vec::<u16>::new());
+
+        {
+            let mut emitter: FinalVecEmitter<u16> = FinalVecEmitter::new(&mut boxed_vec);
+            emitter.emit(1337).unwrap();
+        }
+
+        assert_eq!(1337, boxed_vec[0]);
     }
 }
