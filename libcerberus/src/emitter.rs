@@ -105,6 +105,20 @@ mod tests {
     }
 
     #[test]
+    fn multimap_emitter_with_map_inside_box() {
+        let mut boxed_map = Box::new(MultiMap::<u16, u16>::new());
+
+        {
+            let mut emitter: MultiMapEmitter<u16, u16> = MultiMapEmitter::new(&mut boxed_map);
+            emitter.emit(1337, 1338).unwrap();
+        }
+
+        let pair = boxed_map.into_iter().next().unwrap();
+        assert_eq!(1337, pair.0);
+        assert_eq!(1338, pair.1[0]);
+    }
+
+    #[test]
     fn multimap_emitter_with_duplicate_keys() {
         let mut map: MultiMap<u16, u16> = MultiMap::new();
 
@@ -146,5 +160,18 @@ mod tests {
 
         assert_eq!((0xDEAD, 0xBEEF), vec[0]);
         assert_eq!((0xDEAD, 0xBABE), vec[1]);
+    }
+
+    #[test]
+    fn vec_emitter_with_vec_inside_box() {
+        let mut boxed_vec = Box::new(Vec::<(u16, u16)>::new());
+
+        {
+            let mut emitter: VecEmitter<u16, u16> = VecEmitter::new(&mut boxed_vec);
+            emitter.emit(1337, 1338).unwrap();
+        }
+
+        assert_eq!(1337, boxed_vec[0].0);
+        assert_eq!(1338, boxed_vec[0].1);
     }
 }
