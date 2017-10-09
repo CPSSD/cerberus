@@ -2,7 +2,6 @@
 
 #[macro_use]
 extern crate error_chain;
-extern crate multimap;
 extern crate serde;
 
 mod errors {

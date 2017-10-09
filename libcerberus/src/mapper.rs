@@ -1,4 +1,4 @@
-use emitter::Emit;
+use emitter::EmitIntermediate;
 use errors::*;
 use serde::Serialize;
 
@@ -31,7 +31,7 @@ impl MapInputKV {
 /// # Arguments
 ///
 /// * `input` - A `MapInputKV` containing the input data for the map operation.
-/// * `emitter` - A struct implementing the `Emit` trait, provided by the map runner.
+/// * `emitter` - A struct implementing the `EmitIntermediate` trait, provided by the map runner.
 ///
 /// # Outputs
 ///
@@ -42,13 +42,13 @@ pub trait Map {
     type Value: Serialize;
     fn map<E>(input: MapInputKV, emitter: E) -> Result<()>
     where
-        E: Emit<Self::Key, Self::Value>;
+        E: EmitIntermediate<Self::Key, Self::Value>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use emitter::VecEmitter;
+    use emitter::IntermediateVecEmitter;
 
     struct TestMapper;
     impl Map for TestMapper {
@@ -56,7 +56,7 @@ mod tests {
         type Value = String;
         fn map<E>(input: MapInputKV, mut emitter: E) -> Result<()>
         where
-            E: Emit<Self::Key, Self::Value>,
+            E: EmitIntermediate<Self::Key, Self::Value>,
         {
             emitter.emit(input.value, "test".to_owned())?;
             Ok(())
@@ -68,7 +68,7 @@ mod tests {
         let mut vec: Vec<(String, String)> = Vec::new();
         let test_input = MapInputKV::new("test_key", "this is a");
 
-        TestMapper::map(test_input, VecEmitter::new(&mut vec)).unwrap();
+        TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
 
         assert_eq!("this is a", vec[0].0);
         assert_eq!("test", vec[0].1);
@@ -79,7 +79,7 @@ mod tests {
         let mut vec: Vec<(<TestMapper as Map>::Key, <TestMapper as Map>::Value)> = Vec::new();
         let test_input = MapInputKV::new("test_key", "this is a");
 
-        TestMapper::map(test_input, VecEmitter::new(&mut vec)).unwrap();
+        TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
 
         assert_eq!("this is a", vec[0].0);
         assert_eq!("test", vec[0].1);

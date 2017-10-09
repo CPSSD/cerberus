@@ -5,5 +5,4 @@ authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
 error-chain = "0.11.0"
-multimap = "0.4.0"
 serde = "1.0.15"
