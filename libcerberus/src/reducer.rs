@@ -21,6 +21,19 @@ impl ReduceInputKV {
     }
 }
 
+/// The `Reduce` trait defines a function for performing a reduce operation.
+///
+/// The output types are decided by the implementation of this trait.
+///
+/// # Arguments
+///
+/// * `input` - A `ReduceInputKV` containing the input data for the reduce operation.
+/// * `emitter` - A struct implementing the `EmitFinal` trait, provided by the reduce runner.
+///
+/// # Outputs
+///
+/// An empty result used for returning an error. Outputs of the reduce operation are sent out
+/// through the `emitter`.
 pub trait Reduce {
     type Value: Serialize;
     fn reduce<E>(input: ReduceInputKV, emitter: E) -> Result<()>
