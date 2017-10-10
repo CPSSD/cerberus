@@ -8,7 +8,4 @@ pipeline:
     clippy:
         image: goldenbadger/cerberus-ci
         commands:
-            - rustup install nightly
-            - rustup default nightly
-            - cargo install clippy
-            - cargo clippy --all
+            - rustup run nightly cargo clippy --all
