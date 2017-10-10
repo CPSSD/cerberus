@@ -1,12 +1,12 @@
 pipeline:
     build:
-        image: rust
+        image: goldenbadger/cerberus-ci
         commands:
             - cargo build --all
             - cargo test --all
 
     clippy:
-        image: rust
+        image: goldenbadger/cerberus-ci
         commands:
             - rustup install nightly
             - rustup default nightly
