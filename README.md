@@ -1,15 +1,11 @@
 # cerberus
 CA4019 Project
 
----
+[![Build Status](http://cpssd1-drone.computing.dcu.ie/api/badges/CPSSD/cerberus/status.svg)](http://cpssd1-drone.computing.dcu.ie/CPSSD/cerberus)
 
-## Dependancies
-* `protoc` is required for building the protobufs.
-Installation instructions can be found [here](https://github.com/google/protobuf)
+## Building the project
 
-## Building the Project
-
-Build everything by running
+Build everything by running:
 
 ```
 $ cargo build --all

@@ -1,0 +1,14 @@
+pipeline:
+    build:
+        image: rust
+        commands:
+            - cargo build --all
+            - cargo test --all
+
+    clippy:
+        image: rust
+        commands:
+            - rustup install nightly
+            - rustup default nightly
+            - cargo install clippy
+            - cargo clippy --all
