@@ -4,6 +4,9 @@
 # Unignore all with extensions
 !*.*
 
+# Unignore Dockerfile
+!Dockerfile
+
 # Unignore all dirs
 !*/
 
