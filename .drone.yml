@@ -1,7 +1,8 @@
 pipeline:
-    build:
+    test:
         image: goldenbadger/cerberus-ci
         pull: true
+        group: build
         commands:
             - cargo build --all
             - cargo test --all
@@ -9,5 +10,6 @@ pipeline:
     clippy:
         image: goldenbadger/cerberus-ci
         pull: true
+        group: build
         commands:
             - rustup run nightly cargo clippy --all
