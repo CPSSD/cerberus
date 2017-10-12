@@ -6,20 +6,17 @@ use serde::Serialize;
 ///
 /// `MapInputKV` is a thin wrapper around a `(String, String)`, used for creating a clearer API.
 /// It can be constructed normally or using `MapInputKV::new()`.
+#[derive(Debug, Default)]
 pub struct MapInputKV {
     pub key: String,
     pub value: String,
 }
 
 impl MapInputKV {
-    pub fn new<K, V>(key: K, value: V) -> Self
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
+    pub fn new(key: String, value: String) -> Self {
         MapInputKV {
-            key: key.into(),
-            value: value.into(),
+            key: key,
+            value: value,
         }
     }
 }
@@ -66,7 +63,7 @@ mod tests {
     #[test]
     fn test_mapper_test_interface() {
         let mut vec: Vec<(String, String)> = Vec::new();
-        let test_input = MapInputKV::new("test_key", "this is a");
+        let test_input = MapInputKV::new("test_key".to_owned(), "this is a".to_owned());
 
         TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
 
@@ -77,7 +74,7 @@ mod tests {
     #[test]
     fn test_mapper_with_associated_types() {
         let mut vec: Vec<(<TestMapper as Map>::Key, <TestMapper as Map>::Value)> = Vec::new();
-        let test_input = MapInputKV::new("test_key", "this is a");
+        let test_input = MapInputKV::new("test_key".to_owned(), "this is a".to_owned());
 
         TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
 
