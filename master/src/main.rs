@@ -12,3 +12,4 @@ mod errors {
 
 pub mod client_interface;
 pub mod scheduler;
+pub mod queued_work_store;
