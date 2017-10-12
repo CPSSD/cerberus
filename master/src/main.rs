@@ -7,7 +7,11 @@ fn main() {
 }
 
 mod errors {
-    error_chain!{}
+    error_chain! {
+        foreign_links {
+            Grpc(::grpcio::Error);
+        }
+    }
 }
 
 pub mod client_interface;

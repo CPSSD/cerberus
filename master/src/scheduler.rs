@@ -1,16 +1,21 @@
 use errors::*;
 
-struct MapReduceScheduler {
+#[derive(Default)]
+pub struct MapReduceScheduler {
     available_workers: u32,
 }
 
 impl MapReduceScheduler {
     pub fn new() -> Self {
-        MapReduceScheduler { available_workers: 0 }
+        Default::default()
     }
 
     pub fn schedule_mapreduce(&self) -> Result<String> {
         Ok("Success!".to_owned())
+    }
+
+    pub fn get_available_workers(&self) -> u32 {
+        self.available_workers
     }
 }
 

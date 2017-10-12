@@ -3,15 +3,18 @@ use std::sync::Arc;
 use grpcio::{Environment, ServerBuilder};
 use grpcio::Server;
 
-struct ClientInterface {
+const GRPC_THREAD_POOL_SIZE: usize = 1;
+
+pub struct ClientInterface {
     server: Server,
 }
 
 impl ClientInterface {
-    pub fn new() -> Self {
-        let env = Arc::new(Environment::new(1));
-        let mut server: Server = ServerBuilder::new(env).build().unwrap();
-        ClientInterface { server: server }
+    pub fn new() -> Result<Self> {
+        let env = Arc::new(Environment::new(GRPC_THREAD_POOL_SIZE));
+        let server_builder: ServerBuilder = ServerBuilder::new(env);
+
+        Ok(ClientInterface { server: server_builder.build()? })
     }
 
     pub fn start_server(&mut self) {
@@ -20,6 +23,4 @@ impl ClientInterface {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}
