@@ -1,8 +1,10 @@
+use emitter::EmitIntermediate;
+use errors::*;
 use serde::Serialize;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
 /// from a map operation.
-#[derive(Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct IntermediateOutputPair<K: Serialize, V: Serialize> {
     pub key: K,
     pub value: V,
@@ -10,16 +12,55 @@ pub struct IntermediateOutputPair<K: Serialize, V: Serialize> {
 
 /// `IntermediateOutputObject` is a struct comprising a collection of `IntermediateOutputPair`s,
 /// representing the entire output of a map operation, ready to be serialised to JSON.
-#[derive(Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct IntermediateOutputObject<K: Serialize, V: Serialize> {
     pub pairs: Vec<IntermediateOutputPair<K, V>>,
 }
 
 /// `FinalOutputObject` is a struct comprising a collection of serialisable values representing the
 /// entire output of a reduce operation, ready to be serialised to JSON.
-#[derive(Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct FinalOutputObject<V: Serialize> {
     pub values: Vec<V>,
+}
+
+/// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputObject`.
+pub struct IntermediateOutputObjectEmitter<'a, K, V>
+where
+    K: Serialize + 'a,
+    V: Serialize + 'a,
+{
+    sink: &'a mut IntermediateOutputObject<K, V>,
+}
+
+impl<'a, K, V> IntermediateOutputObjectEmitter<'a, K, V>
+where
+    K: Serialize,
+    V: Serialize,
+{
+    /// Constructs a new `IntermediateOutputObjectEmitter` with a mutable reference to a given
+    /// `IntermediateOutputObject`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - A mutable reference to the `IntermediateOutputObject` to receive the emitted values.
+    pub fn new(sink: &'a mut IntermediateOutputObject<K, V>) -> Self {
+        IntermediateOutputObjectEmitter { sink: sink }
+    }
+}
+
+impl<'a, K, V> EmitIntermediate<K, V> for IntermediateOutputObjectEmitter<'a, K, V>
+where
+    K: Serialize,
+    V: Serialize,
+{
+    fn emit(&mut self, key: K, value: V) -> Result<()> {
+        self.sink.pairs.push(IntermediateOutputPair {
+            key: key,
+            value: value,
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -61,5 +102,25 @@ mod tests {
         let json_string = serde_json::to_string(&output).unwrap();
 
         assert_eq!(expected_json_string, json_string);
+    }
+
+    #[test]
+    fn intermediate_output_emitter_works() {
+        let mut output = IntermediateOutputObject::default();
+        let expected_output = IntermediateOutputObject {
+            pairs: vec![
+                IntermediateOutputPair {
+                    key: "foo",
+                    value: "bar",
+                },
+            ],
+        };
+
+        {
+            let mut emitter = IntermediateOutputObjectEmitter::new(&mut output);
+            emitter.emit("foo", "bar").unwrap();
+        }
+
+        assert_eq!(expected_output, output);
     }
 }

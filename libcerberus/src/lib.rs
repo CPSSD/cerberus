@@ -8,7 +8,11 @@ extern crate serde_derive;
 extern crate serde_json;
 
 mod errors {
-    error_chain!{}
+    error_chain!{
+        foreign_links {
+            SerdeJson(::serde_json::error::Error);
+        }
+    }
 }
 
 pub mod emitter;
