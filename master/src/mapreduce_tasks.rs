@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use queued_work_store::QueuedWork;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MapReduceTaskStatus {
@@ -92,6 +93,18 @@ impl MapReduceTask {
 
     pub fn set_status(&mut self, new_status: MapReduceTaskStatus) {
         self.status = new_status;
+    }
+}
+
+impl QueuedWork for MapReduceTask {
+    type Key = String;
+
+    fn get_work_bucket(&self) -> String {
+        self.get_map_reduce_id().to_owned()
+    }
+
+    fn get_work_id(&self) -> String {
+        self.get_task_id().to_owned()
     }
 }
 
@@ -190,10 +203,6 @@ mod tests {
         assert_eq!(reduce_task.get_assigned_worker_id(), "worker-1");
     }
 
-    /*
-
-    status: MapReduceTaskStatus,
-    */
     #[test]
     fn test_set_status() {
         let mut reduce_task = MapReduceTask::new(
@@ -208,5 +217,18 @@ mod tests {
         // Set the status to Completed and assert success.
         reduce_task.set_status(MapReduceTaskStatus::Complete);
         assert_eq!(reduce_task.get_status(), MapReduceTaskStatus::Complete);
+    }
+
+    #[test]
+    fn test_queued_work_impl() {
+        let reduce_task = MapReduceTask::new(
+            TaskType::Reduce,
+            "reduce-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            vec!["/tmp/input/inter_mediate".to_owned()],
+        );
+
+        assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
+        assert_eq!(reduce_task.get_work_id(), reduce_task.get_task_id());
     }
 }
