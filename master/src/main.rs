@@ -19,3 +19,4 @@ pub mod client_interface;
 pub mod scheduler;
 pub mod queued_work_store;
 pub mod mapreduce_job;
+pub mod mapreduce_tasks;
