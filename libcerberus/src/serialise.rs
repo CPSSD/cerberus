@@ -1,4 +1,4 @@
-use emitter::EmitIntermediate;
+use emitter::{EmitIntermediate, EmitFinal};
 use errors::*;
 use serde::Serialize;
 
@@ -63,6 +63,31 @@ where
     }
 }
 
+/// A struct implementing `EmitFinal` which emits to a `FinalOutputObject`.
+pub struct FinalOutputObjectEmitter<'a, V: Serialize + 'a> {
+    sink: &'a mut FinalOutputObject<V>,
+}
+
+impl<'a, V: Serialize> FinalOutputObjectEmitter<'a, V> {
+    /// Constructs a new `FinalOutputObjectEmitter` with a mutable reference to a given
+    /// `FinalOutputObject`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - A mutable reference to the `FinalOutputObject` to receive the emitted
+    /// values.
+    pub fn new(sink: &'a mut FinalOutputObject<V>) -> Self {
+        FinalOutputObjectEmitter { sink: sink }
+    }
+}
+
+impl<'a, V: Serialize> EmitFinal<V> for FinalOutputObjectEmitter<'a, V> {
+    fn emit(&mut self, value: V) -> Result<()> {
+        self.sink.values.push(value);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json;
@@ -119,6 +144,20 @@ mod tests {
         {
             let mut emitter = IntermediateOutputObjectEmitter::new(&mut output);
             emitter.emit("foo", "bar").unwrap();
+        }
+
+        assert_eq!(expected_output, output);
+    }
+
+    #[test]
+    fn final_output_emitter_works() {
+        let mut output = FinalOutputObject::default();
+        let expected_output = FinalOutputObject { values: vec!["foo", "bar"] };
+
+        {
+            let mut emitter = FinalOutputObjectEmitter::new(&mut output);
+            emitter.emit("foo").unwrap();
+            emitter.emit("bar").unwrap();
         }
 
         assert_eq!(expected_output, output);
