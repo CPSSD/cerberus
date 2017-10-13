@@ -6,7 +6,7 @@ use serde::Serialize;
 ///
 /// `MapInputKV` is a thin wrapper around a `(String, String)`, used for creating a clearer API.
 /// It can be constructed normally or using `MapInputKV::new()`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize, PartialEq)]
 pub struct MapInputKV {
     pub key: String,
     pub value: String,
