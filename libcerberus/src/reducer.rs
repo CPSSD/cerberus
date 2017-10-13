@@ -6,7 +6,7 @@ use serde::Serialize;
 ///
 /// `ReduceInputKV` is a thin wrapper around a `(String, Vec<String>)`, used for creating a clearer API.
 /// It can be constructed normally or using `ReduceInputKV::new()`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize, PartialEq)]
 pub struct ReduceInputKV {
     pub key: String,
     pub values: Vec<String>,
