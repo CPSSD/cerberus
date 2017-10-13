@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use queued_work_store::QueuedWork;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MapReduceJobStatus {
@@ -56,6 +57,18 @@ impl MapReduceJob {
     }
 }
 
+impl QueuedWork for MapReduceJob {
+    type Key = String;
+
+    fn get_work_bucket(&self) -> String {
+        self.get_client_id().to_owned()
+    }
+
+    fn get_work_id(&self) -> String {
+        self.get_map_reduce_id().to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +116,20 @@ mod tests {
         // Set the status to Completed and assert success.
         map_reduce_job.set_status(MapReduceJobStatus::Complete);
         assert_eq!(map_reduce_job.get_status(), MapReduceJobStatus::Complete);
+    }
+
+    #[test]
+    fn test_queued_work_impl() {
+        let map_reduce_job = MapReduceJob::new(
+            "client-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            "/tmp/input/".to_owned(),
+        );
+
+        assert_eq!(map_reduce_job.get_work_bucket(), "client-1");
+        assert_eq!(
+            map_reduce_job.get_work_id(),
+            map_reduce_job.get_map_reduce_id()
+        );
     }
 }
