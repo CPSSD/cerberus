@@ -34,6 +34,7 @@ mod errors {
     error_chain! {
         foreign_links {
             Grpc(::grpc::Error);
+            Io(::std::io::Error);
         }
     }
 }

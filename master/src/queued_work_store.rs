@@ -12,10 +12,9 @@ pub trait QueuedWork {
 
 /// The `QueuedWorkStore` is a struct that owns and stores objects that implement the `QueuedWork`
 /// trait.
-#[derive(Default)]
 pub struct QueuedWorkStore<T>
 where
-    T: QueuedWork + Default,
+    T: QueuedWork,
 {
     // A map of TaskId -> Queued_Work.
     work_map: HashMap<T::Key, Box<T>>,
@@ -25,12 +24,19 @@ where
     work_queue: VecDeque<T::Key>,
 }
 
+// Default can not be derived here without forcing T to implment default, which I do not want
+// to do.
+#[allow(new_without_default_derive)]
 impl<T> QueuedWorkStore<T>
 where
-    T: QueuedWork + Default,
+    T: QueuedWork,
 {
     pub fn new() -> Self {
-        Default::default()
+        QueuedWorkStore {
+            work_map: HashMap::new(),
+            work_buckets: HashMap::new(),
+            work_queue: VecDeque::new(),
+        }
     }
 
     pub fn add_to_store(&mut self, task: Box<T>) -> Result<()> {
