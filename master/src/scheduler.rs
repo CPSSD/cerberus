@@ -3,6 +3,7 @@ use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, TaskProcessorTrait};
 use queued_work_store::QueuedWorkStore;
 
+
 pub struct MapReduceScheduler {
     map_reduce_job_queue: QueuedWorkStore<MapReduceJob>,
     map_reduce_task_queue: QueuedWorkStore<MapReduceTask>,
@@ -57,6 +58,10 @@ impl MapReduceScheduler {
         self.in_progress_map_reduce_id.clone()
     }
 
+    pub fn get_map_reduce_job_queue_size(&self) -> usize {
+        self.map_reduce_job_queue.queue_size()
+    }
+
     pub fn schedule_map_reduce(&mut self, map_reduce_job: MapReduceJob) -> Result<()> {
         self.map_reduce_job_queue
             .add_to_store(Box::new(map_reduce_job))
@@ -71,6 +76,22 @@ impl MapReduceScheduler {
 
     pub fn get_available_workers(&self) -> u32 {
         self.available_workers
+    }
+
+    pub fn set_available_workers(&mut self, available_workers: u32) {
+        self.available_workers = available_workers;
+    }
+
+    pub fn get_mapreduce_status(&self, mapreduce_id: String) -> Result<&MapReduceJob> {
+        let result = self.map_reduce_job_queue.get_work_by_id(&mapreduce_id);
+        match result {
+            None => Err("There was an error getting the result".into()),
+            Some(job) => Ok(job),
+        }
+    }
+
+    pub fn get_mapreduce_client_status(&self, client_id: String) -> Result<Vec<&MapReduceJob>> {
+        self.map_reduce_job_queue.get_work_bucket_items(&client_id)
     }
 }
 
