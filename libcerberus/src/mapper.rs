@@ -37,7 +37,7 @@ impl MapInputKV {
 pub trait Map {
     type Key: Serialize;
     type Value: Serialize;
-    fn map<E>(input: MapInputKV, emitter: E) -> Result<()>
+    fn map<E>(&self, input: MapInputKV, emitter: E) -> Result<()>
     where
         E: EmitIntermediate<Self::Key, Self::Value>;
 }
@@ -51,7 +51,7 @@ mod tests {
     impl Map for TestMapper {
         type Key = String;
         type Value = String;
-        fn map<E>(input: MapInputKV, mut emitter: E) -> Result<()>
+        fn map<E>(&self, input: MapInputKV, mut emitter: E) -> Result<()>
         where
             E: EmitIntermediate<Self::Key, Self::Value>,
         {
@@ -64,8 +64,11 @@ mod tests {
     fn test_mapper_test_interface() {
         let mut vec: Vec<(String, String)> = Vec::new();
         let test_input = MapInputKV::new("test_key".to_owned(), "this is a".to_owned());
+        let mapper = TestMapper;
 
-        TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
+        mapper
+            .map(test_input, IntermediateVecEmitter::new(&mut vec))
+            .unwrap();
 
         assert_eq!("this is a", vec[0].0);
         assert_eq!("test", vec[0].1);
@@ -75,8 +78,11 @@ mod tests {
     fn test_mapper_with_associated_types() {
         let mut vec: Vec<(<TestMapper as Map>::Key, <TestMapper as Map>::Value)> = Vec::new();
         let test_input = MapInputKV::new("test_key".to_owned(), "this is a".to_owned());
+        let mapper = TestMapper;
 
-        TestMapper::map(test_input, IntermediateVecEmitter::new(&mut vec)).unwrap();
+        mapper
+            .map(test_input, IntermediateVecEmitter::new(&mut vec))
+            .unwrap();
 
         assert_eq!("this is a", vec[0].0);
         assert_eq!("test", vec[0].1);

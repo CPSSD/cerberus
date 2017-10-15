@@ -36,7 +36,7 @@ impl ReduceInputKV {
 /// through the `emitter`.
 pub trait Reduce {
     type Value: Serialize;
-    fn reduce<E>(input: ReduceInputKV, emitter: E) -> Result<()>
+    fn reduce<E>(&self, input: ReduceInputKV, emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>;
 }
@@ -49,7 +49,7 @@ mod tests {
     struct TestReducer;
     impl Reduce for TestReducer {
         type Value = String;
-        fn reduce<E>(input: ReduceInputKV, mut emitter: E) -> Result<()>
+        fn reduce<E>(&self, input: ReduceInputKV, mut emitter: E) -> Result<()>
         where
             E: EmitFinal<Self::Value>,
         {
@@ -66,8 +66,11 @@ mod tests {
         let test_vector = vec!["foo".to_owned(), "bar".to_owned()];
         let test_kv = ReduceInputKV::new("test_vector".to_owned(), test_vector);
         let mut sink: Vec<String> = Vec::new();
+        let reducer = TestReducer;
 
-        TestReducer::reduce(test_kv, FinalVecEmitter::new(&mut sink)).unwrap();
+        reducer
+            .reduce(test_kv, FinalVecEmitter::new(&mut sink))
+            .unwrap();
 
         assert_eq!("foobar", sink[0]);
     }
