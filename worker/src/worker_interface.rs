@@ -1,7 +1,7 @@
 use grpc::{Server, ServerBuilder};
 use errors::*;
 use cerberus_proto::mrworker_grpc::*;
-use mrworkerservice::WORKER_IMPL;
+use mrworkerservice::MRWorkerServiceImpl;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
@@ -13,10 +13,10 @@ pub struct WorkerInterface {
 /// `WorkerInterface` is the implementation of the interface used by the worker to recieve commands
 /// from the master. This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new() -> Result<Self> {
+    pub fn new(worker_service_impl: MRWorkerServiceImpl) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(WORKER_PORT);
-        server_builder.add_service(MRWorkerServiceServer::new_service_def(WORKER_IMPL));
+        server_builder.add_service(MRWorkerServiceServer::new_service_def(worker_service_impl));
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );

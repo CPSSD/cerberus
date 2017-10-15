@@ -8,15 +8,15 @@ extern crate cerberus_proto;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
 use worker_interface::WorkerInterface;
-use mrworkerservice::WORKER_IMPL;
+use mrworkerservice::MRWorkerServiceImpl;
 use operation_handler::OperationHandler;
 
 fn main() {
     println!("Cerberus Worker!");
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
-    WORKER_IMPL.set_operation_handler(operation_handler);
-    let worker_server_interface = WorkerInterface::new().unwrap();
+    let worker_service_impl = MRWorkerServiceImpl::new(operation_handler);
+    let worker_server_interface = WorkerInterface::new(worker_service_impl).unwrap();
 
     loop {
         thread::sleep(time::Duration::from_millis(100));
