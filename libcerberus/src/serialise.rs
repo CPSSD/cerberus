@@ -109,9 +109,8 @@ mod tests {
                 },
             ],
         };
-        let expected_json_string = "{\"pairs\":[{\"key\":\"foo_intermediate\",\
-                                    \"value\":\"bar\"},{\"key\":\"foo_intermediate\",\
-                                    \"value\":\"baz\"}]}";
+        let expected_json_string =
+            r#"{"pairs":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}"#;
 
         let json_string = serde_json::to_string(&output).unwrap();
 
@@ -122,7 +121,7 @@ mod tests {
     #[test]
     fn final_output_object_json_format() {
         let output = FinalOutputObject { values: vec!["barbaz", "bazbar"] };
-        let expected_json_string = "{\"values\":[\"barbaz\",\"bazbar\"]}";
+        let expected_json_string = r#"{"values":["barbaz","bazbar"]}"#;
 
         let json_string = serde_json::to_string(&output).unwrap();
 
