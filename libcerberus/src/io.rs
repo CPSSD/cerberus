@@ -3,7 +3,7 @@ use mapper::MapInputKV;
 use reducer::ReduceInputKV;
 use serde::Serialize;
 use serde_json;
-use serialise::IntermediateOutputObject;
+use serialise::{FinalOutputObject, IntermediateOutputObject};
 use std::io::{Read, Write};
 
 /// `read_map_input` reads a string from a source and returns a `MapInputKV`.
@@ -16,7 +16,7 @@ pub fn read_map_input<R: Read>(source: &mut R) -> Result<MapInputKV> {
         || "Error reading from source.",
     )?;
     if bytes_read == 0 {
-        warn!("bytes_read is 0");
+        error!("bytes_read is 0");
     }
     let result = serde_json::from_str(input_string.as_str()).chain_err(
         || "Error parsing input JSON to MapInputKV.",
@@ -52,6 +52,19 @@ where
     K: Serialize,
     V: Serialize,
 {
+    serde_json::to_writer(sink, &output).chain_err(
+        || "Error writing to sink.",
+    )?;
+    Ok(())
+}
+
+/// `write_reduce_output` attempts to serialise a `FinalOutputObject` to a given sink.
+pub fn write_reduce_output<W, V>(sink: &mut W, output: &FinalOutputObject<V>) -> Result<()>
+where
+    W: Write,
+    V: Serialize,
+{
+
     serde_json::to_writer(sink, &output).chain_err(
         || "Error writing to sink.",
     )?;
@@ -130,6 +143,19 @@ mod tests {
         let mut cursor = Cursor::new(output_vector);
 
         write_map_output(&mut cursor, &test_object).unwrap();
+
+        let output_string = String::from_utf8(cursor.into_inner()).unwrap();
+        assert_eq!(expected_json_string, output_string);
+    }
+
+    #[test]
+    fn write_final_output_object() {
+        let test_object = FinalOutputObject { values: vec!["barbaz", "bazbar"] };
+        let expected_json_string = r#"{"values":["barbaz","bazbar"]}"#;
+        let output_vector: Vec<u8> = Vec::new();
+        let mut cursor = Cursor::new(output_vector);
+
+        write_reduce_output(&mut cursor, &test_object).unwrap();
 
         let output_string = String::from_utf8(cursor.into_inner()).unwrap();
         assert_eq!(expected_json_string, output_string);
