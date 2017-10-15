@@ -35,8 +35,8 @@ impl MapInputKV {
 /// An empty result used for returning an error. Outputs of the map operation are sent out through
 /// the `emitter`.
 pub trait Map {
-    type Key: Serialize;
-    type Value: Serialize;
+    type Key: Default + Serialize;
+    type Value: Default + Serialize;
     fn map<E>(&self, input: MapInputKV, emitter: E) -> Result<()>
     where
         E: EmitIntermediate<Self::Key, Self::Value>;

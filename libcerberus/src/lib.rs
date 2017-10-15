@@ -1,5 +1,7 @@
 #![recursion_limit = "1024"]
 
+extern crate chrono;
+extern crate clap;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
@@ -8,16 +10,21 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate uuid;
+
+const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 mod errors {
     error_chain!{
         foreign_links {
+            Clap(::clap::Error);
             Io(::std::io::Error);
             SerdeJson(::serde_json::error::Error);
         }
     }
 }
 
+pub mod runner;
 pub mod emitter;
 pub mod io;
 pub mod mapper;

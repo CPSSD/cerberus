@@ -5,7 +5,11 @@ use serde::Serialize;
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
 /// from a map operation.
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub struct IntermediateOutputPair<K: Serialize, V: Serialize> {
+pub struct IntermediateOutputPair<K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
     pub key: K,
     pub value: V,
 }
@@ -13,7 +17,11 @@ pub struct IntermediateOutputPair<K: Serialize, V: Serialize> {
 /// `IntermediateOutputObject` is a struct comprising a collection of `IntermediateOutputPair`s,
 /// representing the entire output of a map operation, ready to be serialised to JSON.
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub struct IntermediateOutputObject<K: Serialize, V: Serialize> {
+pub struct IntermediateOutputObject<K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
     pub pairs: Vec<IntermediateOutputPair<K, V>>,
 }
 
@@ -27,16 +35,16 @@ pub struct FinalOutputObject<V: Serialize> {
 /// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputObject`.
 pub struct IntermediateOutputObjectEmitter<'a, K, V>
 where
-    K: Serialize + 'a,
-    V: Serialize + 'a,
+    K: Default + Serialize + 'a,
+    V: Default + Serialize + 'a,
 {
     sink: &'a mut IntermediateOutputObject<K, V>,
 }
 
 impl<'a, K, V> IntermediateOutputObjectEmitter<'a, K, V>
 where
-    K: Serialize,
-    V: Serialize,
+    K: Default + Serialize,
+    V: Default + Serialize,
 {
     /// Constructs a new `IntermediateOutputObjectEmitter` with a mutable reference to a given
     /// `IntermediateOutputObject`.
@@ -51,8 +59,8 @@ where
 
 impl<'a, K, V> EmitIntermediate<K, V> for IntermediateOutputObjectEmitter<'a, K, V>
 where
-    K: Serialize,
-    V: Serialize,
+    K: Default + Serialize,
+    V: Default + Serialize,
 {
     fn emit(&mut self, key: K, value: V) -> Result<()> {
         self.sink.pairs.push(IntermediateOutputPair {
@@ -64,11 +72,11 @@ where
 }
 
 /// A struct implementing `EmitFinal` which emits to a `FinalOutputObject`.
-pub struct FinalOutputObjectEmitter<'a, V: Serialize + 'a> {
+pub struct FinalOutputObjectEmitter<'a, V: Default + Serialize + 'a> {
     sink: &'a mut FinalOutputObject<V>,
 }
 
-impl<'a, V: Serialize> FinalOutputObjectEmitter<'a, V> {
+impl<'a, V: Default + Serialize> FinalOutputObjectEmitter<'a, V> {
     /// Constructs a new `FinalOutputObjectEmitter` with a mutable reference to a given
     /// `FinalOutputObject`.
     ///
@@ -81,7 +89,7 @@ impl<'a, V: Serialize> FinalOutputObjectEmitter<'a, V> {
     }
 }
 
-impl<'a, V: Serialize> EmitFinal<V> for FinalOutputObjectEmitter<'a, V> {
+impl<'a, V: Default + Serialize> EmitFinal<V> for FinalOutputObjectEmitter<'a, V> {
     fn emit(&mut self, value: V) -> Result<()> {
         self.sink.values.push(value);
         Ok(())
