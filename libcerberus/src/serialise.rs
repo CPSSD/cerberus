@@ -109,8 +109,8 @@ mod tests {
                 },
             ],
         };
-        let expected_json_string = r#"{"pairs":[{"key":"foo_intermediate",
-            "value":"bar"},{"key":"foo_intermediate", "value":"baz"}]}"#;
+        let expected_json_string =
+            r#"{"pairs":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}"#;
 
         let json_string = serde_json::to_string(&output).unwrap();
 

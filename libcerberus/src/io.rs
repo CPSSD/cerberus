@@ -1,8 +1,10 @@
 use errors::*;
 use mapper::MapInputKV;
 use reducer::ReduceInputKV;
+use serde::Serialize;
 use serde_json;
-use std::io::Read;
+use serialise::IntermediateOutputObject;
+use std::io::{Read, Write};
 
 /// `read_map_input` reads a string from a source and returns a `MapInputKV`.
 ///
@@ -40,8 +42,25 @@ pub fn read_reduce_input<R: Read>(source: &mut R) -> Result<ReduceInputKV> {
     Ok(result)
 }
 
+/// `write_map_output` attempts to serialise an `IntermediateOutputObject` to a given sink.
+pub fn write_map_output<W, K, V>(
+    sink: &mut W,
+    output: &IntermediateOutputObject<K, V>,
+) -> Result<()>
+where
+    W: Write,
+    K: Serialize,
+    V: Serialize,
+{
+    serde_json::to_writer(sink, &output).chain_err(
+        || "Error writing to sink.",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use serialise::IntermediateOutputPair;
     use std::io::Cursor;
     use super::*;
 
@@ -89,5 +108,30 @@ mod tests {
         let mut cursor = Cursor::new(test_string);
 
         read_reduce_input(&mut cursor).unwrap();
+    }
+
+    #[test]
+    fn write_intermediate_output_object() {
+        let test_object = IntermediateOutputObject {
+            pairs: vec![
+                IntermediateOutputPair {
+                    key: "foo_intermediate",
+                    value: "bar",
+                },
+                IntermediateOutputPair {
+                    key: "foo_intermediate",
+                    value: "baz",
+                },
+            ],
+        };
+        let expected_json_string =
+            r#"{"pairs":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}"#;
+        let output_vector: Vec<u8> = Vec::new();
+        let mut cursor = Cursor::new(output_vector);
+
+        write_map_output(&mut cursor, &test_object).unwrap();
+
+        let output_string = String::from_utf8(cursor.into_inner()).unwrap();
+        assert_eq!(expected_json_string, output_string);
     }
 }
