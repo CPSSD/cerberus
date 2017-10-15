@@ -2,8 +2,11 @@
 name = "worker"
 version = "0.0.0"
 dependencies = [
+ "cerberus-proto 0.1.0",
  "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "grpcio 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "grpc 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "grpc-rust 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tls-api 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

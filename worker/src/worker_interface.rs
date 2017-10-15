@@ -1,26 +1,33 @@
-extern crate error_chain;
-
-use std::sync::Arc;
-use grpcio::{Environment, Server, ServerBuilder, Error};
+use grpc::{Server, ServerBuilder};
+use errors::*;
+use cerberus_proto::mrworker_grpc::*;
+use mrworkerservice::WORKER_IMPL;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
+const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
 
-struct WorkerInterface {
+pub struct WorkerInterface {
     server: Server,
 }
 
 /// `WorkerInterface` is the implementation of the interface used by the worker to recieve commands
-/// from the master. This will be used by the master to schedule MapReduce operations on the worker
+/// from the master. This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new() -> Result<Self, Error> {
-        let env = Arc::new(Environment::new(GRPC_THREAD_POOL_SIZE));
-        let mut serverBuild: ServerBuilder = ServerBuilder::new(env);
+    pub fn new() -> Result<Self> {
+        let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
+        server_builder.http.set_port(WORKER_PORT);
+        server_builder.add_service(MRWorkerServiceServer::new_service_def(WORKER_IMPL));
+        server_builder.http.set_cpu_pool_threads(
+            GRPC_THREAD_POOL_SIZE,
+        );
 
-        Ok(WorkerInterface { server: serverBuild.build()? })
+        Ok(WorkerInterface {
+            server: server_builder.build().chain_err(|| "Error building server")?,
+        })
     }
 
-    pub fn start_server(&mut self) {
-        self.server.start();
+    pub fn get_server(&self) -> &Server {
+        &self.server
     }
 }
 
