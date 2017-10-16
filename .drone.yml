@@ -5,3 +5,7 @@ pipeline:
         commands:
             - cargo build --all
             - cargo test --all
+
+cache:
+    mount:
+        - ~/.cargo
