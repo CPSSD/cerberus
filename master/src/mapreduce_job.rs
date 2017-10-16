@@ -10,6 +10,12 @@ pub struct MapReduceJob {
     input_directory: String,
 
     status: MapReduceJobStatus,
+
+    map_tasks_completed: u32,
+    map_tasks_total: u32,
+
+    reduce_tasks_completed: u32,
+    reduce_tasks_total: u32,
 }
 
 impl MapReduceJob {
@@ -22,6 +28,12 @@ impl MapReduceJob {
             input_directory: input_directory,
 
             status: MapReduceJobStatus::IN_QUEUE,
+
+            map_tasks_completed: 0,
+            map_tasks_total: 0,
+
+            reduce_tasks_completed: 0,
+            reduce_tasks_total: 0,
         }
     }
 
@@ -47,6 +59,38 @@ impl MapReduceJob {
 
     pub fn set_status(&mut self, new_status: MapReduceJobStatus) {
         self.status = new_status;
+    }
+
+    pub fn get_map_tasks_completed(&self) -> u32 {
+        self.map_tasks_completed
+    }
+
+    pub fn set_map_tasks_completed(&mut self, map_tasks_completed: u32) {
+        self.map_tasks_completed = map_tasks_completed;
+    }
+
+    pub fn get_map_tasks_total(&self) -> u32 {
+        self.map_tasks_total
+    }
+
+    pub fn set_map_tasks_total(&mut self, map_tasks_total: u32) {
+        self.map_tasks_total = map_tasks_total;
+    }
+
+    pub fn get_reduce_tasks_completed(&self) -> u32 {
+        self.reduce_tasks_completed
+    }
+
+    pub fn set_reduce_tasks_completed(&mut self, reduce_tasks_completed: u32) {
+        self.reduce_tasks_completed = reduce_tasks_completed;
+    }
+
+    pub fn get_reduce_tasks_total(&self) -> u32 {
+        self.reduce_tasks_total
+    }
+
+    pub fn set_reduce_tasks_total(&mut self, reduce_tasks_total: u32) {
+        self.reduce_tasks_total = reduce_tasks_total;
     }
 }
 
@@ -109,6 +153,42 @@ mod tests {
         // Set the status to Completed and assert success.
         map_reduce_job.set_status(MapReduceJobStatus::DONE);
         assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.get_status());
+    }
+
+    #[test]
+    fn test_tasks_completed() {
+        let mut map_reduce_job = MapReduceJob::new(
+            "client-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            "/tmp/input/".to_owned(),
+        );
+        // Assert that completed tasks starts at 0.
+        assert_eq!(0, map_reduce_job.get_map_tasks_completed());
+        assert_eq!(0, map_reduce_job.get_reduce_tasks_completed());
+
+        map_reduce_job.set_map_tasks_completed(1337);
+        map_reduce_job.set_reduce_tasks_completed(7331);
+
+        assert_eq!(1337, map_reduce_job.get_map_tasks_completed());
+        assert_eq!(7331, map_reduce_job.get_reduce_tasks_completed());
+    }
+
+    #[test]
+    fn test_tasks_total() {
+        let mut map_reduce_job = MapReduceJob::new(
+            "client-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            "/tmp/input/".to_owned(),
+        );
+        // Assert that total tasks starts at 0.
+        assert_eq!(0, map_reduce_job.get_map_tasks_total());
+        assert_eq!(0, map_reduce_job.get_reduce_tasks_total());
+
+        map_reduce_job.set_map_tasks_total(1337);
+        map_reduce_job.set_reduce_tasks_total(7331);
+
+        assert_eq!(1337, map_reduce_job.get_map_tasks_total());
+        assert_eq!(7331, map_reduce_job.get_reduce_tasks_total());
     }
 
     #[test]
