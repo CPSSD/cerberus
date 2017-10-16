@@ -1,13 +1,6 @@
 use uuid::Uuid;
 use queued_work_store::QueuedWork;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MapReduceJobStatus {
-    Queued,
-    InProgress,
-    Complete,
-    Failed,
-}
+use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
 
 /// The `MapReduceJob` is a struct that represents a `MapReduce` job submitted by a client.
 pub struct MapReduceJob {
@@ -28,7 +21,7 @@ impl MapReduceJob {
             binary_path: binary_path,
             input_directory: input_directory,
 
-            status: MapReduceJobStatus::Queued,
+            status: MapReduceJobStatus::IN_QUEUE,
         }
     }
 
@@ -111,11 +104,11 @@ mod tests {
             "/tmp/input/".to_owned(),
         );
         // Assert that the default status for a map reduce job is Queued.
-        assert_eq!(map_reduce_job.get_status(), MapReduceJobStatus::Queued);
+        assert_eq!(MapReduceJobStatus::IN_QUEUE, map_reduce_job.get_status());
 
         // Set the status to Completed and assert success.
-        map_reduce_job.set_status(MapReduceJobStatus::Complete);
-        assert_eq!(map_reduce_job.get_status(), MapReduceJobStatus::Complete);
+        map_reduce_job.set_status(MapReduceJobStatus::DONE);
+        assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.get_status());
     }
 
     #[test]
