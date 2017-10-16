@@ -6,6 +6,7 @@ extern crate tls_api;
 extern crate cerberus_proto;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
+const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 
 use std::{thread, time};
@@ -39,7 +40,7 @@ fn main() {
     }
 
     loop {
-        thread::sleep(time::Duration::from_millis(100));
+        thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
         let server = worker_server_interface.get_server();
         if !server.is_alive() {

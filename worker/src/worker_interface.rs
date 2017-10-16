@@ -3,6 +3,7 @@ use errors::*;
 use cerberus_proto::mrworker::*;
 use cerberus_proto::mrworker_grpc::*;
 use mrworkerservice::MRWorkerServiceImpl;
+use std::net::IpAddr;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
@@ -37,8 +38,7 @@ impl WorkerInterface {
     }
 
     pub fn register_worker(&self) -> Result<()> {
-        let mut worker_addr = String::from("localhost:");
-        worker_addr.push_str(&(self.get_port().to_string()));
+        let worker_addr = self.server.local_addr().to_string();
 
         let mut req = RegisterWorkerRequest::new();
         req.set_worker_address(worker_addr);
@@ -51,7 +51,11 @@ impl WorkerInterface {
         Ok(())
     }
 
-    fn get_port(&self) -> u16 {
+    pub fn get_ip(&self) -> IpAddr {
+        self.server.local_addr().ip()
+    }
+
+    pub fn get_port(&self) -> u16 {
         self.server.local_addr().port()
     }
 

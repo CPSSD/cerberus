@@ -9,7 +9,7 @@ pub enum MapReduceJobStatus {
     Failed,
 }
 
-/// The `MapReduceJob` is a struct that represents a MapReduce job submitted by a client.
+/// The `MapReduceJob` is a struct that represents a `MapReduce` job submitted by a client.
 pub struct MapReduceJob {
     client_id: String,
     map_reduce_id: String,
