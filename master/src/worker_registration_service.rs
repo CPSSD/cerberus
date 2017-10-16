@@ -57,10 +57,7 @@ mod tests {
         // Register worker
         worker_registration_service.register_worker(RequestOptions::new(), register_worker_request);
 
-        let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
-
         let locked_worker_manager = worker_manager.lock().unwrap();
         assert_eq!(locked_worker_manager.get_workers().len(), 1);
-        assert_eq!(locked_worker_manager.get_workers()[0], worker);
     }
 }

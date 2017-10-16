@@ -1,5 +1,6 @@
 use errors::*;
 use cerberus_proto::mrworker::*;
+use uuid::Uuid;
 use std::net::SocketAddr;
 use std::str::FromStr;
 
@@ -9,6 +10,7 @@ pub struct Worker {
     status: WorkerStatusResponse_WorkerStatus,
     operation_status: WorkerStatusResponse_OperationStatus,
     current_task_id: String,
+    worker_id: String,
 }
 
 impl Worker {
@@ -20,7 +22,12 @@ impl Worker {
             status: WorkerStatusResponse_WorkerStatus::AVAILABLE,
             operation_status: WorkerStatusResponse_OperationStatus::UNKNOWN,
             current_task_id: String::new(),
+            worker_id: Uuid::new_v4().to_string(),
         })
+    }
+
+    pub fn get_worker_id(&self) -> &str {
+        &self.worker_id
     }
 
     pub fn get_address(&self) -> SocketAddr {
