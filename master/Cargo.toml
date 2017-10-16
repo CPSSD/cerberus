@@ -5,5 +5,7 @@ authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
 error-chain = "0.11.0"
-grpcio = "0.1"
+grpc = "0.2.1"
+grpc-rust = "0.1.0"
 uuid = { version = "0.5", features = ["v4"] }
+cerberus-proto = { path = "../proto" }

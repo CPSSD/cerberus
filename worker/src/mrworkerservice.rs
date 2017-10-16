@@ -33,7 +33,7 @@ impl MRWorkerServiceImpl {
 impl MRWorkerService for MRWorkerServiceImpl {
     fn worker_status(
         &self,
-        _o: ::grpc::RequestOptions,
+        _o: RequestOptions,
         _message: EmptyMessage,
     ) -> SingleResponse<WorkerStatusResponse> {
         let mut response = WorkerStatusResponse::new();
@@ -61,7 +61,7 @@ impl MRWorkerService for MRWorkerServiceImpl {
 
     fn get_map_result(
         &self,
-        _o: ::grpc::RequestOptions,
+        _o: RequestOptions,
         _message: EmptyMessage,
     ) -> SingleResponse<MapResponse> {
         match self.operation_handler.lock() {
@@ -75,7 +75,7 @@ impl MRWorkerService for MRWorkerServiceImpl {
 
     fn perform_reduce(
         &self,
-        _o: ::grpc::RequestOptions,
+        _o: RequestOptions,
         reduce_options: PerformReduceRequest,
     ) -> SingleResponse<EmptyMessage> {
         match self.operation_handler.lock() {
@@ -91,7 +91,7 @@ impl MRWorkerService for MRWorkerServiceImpl {
 
     fn get_reduce_result(
         &self,
-        _o: ::grpc::RequestOptions,
+        _o: RequestOptions,
         _message: EmptyMessage,
     ) -> SingleResponse<ReduceResponse> {
         match self.operation_handler.lock() {
