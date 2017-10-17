@@ -35,7 +35,7 @@ impl ReduceInputKV {
 /// An empty result used for returning an error. Outputs of the reduce operation are sent out
 /// through the `emitter`.
 pub trait Reduce {
-    type Value: Serialize;
+    type Value: Default + Serialize;
     fn reduce<E>(&self, input: ReduceInputKV, emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>;

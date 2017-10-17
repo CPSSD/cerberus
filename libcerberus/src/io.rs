@@ -49,8 +49,8 @@ pub fn write_map_output<W, K, V>(
 ) -> Result<()>
 where
     W: Write,
-    K: Serialize,
-    V: Serialize,
+    K: Default + Serialize,
+    V: Default + Serialize,
 {
     serde_json::to_writer(sink, &output).chain_err(
         || "Error writing to sink.",
@@ -62,7 +62,7 @@ where
 pub fn write_reduce_output<W, V>(sink: &mut W, output: &FinalOutputObject<V>) -> Result<()>
 where
     W: Write,
-    V: Serialize,
+    V: Default + Serialize,
 {
 
     serde_json::to_writer(sink, &output).chain_err(
