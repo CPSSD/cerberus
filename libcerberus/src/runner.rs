@@ -4,7 +4,8 @@ use errors::*;
 use io::*;
 use mapper::Map;
 use reducer::Reduce;
-use serialise::{IntermediateOutputObject, IntermediateOutputObjectEmitter};
+use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
+                IntermediateOutputObjectEmitter};
 use std::io::{stdin, stdout};
 use super::VERSION;
 use uuid::Uuid;
@@ -89,7 +90,21 @@ fn run_map<M: Map>(mapper: &M) -> Result<()> {
 }
 
 fn run_reduce<R: Reduce>(reducer: &R) -> Result<()> {
-    unimplemented!();
+    let mut source = stdin();
+    let mut sink = stdout();
+    let input_kv = read_reduce_input(&mut source).chain_err(
+        || "Error getting input to reduce.",
+    )?;
+    let mut output_object = FinalOutputObject::<R::Value>::default();
+
+    reducer
+        .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
+        .chain_err(|| "Error running reduce operation.")?;
+
+    write_reduce_output(&mut sink, &output_object).chain_err(
+        || "Error writing reduce output to stdout.",
+    )?;
+    Ok(())
 }
 
 fn run_sanity_check() {

@@ -28,7 +28,7 @@ where
 /// `FinalOutputObject` is a struct comprising a collection of serialisable values representing the
 /// entire output of a reduce operation, ready to be serialised to JSON.
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub struct FinalOutputObject<V: Serialize> {
+pub struct FinalOutputObject<V: Default + Serialize> {
     pub values: Vec<V>,
 }
 
