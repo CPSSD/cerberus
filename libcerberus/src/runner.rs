@@ -10,6 +10,10 @@ use std::io::{stdin, stdout};
 use super::VERSION;
 use uuid::Uuid;
 
+/// `UserImplRegistry` tracks the user's implementations of Map, Reduce, etc.
+///
+/// The user does not have to interact with this class directly. It is returned from
+/// `register_mapper_reducer` and accepted by `run`.
 pub struct UserImplRegistry<'a, M, R>
 where
     M: Map + 'a,
@@ -19,6 +23,9 @@ where
     reducer: &'a R,
 }
 
+/// `register_mapper_reducer` registers instances of the user's Map and Reduce implementations.
+///
+/// One of the functions whose outputs are required by the `run` function.
 pub fn register_mapper_reducer<'a, M, R>(
     mapper: &'a M,
     reducer: &'a R,
@@ -33,6 +40,10 @@ where
     }
 }
 
+/// `parse_command_line` uses `clap` to parse the command-line arguments passed to the payload.
+///
+/// The output of this function is required by the `run` function, to decide what subcommand to
+/// run.
 pub fn parse_command_line<'a>() -> Result<ArgMatches<'a>> {
     let current_time = Utc::now();
     let id = Uuid::new_v4();
@@ -48,6 +59,12 @@ pub fn parse_command_line<'a>() -> Result<ArgMatches<'a>> {
     Ok(matches)
 }
 
+/// `run` begins the primary operations of the payload, and delegates to sub-functions.
+///
+/// # Arguments
+///
+/// `matches` - The output of the `parse_command_line` function.
+/// `registry` - The output of the `register_mapper_reducer` function.
 pub fn run<M, R>(matches: &ArgMatches, registry: &UserImplRegistry<M, R>) -> Result<()>
 where
     M: Map,
