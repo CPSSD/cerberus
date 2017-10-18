@@ -1,3 +1,6 @@
+/// This is a set of integration tests which run against a dummy payload binary living in
+/// `libcerberus/src/bin/end-to-end.rs`.
+
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
@@ -51,7 +54,7 @@ fn run_map_valid_input() {
     let output = child.wait_with_output().unwrap();
     let output_str = String::from_utf8(output.stdout).unwrap();
 
-    assert_eq!(true, output.status.success());
+    assert!(output.status.success());
     assert_eq!(expected_output, output_str);
 }
 
@@ -102,7 +105,7 @@ fn run_reduce_valid_input() {
     let output = child.wait_with_output().unwrap();
     let output_str = String::from_utf8(output.stdout).unwrap();
 
-    assert_eq!(true, output.status.success());
+    assert!(output.status.success());
     assert_eq!(expected_output, output_str);
 }
 
