@@ -31,8 +31,12 @@ pub struct MapReduceTask {
     task_id: String,
 
     binary_path: String,
+    // The input_key will only exist for Reduce operations.
+    input_key: Option<String>,
     input_files: Vec<String>,
-    output_files: Vec<String>,
+
+    // Output files are a key-value pair.
+    output_files: Vec<(String, String)>,
 
     assigned_worker_id: String,
     status: MapReduceTaskStatus,
@@ -43,21 +47,27 @@ impl MapReduceTask {
         task_type: TaskType,
         map_reduce_id: String,
         binary_path: String,
+        input_key: Option<String>,
         input_files: Vec<String>,
-    ) -> Self {
+    ) -> Result<Self> {
+        if task_type == TaskType::Reduce && input_key.is_none() {
+            return Err("Input key cannot be None for reduce task".into());
+        }
         let task_id = Uuid::new_v4();
-        MapReduceTask {
+        Ok(MapReduceTask {
             task_type: task_type,
             map_reduce_id: map_reduce_id,
             task_id: task_id.to_string(),
 
             binary_path: binary_path,
+            input_key: input_key,
             input_files: input_files,
+
             output_files: Vec::new(),
 
             assigned_worker_id: String::new(),
             status: MapReduceTaskStatus::Queued,
-        }
+        })
     }
 
     pub fn get_task_type(&self) -> TaskType {
@@ -76,16 +86,20 @@ impl MapReduceTask {
         &self.binary_path
     }
 
+    pub fn get_input_key(&self) -> Option<String> {
+        self.input_key.clone()
+    }
+
     pub fn get_input_files(&self) -> &[String] {
         self.input_files.as_slice()
     }
 
-    pub fn get_output_files(&self) -> &[String] {
+    pub fn get_output_files(&self) -> &[(String, String)] {
         self.output_files.as_slice()
     }
 
-    pub fn push_output_file(&mut self, output_file: String) {
-        self.output_files.push(output_file);
+    pub fn push_output_file(&mut self, output_key: String, output_file: String) {
+        self.output_files.push((output_key, output_file));
     }
 
     pub fn get_assigned_worker_id(&self) -> &str {
@@ -189,8 +203,9 @@ impl TaskProcessor {
                     TaskType::Map,
                     map_reduce_job.get_map_reduce_id().to_owned(),
                     map_reduce_job.get_binary_path().to_owned(),
+                    None,
                     vec![map_task_file.file_path.to_owned()],
-                ));
+                ).chain_err(|| "Error creating map task")?);
 
                 *map_task_file =
                     self.create_new_task_file(map_task_file.task_num + 1, output_directory)
@@ -240,8 +255,9 @@ impl TaskProcessorTrait for TaskProcessor {
                 TaskType::Map,
                 map_reduce_job.get_map_reduce_id().to_owned(),
                 map_reduce_job.get_binary_path().to_owned(),
+                None,
                 vec![map_task_file.file_path.to_owned()],
-            ));
+            ).chain_err(|| "Error creating map task")?);
         }
         Ok(map_tasks)
     }
@@ -261,15 +277,17 @@ mod tests {
             TaskType::Map,
             "map-1".to_owned(),
             "/tmp/bin".to_owned(),
+            None,
             vec!["/tmp/input/".to_owned()],
-        );
+        ).unwrap();
 
         let reduce_task = MapReduceTask::new(
             TaskType::Reduce,
             "reduce-1".to_owned(),
             "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
             vec!["/tmp/input/".to_owned()],
-        );
+        ).unwrap();
 
         assert_eq!(map_task.get_task_type(), TaskType::Map);
         assert_eq!(reduce_task.get_task_type(), TaskType::Reduce);
@@ -281,8 +299,9 @@ mod tests {
             TaskType::Map,
             "map-1".to_owned(),
             "/tmp/bin".to_owned(),
+            None,
             vec!["/tmp/input/".to_owned()],
-        );
+        ).unwrap();
         assert_eq!(map_task.get_map_reduce_id(), "map-1");
     }
 
@@ -292,9 +311,46 @@ mod tests {
             TaskType::Map,
             "map-1".to_owned(),
             "/tmp/bin".to_owned(),
+            None,
+            vec!["/tmp/input/".to_owned()],
+        ).unwrap();
+        assert_eq!(map_task.get_binary_path(), "/tmp/bin");
+    }
+
+    #[test]
+    fn test_input_key_reduce_none() {
+        let result = MapReduceTask::new(
+            TaskType::Reduce,
+            "reduce-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            None,
             vec!["/tmp/input/".to_owned()],
         );
-        assert_eq!(map_task.get_binary_path(), "/tmp/bin");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_input_key() {
+        let map_task = MapReduceTask::new(
+            TaskType::Map,
+            "map-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            None,
+            vec!["/tmp/input/".to_owned()],
+        ).unwrap();
+        let reduce_task = MapReduceTask::new(
+            TaskType::Reduce,
+            "reduce-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
+            vec!["/tmp/input/".to_owned()],
+        ).unwrap();
+
+        assert_eq!(None, map_task.get_input_key());
+        assert_eq!(
+            Some("intermediate-key".to_owned()),
+            reduce_task.get_input_key()
+        );
     }
 
     #[test]
@@ -303,8 +359,9 @@ mod tests {
             TaskType::Map,
             "map-1".to_owned(),
             "/tmp/bin".to_owned(),
+            None,
             vec!["/tmp/input/".to_owned()],
-        );
+        ).unwrap();
         let input_files: &[String] = map_task.get_input_files();
         assert_eq!(input_files[0], "/tmp/input/");
     }
@@ -315,19 +372,29 @@ mod tests {
             TaskType::Reduce,
             "reduce-1".to_owned(),
             "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
             vec!["/tmp/input/inter_mediate".to_owned()],
-        );
-        reduce_task.push_output_file("output_file_1".to_owned());
+        ).unwrap();
+        reduce_task.push_output_file("output-key1".to_owned(), "output_file_1".to_owned());
         {
-            let output_files: &[String] = reduce_task.get_output_files();
-            assert_eq!(output_files[0], "output_file_1");
+            let output_files: &[(String, String)] = reduce_task.get_output_files();
+            assert_eq!(
+                ("output-key1".to_owned(), "output_file_1".to_owned()),
+                output_files[0]
+            );
         }
 
-        reduce_task.push_output_file("output_file_2".to_owned());
+        reduce_task.push_output_file("output-key2".to_owned(), "output_file_2".to_owned());
         {
-            let output_files: &[String] = reduce_task.get_output_files();
-            assert_eq!(output_files[0], "output_file_1");
-            assert_eq!(output_files[1], "output_file_2");
+            let output_files: &[(String, String)] = reduce_task.get_output_files();
+            assert_eq!(
+                ("output-key1".to_owned(), "output_file_1".to_owned()),
+                output_files[0]
+            );
+            assert_eq!(
+                ("output-key2".to_owned(), "output_file_2".to_owned()),
+                output_files[1]
+            );
         }
     }
 
@@ -337,8 +404,9 @@ mod tests {
             TaskType::Reduce,
             "reduce-1".to_owned(),
             "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
             vec!["/tmp/input/inter_mediate".to_owned()],
-        );
+        ).unwrap();
         // Assert assigned worker id starts as an empty string.
         assert_eq!(reduce_task.get_assigned_worker_id(), "");
 
@@ -352,8 +420,9 @@ mod tests {
             TaskType::Reduce,
             "reduce-1".to_owned(),
             "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
             vec!["/tmp/input/inter_mediate".to_owned()],
-        );
+        ).unwrap();
         // Assert that the default status for a task is Queued.
         assert_eq!(reduce_task.get_status(), MapReduceTaskStatus::Queued);
 
@@ -368,8 +437,9 @@ mod tests {
             TaskType::Reduce,
             "reduce-1".to_owned(),
             "/tmp/bin".to_owned(),
+            Some("intermediate-key".to_owned()),
             vec!["/tmp/input/inter_mediate".to_owned()],
-        );
+        ).unwrap();
 
         assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
         assert_eq!(reduce_task.get_work_id(), reduce_task.get_task_id());
