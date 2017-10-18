@@ -44,7 +44,7 @@ where
 ///
 /// The output of this function is required by the `run` function, to decide what subcommand to
 /// run.
-pub fn parse_command_line<'a>() -> Result<ArgMatches<'a>> {
+pub fn parse_command_line<'a>() -> ArgMatches<'a> {
     let current_time = Utc::now();
     let id = Uuid::new_v4();
     let payload_name = format!("{}_{}", current_time.format("%+"), id);
@@ -53,10 +53,7 @@ pub fn parse_command_line<'a>() -> Result<ArgMatches<'a>> {
         .subcommand(SubCommand::with_name("map"))
         .subcommand(SubCommand::with_name("reduce"))
         .subcommand(SubCommand::with_name("sanity-check"));
-    let matches = app.get_matches_safe().chain_err(
-        || "Error parsing command line arguments.",
-    )?;
-    Ok(matches)
+    app.get_matches()
 }
 
 /// `run` begins the primary operations of the payload, and delegates to sub-functions.
@@ -77,11 +74,12 @@ where
             run_sanity_check();
             Ok(())
         }
-        Some(invalid) => Err(format!("Invalid command {}.", invalid).into()),
         None => {
             eprintln!("{}", matches.usage());
             Ok(())
         }
+        // This won't ever be reached, due to clap checking invalid commands before this.
+        _ => Ok(()),
     }
 }
 
