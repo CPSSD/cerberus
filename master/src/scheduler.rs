@@ -97,8 +97,9 @@ mod tests {
                     TaskType::Map,
                     "map-reduce1".to_owned(),
                     "/tmp/bin".to_owned(),
+                    None,
                     vec!["input-1".to_owned()]
-                ),
+                ).unwrap(),
             ],
         }))
     }

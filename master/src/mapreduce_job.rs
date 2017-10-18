@@ -55,7 +55,7 @@ impl MapReduceJob {
     }
 
     pub fn get_status(&self) -> MapReduceJobStatus {
-        self.status.clone()
+        self.status
     }
 
     pub fn set_status(&mut self, new_status: MapReduceJobStatus) {
