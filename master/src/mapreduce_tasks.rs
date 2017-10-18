@@ -2,6 +2,7 @@ use errors::*;
 use uuid::Uuid;
 use mapreduce_job::MapReduceJob;
 use queued_work_store::QueuedWork;
+use std::collections::HashMap;
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;
 use std::fs;
@@ -141,9 +142,14 @@ struct MapTaskFile {
 
 pub trait TaskProcessorTrait {
     fn create_map_tasks(&self, map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>>;
+    fn create_reduce_tasks(
+        &self,
+        map_reduce_job: &MapReduceJob,
+        completed_map_tasks: &Vec<MapReduceTask>,
+    ) -> Result<Vec<MapReduceTask>>;
 }
 
-pub struct TaskProcessor {}
+pub struct TaskProcessor;
 
 impl TaskProcessor {
     fn create_new_task_file(
@@ -260,6 +266,36 @@ impl TaskProcessorTrait for TaskProcessor {
             ).chain_err(|| "Error creating map task")?);
         }
         Ok(map_tasks)
+    }
+
+    fn create_reduce_tasks(
+        &self,
+        map_reduce_job: &MapReduceJob,
+        completed_map_tasks: &Vec<MapReduceTask>,
+    ) -> Result<Vec<MapReduceTask>> {
+        let mut reduce_tasks = Vec::new();
+        let mut key_results_map: HashMap<String, Vec<String>> = HashMap::new();
+
+        for completed_map in completed_map_tasks {
+            for output_pair in completed_map.get_output_files() {
+                let map_results: &mut Vec<String> = key_results_map
+                    .entry(output_pair.0.to_owned())
+                    .or_insert_with(Vec::new);
+                map_results.push(output_pair.1.to_owned());
+            }
+        }
+
+        for (reduce_key, reduce_input) in key_results_map {
+            reduce_tasks.push(MapReduceTask::new(
+                TaskType::Reduce,
+                map_reduce_job.get_map_reduce_id().to_owned(),
+                map_reduce_job.get_binary_path().to_owned(),
+                Some(reduce_key),
+                reduce_input,
+            ).chain_err(|| "Error creating reduce task")?);
+        }
+
+        Ok(reduce_tasks)
     }
 }
 
@@ -447,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_create_map_tasks() {
-        let task_processor = TaskProcessor {};
+        let task_processor = TaskProcessor;
 
         let test_path = Path::new("/tmp/cerberus/create_task_test/").to_path_buf();
         let mut input_path1 = test_path.clone();
@@ -501,5 +537,71 @@ mod tests {
         );
 
         assert!(good_inputs.contains(&map_input));
+    }
+
+    #[test]
+    fn test_create_reduce_tasks() {
+        let task_processor = TaskProcessor;
+
+        let map_reduce_job = MapReduceJob::new(
+            "test-client".to_owned(),
+            "/tmp/bin".to_owned(),
+            "/tmp/inputdir".to_owned(),
+        );
+
+        let mut map_task1 = MapReduceTask::new(
+            TaskType::Map,
+            "map-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            None,
+            vec!["/tmp/input/".to_owned()],
+        ).unwrap();
+
+        map_task1.push_output_file("intermediate-key1".to_owned(), "/tmp/output/1".to_owned());
+        map_task1.push_output_file("intermediate-key2".to_owned(), "/tmp/output/2".to_owned());
+
+        let mut map_task2 = MapReduceTask::new(
+            TaskType::Map,
+            "map-1".to_owned(),
+            "/tmp/bin".to_owned(),
+            None,
+            vec!["/tmp/input/".to_owned()],
+        ).unwrap();
+
+        map_task2.push_output_file("intermediate-key1".to_owned(), "/tmp/output/3".to_owned());
+
+        let map_tasks: Vec<MapReduceTask> = vec![map_task1, map_task2];
+        let mut reduce_tasks: Vec<MapReduceTask> = task_processor
+            .create_reduce_tasks(&map_reduce_job, &map_tasks)
+            .unwrap();
+
+        reduce_tasks.sort_by_key(|task| task.get_input_key().unwrap());
+
+        assert_eq!(2, reduce_tasks.len());
+
+        assert_eq!(
+            "intermediate-key1",
+            reduce_tasks[0].get_input_key().unwrap()
+        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
+        assert_eq!(
+            map_reduce_job.get_map_reduce_id(),
+            reduce_tasks[0].get_map_reduce_id()
+        );
+        assert_eq!(
+            vec!["/tmp/output/1", "/tmp/output/3"],
+            reduce_tasks[0].get_input_files()
+        );
+
+        assert_eq!(
+            "intermediate-key2",
+            reduce_tasks[1].get_input_key().unwrap()
+        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
+        assert_eq!(
+            map_reduce_job.get_map_reduce_id(),
+            reduce_tasks[1].get_map_reduce_id()
+        );
+        assert_eq!(vec!["/tmp/output/2"], reduce_tasks[1].get_input_files());
     }
 }

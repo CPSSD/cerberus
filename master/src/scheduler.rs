@@ -87,6 +87,13 @@ mod tests {
         fn create_map_tasks(&self, _map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
             Ok(self.map_reduce_tasks.clone())
         }
+        fn create_reduce_tasks(
+            &self,
+            _map_reduce_job: &MapReduceJob,
+            _completed_map_tasks: &Vec<MapReduceTask>,
+        ) -> Result<Vec<MapReduceTask>> {
+            Ok(Vec::new())
+        }
     }
 
 
