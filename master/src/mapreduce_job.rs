@@ -20,13 +20,13 @@ pub struct MapReduceJob {
 }
 
 impl MapReduceJob {
-    pub fn new(client_id: String, binary_path: String, input_directory: String) -> Self {
+    pub fn new<S: Into<String>>(client_id: S, binary_path: S, input_directory: S) -> Self {
         let map_reduce_id = Uuid::new_v4();
         MapReduceJob {
-            client_id: client_id,
+            client_id: client_id.into(),
             map_reduce_id: map_reduce_id.to_string(),
-            binary_path: binary_path,
-            input_directory: input_directory,
+            binary_path: binary_path.into(),
+            input_directory: input_directory.into(),
 
             status: MapReduceJobStatus::IN_QUEUE,
 
@@ -113,41 +113,25 @@ mod tests {
 
     #[test]
     fn test_get_client_id() {
-        let map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         assert_eq!(map_reduce_job.get_client_id(), "client-1");
     }
 
     #[test]
     fn test_get_binary_path() {
-        let map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         assert_eq!(map_reduce_job.get_binary_path(), "/tmp/bin");
     }
 
     #[test]
     fn test_get_input_directory() {
-        let map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         assert_eq!(map_reduce_job.get_input_directory(), "/tmp/input/");
     }
 
     #[test]
     fn test_set_status() {
-        let mut map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         // Assert that the default status for a map reduce job is Queued.
         assert_eq!(MapReduceJobStatus::IN_QUEUE, map_reduce_job.get_status());
 
@@ -158,11 +142,7 @@ mod tests {
 
     #[test]
     fn test_tasks_completed() {
-        let mut map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         // Assert that completed tasks starts at 0.
         assert_eq!(0, map_reduce_job.get_map_tasks_completed());
         assert_eq!(0, map_reduce_job.get_reduce_tasks_completed());
@@ -176,11 +156,7 @@ mod tests {
 
     #[test]
     fn test_tasks_total() {
-        let mut map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
         // Assert that total tasks starts at 0.
         assert_eq!(0, map_reduce_job.get_map_tasks_total());
         assert_eq!(0, map_reduce_job.get_reduce_tasks_total());
@@ -194,11 +170,7 @@ mod tests {
 
     #[test]
     fn test_queued_work_impl() {
-        let map_reduce_job = MapReduceJob::new(
-            "client-1".to_owned(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input/".to_owned(),
-        );
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
 
         assert_eq!(map_reduce_job.get_work_bucket(), "client-1");
         assert_eq!(
