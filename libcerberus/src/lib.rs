@@ -24,9 +24,16 @@ mod errors {
     }
 }
 
-pub mod runner;
 pub mod emitter;
 pub mod io;
 pub mod mapper;
 pub mod reducer;
+pub mod runner;
 pub mod serialise;
+
+pub use errors::*;
+pub use emitter::{EmitIntermediate, EmitFinal};
+pub use mapper::{Map, MapInputKV};
+pub use reducer::{Reduce, ReduceInputKV};
+pub use runner::*;
+pub use serialise::{FinalOutputObject, IntermediateOutputObject};
