@@ -1,8 +1,14 @@
 #[macro_use]
 extern crate error_chain;
+extern crate env_logger;
+#[macro_use]
+extern crate log;
 extern crate grpc;
 extern crate tls_api;
+extern crate uuid;
+extern crate protobuf;
 extern crate cerberus_proto;
+extern crate serde_json;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
@@ -16,6 +22,7 @@ use operation_handler::OperationHandler;
 
 fn main() {
     println!("Cerberus Worker!");
+    env_logger::init().unwrap();
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
     let worker_service_impl = MRWorkerServiceImpl::new(operation_handler);
@@ -52,6 +59,7 @@ mod errors {
     error_chain! {
         foreign_links {
             Grpc(::grpc::Error);
+            Io(::std::io::Error);
         }
     }
 }
