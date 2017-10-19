@@ -149,14 +149,14 @@ mod tests {
         }
     }
 
-    fn add_task_to_store(
+    fn add_task_to_store<S: Into<String>>(
         store: &mut QueuedWorkStore<TestTask>,
-        task_creator: String,
-        task_id: String,
+        task_creator: S,
+        task_id: S,
     ) -> Result<()> {
         let task = TestTask {
-            task_creator: task_creator,
-            task_id: task_id,
+            task_creator: task_creator.into(),
+            task_id: task_id.into(),
         };
         return store.add_to_store(Box::new(task));
     }
@@ -166,15 +166,13 @@ mod tests {
         let mut queued_store: QueuedWorkStore<TestTask> = QueuedWorkStore::new();
         // Successful add
         {
-            let result: Result<()> =
-                add_task_to_store(&mut queued_store, "John".to_owned(), "task-7".to_owned());
+            let result: Result<()> = add_task_to_store(&mut queued_store, "John", "task-7");
             assert!(result.is_ok());
         }
 
         // Failed add
         {
-            let result: Result<()> =
-                add_task_to_store(&mut queued_store, "Bob".to_owned(), "task-7".to_owned());
+            let result: Result<()> = add_task_to_store(&mut queued_store, "Bob", "task-7");
             assert!(result.is_err());
         }
     }
@@ -186,11 +184,8 @@ mod tests {
         assert!(queued_store.queue_empty());
 
         // Add item to queue and assert not empty.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "Task Creator".to_owned(),
-            "task-1".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "Task Creator", "task-1");
         assert!(add_task_result.is_ok());
         assert!(!queued_store.queue_empty());
 
@@ -204,11 +199,8 @@ mod tests {
         assert!(!queued_store.queue_empty());
 
         // Add another item to queue and assert not emtpy.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "Task Creator".to_owned(),
-            "task-2".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "Task Creator", "task-2");
         assert!(add_task_result.is_ok());
         assert!(!queued_store.queue_empty());
 
@@ -228,20 +220,14 @@ mod tests {
         assert_eq!(queued_store.queue_size(), 0);
 
         // Add task to queue and assert size is 1.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "bucket-1".to_owned(),
-            "task-1".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "bucket-1", "task-1");
         assert!(add_task_result.is_ok());
         assert_eq!(queued_store.queue_size(), 1);
 
         // Add task to queue and assert size is 2.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "bucket-1".to_owned(),
-            "task-2".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "bucket-1", "task-2");
         assert!(add_task_result.is_ok());
         assert_eq!(queued_store.queue_size(), 2);
 
@@ -267,11 +253,8 @@ mod tests {
         );
 
         // Add task-1 to bucket-1 and assert success.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "bucket-1".to_owned(),
-            "task-1".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "bucket-1", "task-1");
         assert!(add_task_result.is_ok());
 
         {
@@ -283,11 +266,8 @@ mod tests {
         }
 
         // Add task-2 to bucket-1 and assert success.
-        let add_task_result: Result<()> = add_task_to_store(
-            &mut queued_store,
-            "bucket-1".to_owned(),
-            "task-2".to_owned(),
-        );
+        let add_task_result: Result<()> =
+            add_task_to_store(&mut queued_store, "bucket-1", "task-2");
         assert!(add_task_result.is_ok());
 
         {
@@ -315,8 +295,7 @@ mod tests {
     #[test]
     fn test_has_task() {
         let mut queued_store: QueuedWorkStore<TestTask> = QueuedWorkStore::new();
-        let add_task_result: Result<()> =
-            add_task_to_store(&mut queued_store, "John".to_owned(), "task-7".to_owned());
+        let add_task_result: Result<()> = add_task_to_store(&mut queued_store, "John", "task-7");
         assert!(add_task_result.is_ok());
         assert!(queued_store.has_task(&"task-7".to_owned()));
     }
@@ -324,8 +303,7 @@ mod tests {
     #[test]
     fn test_remove_task() {
         let mut queued_store: QueuedWorkStore<TestTask> = QueuedWorkStore::new();
-        let add_task_result: Result<()> =
-            add_task_to_store(&mut queued_store, "John".to_owned(), "task-7".to_owned());
+        let add_task_result: Result<()> = add_task_to_store(&mut queued_store, "John", "task-7");
         assert!(add_task_result.is_ok());
 
         // Remove task when in store and assert success.

@@ -102,8 +102,8 @@ mod tests {
             map_reduce_tasks: vec![
                 MapReduceTask::new(
                     TaskType::Map,
-                    "map-reduce1".to_owned(),
-                    "/tmp/bin".to_owned(),
+                    "map-reduce1",
+                    "/tmp/bin",
                     None,
                     vec!["input-1".to_owned()]
                 ).unwrap(),
@@ -114,11 +114,7 @@ mod tests {
     #[test]
     fn test_schedule_map_reduce() {
         let mut map_reduce_scheduler = create_map_reduce_scheduler();
-        let map_reduce_job = MapReduceJob::new(
-            "client-1".to_string(),
-            "/tmp/bin".to_owned(),
-            "/tmp/input".to_owned(),
-        );
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input");
         map_reduce_scheduler
             .schedule_map_reduce(map_reduce_job.clone())
             .unwrap();
@@ -136,11 +132,7 @@ mod tests {
         // Assert that map reduce in progress starts as false.
         assert!(!map_reduce_scheduler.get_map_reduce_in_progress());
         map_reduce_scheduler
-            .schedule_map_reduce(MapReduceJob::new(
-                "client-1".to_string(),
-                "/tmp/bin".to_owned(),
-                "/tmp/input".to_owned(),
-            ))
+            .schedule_map_reduce(MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input"))
             .unwrap();
         assert!(map_reduce_scheduler.get_map_reduce_in_progress());
     }
