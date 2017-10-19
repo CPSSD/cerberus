@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate error_chain;
 extern crate grpc;
-extern crate grpc_rust;
 extern crate tls_api;
 extern crate cerberus_proto;
 

@@ -6,6 +6,5 @@ authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 [dependencies]
 error-chain = "0.11.0"
 grpc = "0.2.1"
-grpc-rust = "0.1.0"
 tls-api = "0.1.10"
 cerberus-proto = { path = "../proto" }
