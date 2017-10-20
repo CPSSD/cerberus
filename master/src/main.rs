@@ -43,6 +43,7 @@ pub mod scheduler;
 pub mod queued_work_store;
 pub mod mapreduce_job;
 pub mod mapreduce_tasks;
+pub mod mapreduce_service;
 pub mod worker_interface;
 pub mod worker_manager;
 pub mod worker_registration_service;

@@ -67,9 +67,16 @@ where
         Ok(())
     }
 
-    pub fn get_work_by_id(&mut self, task_id: &T::Key) -> Option<&mut T> {
+    pub fn get_work_by_id_mut(&mut self, task_id: &T::Key) -> Option<&mut T> {
         match self.work_map.get_mut(task_id) {
             Some(work_item) => Some(work_item.as_mut()),
+            None => None,
+        }
+    }
+
+    pub fn get_work_by_id(&self, task_id: &T::Key) -> Option<&T> {
+        match self.work_map.get(task_id) {
+            Some(work_item) => Some(work_item.as_ref()),
             None => None,
         }
     }
@@ -87,7 +94,29 @@ where
             return None;
         }
         let task_id: T::Key = self.work_queue.pop_front().unwrap();
-        self.get_work_by_id(&task_id)
+        self.get_work_by_id_mut(&task_id)
+    }
+
+    pub fn get_work_bucket_items(&self, client_id: &T::Key) -> Result<Vec<&T>> {
+        let mut work = Vec::new();
+        let keys_result = self.work_buckets.get(client_id);
+
+        match keys_result {
+            None => Err("Unable to retrieve keys".into()),
+            Some(keys) => {
+                for key in keys {
+                    let item = self.work_map.get(key).map(|item| item.as_ref());
+                    if item.is_none() {
+                        return Err("Item does not exist".into());
+                    }
+
+                    if let Some(i) = item {
+                        work.push(i);
+                    }
+                }
+                Ok(work)
+            }
+        }
     }
 
     pub fn get_work_bucket(&self, work_bucket: &T::Key) -> Option<&Vec<T::Key>> {
