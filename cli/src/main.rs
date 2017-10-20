@@ -2,13 +2,22 @@
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
+extern crate grpc;
+extern crate chrono;
+extern crate cerberus_proto;
 
 use errors::*;
+use std::net::SocketAddr;
+use std::str::FromStr;
+
+use cerberus_proto::mapreduce_grpc::*;
 
 mod errors {
     error_chain!{
         foreign_links {
             Clap(::clap::Error);
+            Net(::std::net::AddrParseError);
+            Grpc(::grpc::Error);
         }
     }
 }
@@ -16,37 +25,29 @@ mod errors {
 mod parser;
 mod runner;
 
-fn main() {
+quick_main!(run);
+
+fn run() -> Result<()> {
     let matches = parser::parse_command_line();
+    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or(""))
+        .chain_err(|| "Error parsing master address")?;
 
-    if let Err(ref e) = run(matches) {
-        for e in e.iter().skip(1) {
-            println!("{}", e)
-        }
-
-        if let Some(backtrace) = e.backtrace() {
-            println!("backtrace: {:?}", backtrace);
-        }
-
-        ::std::process::exit(1);
-    }
-
-    ::std::process::exit(0);
-}
-
-fn run(matches: clap::ArgMatches) -> Result<()> {
-    let master_addr = matches.value_of("master").chain_err(
-        || "Master address must be specified",
-    )?;
-    println!("Contacting master on {}", master_addr);
+    let client = MapReduceServiceClient::new_plain(
+        &master_addr.ip().to_string(),
+        master_addr.port(),
+        Default::default(),
+    ).chain_err(|| "Cannot create client")?;
 
     match matches.subcommand() {
-        ("run", Some(sub)) => runner::run(sub),
-        ("cluster_status", _) => runner::cluster_status(),
-        ("status", Some(sub)) => runner::status(sub),
-        _ => {
-            println!("{}", matches.usage());
-            Err("unknown command".into())
-        },
+        ("run", Some(sub)) => {
+            println!("Scheduling MapReduce...");
+            runner::run(&client, sub)
+        }
+        ("cluster_status", _) => {
+            println!("Getting Cluster Status...");
+            runner::cluster_status(&client)
+        }
+        ("status", Some(sub)) => runner::status(&client, sub),
+        _ => Err(matches.usage().into()),
     }
 }
