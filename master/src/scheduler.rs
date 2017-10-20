@@ -219,29 +219,6 @@ fn assign_worker_reduce_task(
     });
 }
 
-// TODO(conor) : Refactor MapReduceTask so they already include built requests.
-// There is no smart way to handle errors here.
-fn build_map_request(task: &MapReduceTask) -> PerformMapRequest {
-    let mut map_request = PerformMapRequest::new();
-    map_request.set_input_file_path(task.get_input_files()[0].to_owned());
-    map_request.set_mapper_file_path(task.get_binary_path().to_owned());
-    map_request
-}
-
-// TODO(conor) : Refactor MapReduceTask so they already include built requests.
-// There is no smart way to handle errors here.
-fn build_reduce_request(task: &MapReduceTask) -> PerformReduceRequest {
-    let mut reduce_request = PerformReduceRequest::new();
-    reduce_request.set_intermediate_key(task.get_input_key().unwrap());
-    for input_file in task.get_input_files() {
-        reduce_request.mut_input_file_paths().push(
-            input_file.to_owned(),
-        );
-    }
-    reduce_request.set_reducer_file_path(task.get_binary_path().to_owned());
-    reduce_request
-}
-
 fn assign_worker_task<S: Into<String>>(
     scheduler_resources: SchedulerResources,
     worker_id: S,
@@ -250,7 +227,20 @@ fn assign_worker_task<S: Into<String>>(
 ) {
     match task.get_task_type() {
         TaskType::Map => {
-            let map_request = build_map_request(task);
+            let map_request = {
+                match task.get_perform_map_request() {
+                    None => {
+                        error!("Error assigning task: Map request not found.");
+                        handle_assign_task_failure(
+                            &scheduler_resources,
+                            &worker_id.into(),
+                            &task_id.into(),
+                        );
+                        return;
+                    }
+                    Some(req) => req,
+                }
+            };
             assign_worker_map_task(
                 scheduler_resources,
                 worker_id.into(),
@@ -259,7 +249,20 @@ fn assign_worker_task<S: Into<String>>(
             )
         }
         TaskType::Reduce => {
-            let reduce_request = build_reduce_request(task);
+            let reduce_request = {
+                match task.get_perform_reduce_request() {
+                    None => {
+                        error!("Error assigning task: Reduce request not found.");
+                        handle_assign_task_failure(
+                            &scheduler_resources,
+                            &worker_id.into(),
+                            &task_id.into(),
+                        );
+                        return;
+                    }
+                    Some(req) => req,
+                }
+            };
             assign_worker_reduce_task(
                 scheduler_resources,
                 worker_id.into(),
