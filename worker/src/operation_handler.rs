@@ -145,7 +145,19 @@ fn log_map_operation_err(
     worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
-    error!("Map reduce thread error: {}", err);
+    error!("Map thread error: {}", err);
+    self::set_failed_status(
+        Arc::clone(worker_status_arc),
+        Arc::clone(operation_status_arc),
+    );
+}
+
+fn log_reduce_operation_err(
+    err: &Error,
+    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
+    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
+) {
+    error!("Reduce thread error: {}", err);
     self::set_failed_status(
         Arc::clone(worker_status_arc),
         Arc::clone(operation_status_arc),
@@ -175,7 +187,7 @@ fn map_operation_thread_impl(
 ) {
     let json_input =
         format!(
-        "{{ key: {}, value: {} }}",
+        "{{ \"key\": {}, \"value\": {} }}",
         map_options.get_input_file_path(),
         map_input_value,
     );
@@ -247,6 +259,62 @@ fn map_operation_thread_impl(
             self::set_failed_status(worker_status_arc, operation_status_arc);
             error!("Map operation error: Could not write to map_result_arc.");
         }
+    }
+}
+
+fn reduce_operation_thread_impl(
+    reduce_input: &str,
+    mut child: Child,
+    reduce_result_arc: Arc<Mutex<Option<ReduceResponse>>>,
+) -> Result<()> {
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(reduce_input.as_bytes()).chain_err(
+            || "Error writing to payload stdin.",
+        )?;
+    } else {
+        return Err("Error accessing stdin of payload binary.".into());
+    }
+
+    let output = child.wait_with_output().chain_err(
+        || "Error waiting for payload result.",
+    )?;
+
+    let output_str = String::from_utf8(output.stdout).chain_err(
+        || "Error accessing payload output.",
+    )?;
+
+    let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
+        || "Error parsing reduce results.",
+    )?;
+    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
+        || "Error prettifying reduce results",
+    )?;
+
+    let file_name = Uuid::new_v4().to_string();
+
+    let mut file_path = PathBuf::new();
+    file_path.push(WORKER_OUTPUT_DIRECTORY);
+    file_path.push(&file_name);
+
+    let mut response = ReduceResponse::new();
+    response.set_status(OperationStatus::SUCCESS);
+    response.set_output_file_path((*file_path.to_string_lossy()).to_owned());
+
+    let mut file = File::create(file_path).chain_err(
+        || "Failed to create reduce output file.",
+    )?;
+
+    file.write_all(reduce_results_pretty.as_bytes()).chain_err(
+        || "Failed to write to reduce output file.",
+    )?;
+
+    let reduce_result_res = reduce_result_arc.lock();
+    match reduce_result_res {
+        Ok(mut reduce_result) => {
+            *reduce_result = Some(response);
+            Ok(())
+        }
+        Err(_) => Err("Could not write to reduce_result_arc".into()),
     }
 }
 
@@ -338,8 +406,73 @@ impl OperationHandler {
         }
     }
 
-    #[allow(unused_variables)]
     pub fn perform_reduce(&mut self, reduce_options: PerformReduceRequest) -> Result<()> {
+        if self.get_worker_status() == WorkerStatusResponse_WorkerStatus::BUSY {
+            return Err("Worker is busy.".into());
+        }
+
+        let mut reduce_input_values: Vec<String> = Vec::new();
+        for input_file in reduce_options.get_input_file_paths() {
+            let file = File::open(input_file).chain_err(
+                || "Couldn't open reduce input file.",
+            )?;
+
+            let mut buf_reader = BufReader::new(file);
+            let mut file_contents = String::new();
+            buf_reader.read_to_string(&mut file_contents).chain_err(
+                || "Couldn't read reduce input file.",
+            )?;
+
+            reduce_input_values.push(file_contents);
+        }
+
+        let mut values_list_str = String::from("\"");
+        values_list_str.push_str(&reduce_input_values.join("\",\n\""));
+        values_list_str.push('"');
+
+        let reduce_json_input =
+            format!(
+            "{{ \"key\": {}, \"values\": [{}] }}",
+            reduce_options.get_intermediate_key(),
+            values_list_str,
+        );
+
+        let worker_status_result = self.worker_status.lock();
+        let operation_status_result = self.operation_status.lock();
+
+        if let Ok(mut worker_status) = worker_status_result {
+            *worker_status = WorkerStatusResponse_WorkerStatus::BUSY;
+        } else {
+            return Err("Failed to lock internal operation_handler values.".into());
+        }
+
+        if let Ok(mut operation_status) = operation_status_result {
+            *operation_status = WorkerStatusResponse_OperationStatus::IN_PROGRESS;
+        } else {
+            return Err("Failed to lock internal operation_handler values.".into());
+        }
+
+        let child = Command::new(reduce_options.get_reducer_file_path())
+            .arg("reduce")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .chain_err(|| "Failed to start reduce operation process.")?;
+
+        let operation_status_arc = Arc::clone(&self.operation_status);
+        let worker_status_arc = Arc::clone(&self.worker_status);
+        let reduce_result_arc = Arc::clone(&self.reduce_result);
+
+        thread::spawn(move || {
+            let result = reduce_operation_thread_impl(&reduce_json_input, child, reduce_result_arc);
+            match result {
+                Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
+                Err(err) => {
+                    log_reduce_operation_err(&err, &worker_status_arc, &operation_status_arc)
+                }
+            }
+        });
         Ok(())
     }
 
