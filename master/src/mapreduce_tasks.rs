@@ -147,7 +147,7 @@ pub trait TaskProcessorTrait {
     fn create_reduce_tasks(
         &self,
         map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &Vec<MapReduceTask>,
+        completed_map_tasks: &[MapReduceTask],
     ) -> Result<Vec<MapReduceTask>>;
 }
 
@@ -273,7 +273,7 @@ impl TaskProcessorTrait for TaskProcessor {
     fn create_reduce_tasks(
         &self,
         map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &Vec<MapReduceTask>,
+        completed_map_tasks: &[MapReduceTask],
     ) -> Result<Vec<MapReduceTask>> {
         let mut reduce_tasks = Vec::new();
         let mut key_results_map: HashMap<String, Vec<String>> = HashMap::new();

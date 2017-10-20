@@ -1,19 +1,28 @@
 use grpc::{RequestOptions, SingleResponse, Error};
 use cerberus_proto::mrworker::*;
 use cerberus_proto::mrworker_grpc::*;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
+use worker_interface::WorkerInterface;
 use worker_manager::WorkerManager;
 use worker_manager::Worker;
 
+const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker interface not available";
 const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager not available";
 
 pub struct WorkerRegistrationServiceImpl {
     worker_manager: Arc<Mutex<WorkerManager>>,
+    worker_interface: Arc<RwLock<WorkerInterface>>,
 }
 
 impl WorkerRegistrationServiceImpl {
-    pub fn new(worker_manager: Arc<Mutex<WorkerManager>>) -> Self {
-        WorkerRegistrationServiceImpl { worker_manager }
+    pub fn new(
+        worker_manager: Arc<Mutex<WorkerManager>>,
+        worker_interface: Arc<RwLock<WorkerInterface>>,
+    ) -> Self {
+        WorkerRegistrationServiceImpl {
+            worker_manager,
+            worker_interface,
+        }
     }
 }
 
@@ -24,12 +33,27 @@ impl MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
         request: RegisterWorkerRequest,
     ) -> SingleResponse<EmptyMessage> {
         let worker_result = Worker::new(request.get_worker_address().to_string());
-        if let Err(worker_error) = worker_result {
-            return SingleResponse::err(Error::Panic(worker_error.to_string()));
+        let worker = {
+            match worker_result {
+                Ok(worker) => worker,
+                Err(worker_error) => {
+                    return SingleResponse::err(Error::Panic(worker_error.to_string()))
+                }
+            }
+        };
+
+        // Add client for worker to worker interface.
+        match self.worker_interface.write() {
+            Err(_) => return SingleResponse::err(Error::Other(WORKER_INTERFACE_UNAVAILABLE)),
+            Ok(mut interface) => {
+                let result = interface.add_client(&worker);
+                if let Err(err) = result {
+                    return SingleResponse::err(Error::Panic(err.to_string()));
+                }
+            }
         }
 
-        let worker = worker_result.unwrap();
-
+        // Add worker to worker manager.
         match self.worker_manager.lock() {
             Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
             Ok(mut manager) => {
@@ -48,8 +72,9 @@ mod tests {
     #[test]
     fn test_register_worker() {
         let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
+        let worker_interface = Arc::new(RwLock::new(WorkerInterface::new()));
         let worker_registration_service =
-            WorkerRegistrationServiceImpl::new(worker_manager.clone());
+            WorkerRegistrationServiceImpl::new(worker_manager.clone(), worker_interface);
 
         let mut register_worker_request = RegisterWorkerRequest::new();
         register_worker_request.set_worker_address(String::from("127.0.0.1:8080"));

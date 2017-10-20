@@ -10,34 +10,16 @@ const GRPC_THREAD_POOL_SIZE: usize = 1;
 const MASTER_PORT: u16 = 8008;
 const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
+#[derive(Default)]
 pub struct WorkerInterface {
-    server: Server,
     clients: HashMap<String, MRWorkerServiceClient>,
 }
 
-/// `WorkerInterface` is used by to schedule `MapReduce` operations on the worker and
-/// handle registration of workers.
+
+/// `WorkerInterface` is used to schedule `MapReduce` operations on the workers.
 impl WorkerInterface {
-    pub fn new(worker_registration_service: WorkerRegistrationServiceImpl) -> Result<Self> {
-        let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(MASTER_PORT);
-        server_builder.add_service(MRWorkerRegistrationServiceServer::new_service_def(
-            worker_registration_service,
-        ));
-        server_builder.http.set_cpu_pool_threads(
-            GRPC_THREAD_POOL_SIZE,
-        );
-
-        Ok(WorkerInterface {
-            server: server_builder.build().chain_err(
-                || "Error building worker server",
-            )?,
-            clients: HashMap::new(),
-        })
-    }
-
-    pub fn get_server(&self) -> &Server {
-        &self.server
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn add_client(&mut self, worker: &Worker) -> Result<()> {
@@ -128,5 +110,33 @@ impl WorkerInterface {
         } else {
             Err(NO_CLIENT_FOUND_ERR.into())
         }
+    }
+}
+
+pub struct WorkerRegistrationInterface {
+    server: Server,
+}
+
+/// `WorkerRegistrationInterface` handles the registration of workers.
+impl WorkerRegistrationInterface {
+    pub fn new(worker_registration_service: WorkerRegistrationServiceImpl) -> Result<Self> {
+        let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
+        server_builder.http.set_port(MASTER_PORT);
+        server_builder.add_service(MRWorkerRegistrationServiceServer::new_service_def(
+            worker_registration_service,
+        ));
+        server_builder.http.set_cpu_pool_threads(
+            GRPC_THREAD_POOL_SIZE,
+        );
+
+        Ok(WorkerRegistrationInterface {
+            server: server_builder.build().chain_err(
+                || "Error building worker server",
+            )?,
+        })
+    }
+
+    pub fn get_server(&self) -> &Server {
+        &self.server
     }
 }
