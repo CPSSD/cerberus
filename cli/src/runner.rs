@@ -45,7 +45,11 @@ pub fn cluster_status(client: &MapReduceServiceClient) -> Result<()> {
         .wait()
         .chain_err(|| "Failed to get cluster status")?
         .1;
-    println!("{:?}", res);
+    println!(
+        "Workers:\t{}\nQueue:\t\t{}",
+        res.get_workers(),
+        res.get_queue_size()
+    );
 
     Ok(())
 }
