@@ -13,6 +13,8 @@ use mapreduce_tasks::TaskProcessor;
 use worker_manager::WorkerManager;
 use worker_registration_service::WorkerRegistrationServiceImpl;
 use worker_interface::{WorkerInterface, WorkerRegistrationInterface};
+use mapreduce_service::MapReduceServiceImpl;
+use client_interface::ClientInterface;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
@@ -34,6 +36,9 @@ fn main() {
     let worker_registration_interface =
         WorkerRegistrationInterface::new(worker_registration_service).unwrap();
 
+    // Cli to Master Communications
+    let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
+    let client_interface = ClientInterface::new(mapreduce_service).unwrap();
 
     run_scheduling_loop(
         Arc::clone(&worker_interface),
@@ -44,6 +49,12 @@ fn main() {
 
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
+
+        // TODO: Merge the client_interface and worker_registration_interface into one server.
+        let server = client_interface.get_server();
+        if !server.is_alive() {
+            break;
+        }
 
         let server = worker_registration_interface.get_server();
         if !server.is_alive() {
