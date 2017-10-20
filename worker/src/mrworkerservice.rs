@@ -51,10 +51,12 @@ impl MRWorkerService for MRWorkerServiceImpl {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
-                handler.perform_map(map_options);
+                let result = handler.perform_map(map_options);
 
-                let response = EmptyMessage::new();
-                SingleResponse::completed(response)
+                match result {
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
+                    Ok(_) => SingleResponse::completed(EmptyMessage::new()),
+                }
             }
         }
     }
@@ -67,8 +69,11 @@ impl MRWorkerService for MRWorkerServiceImpl {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
-                let response = handler.get_map_result();
-                SingleResponse::completed(response)
+                let result = handler.get_map_result();
+                match result {
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
+                    Ok(response) => SingleResponse::completed(response),
+                }
             }
         }
     }
@@ -81,10 +86,11 @@ impl MRWorkerService for MRWorkerServiceImpl {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
-                handler.perform_reduce(reduce_options);
-
-                let response = EmptyMessage::new();
-                SingleResponse::completed(response)
+                let result = handler.perform_reduce(reduce_options);
+                match result {
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
+                    Ok(_) => SingleResponse::completed(EmptyMessage::new()),
+                }
             }
         }
     }
@@ -97,8 +103,11 @@ impl MRWorkerService for MRWorkerServiceImpl {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
-                let response = handler.get_reduce_result();
-                SingleResponse::completed(response)
+                let result = handler.get_reduce_result();
+                match result {
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
+                    Ok(response) => SingleResponse::completed(response),
+                }
             }
         }
     }
