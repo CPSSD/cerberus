@@ -16,6 +16,7 @@ use worker_interface::{WorkerInterface, WorkerRegistrationInterface};
 use mapreduce_service::MapReduceServiceImpl;
 use client_interface::ClientInterface;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
+use worker_poller::{WorkerPoller, run_polling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -46,6 +47,12 @@ fn main() {
         Arc::clone(&worker_manager),
     );
 
+    let worker_poller = WorkerPoller::new(
+        Arc::clone(&map_reduce_scheduler),
+        Arc::clone(&worker_manager),
+        Arc::clone(&worker_interface),
+    );
+    run_polling_loop(worker_poller);
 
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
@@ -80,4 +87,5 @@ pub mod mapreduce_tasks;
 pub mod mapreduce_service;
 pub mod worker_interface;
 pub mod worker_manager;
+pub mod worker_poller;
 pub mod worker_registration_service;

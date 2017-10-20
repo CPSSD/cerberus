@@ -276,6 +276,7 @@ fn handle_assign_task_failure(
                 Some(worker) => {
                     worker.set_scheduling_in_progress(false);
                     worker.set_current_task_id(String::new());
+                    worker.set_current_task_type(None);
                     worker.set_operation_status(OperationStatus::UNKNOWN);
                 }
                 None => {
@@ -437,6 +438,7 @@ fn do_scheduling_loop_step(
 
         worker.set_scheduling_in_progress(true);
         worker.set_current_task_id(task.get_task_id());
+        worker.set_current_task_type(Some(task.get_task_type()));
         worker.set_operation_status(OperationStatus::IN_PROGRESS);
 
         task.set_assigned_worker_id(worker.get_worker_id());
