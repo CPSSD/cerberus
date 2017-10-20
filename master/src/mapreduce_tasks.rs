@@ -1,3 +1,4 @@
+use cerberus_proto::mrworker::{PerformMapRequest, PerformReduceRequest};
 use errors::*;
 use uuid::Uuid;
 use mapreduce_job::MapReduceJob;
@@ -31,10 +32,10 @@ pub struct MapReduceTask {
     map_reduce_id: String,
     task_id: String,
 
-    binary_path: String,
-    // The input_key will only exist for Reduce operations.
-    input_key: Option<String>,
-    input_files: Vec<String>,
+    // This will only exist if TaskType is Map.
+    perform_map_request: Option<PerformMapRequest>,
+    // This will only exist if TaskType is Reduce.
+    perform_reduce_request: Option<PerformReduceRequest>,
 
     // Output files are a key-value pair.
     output_files: Vec<(String, String)>,
@@ -51,18 +52,47 @@ impl MapReduceTask {
         input_key: Option<String>,
         input_files: Vec<String>,
     ) -> Result<Self> {
-        if task_type == TaskType::Reduce && input_key.is_none() {
-            return Err("Input key cannot be None for reduce task".into());
+        if input_files.is_empty() {
+            return Err("Input files cannot be empty".into());
         }
+        let mut map_request: Option<PerformMapRequest> = None;
+        let mut reduce_request: Option<PerformReduceRequest> = None;
+        match task_type {
+            TaskType::Reduce => {
+                let key = {
+                    match input_key {
+                        Some(key) => key,
+                        None => return Err("Input key cannot be None for reduce task".into()),
+                    }
+                };
+                let mut reduce_req = PerformReduceRequest::new();
+                reduce_req.set_intermediate_key(key);
+                for input_file in input_files {
+                    reduce_req.mut_input_file_paths().push(input_file);
+                }
+                reduce_req.set_reducer_file_path(binary_path.into());
+                reduce_request = Some(reduce_req);
+            }
+            TaskType::Map => {
+                if input_files.len() != 1 {
+                    return Err("Map task can only have one input file".into());
+                }
+
+                let mut map_req = PerformMapRequest::new();
+                map_req.set_input_file_path(input_files[0].clone());
+                map_req.set_mapper_file_path(binary_path.into());
+                map_request = Some(map_req);
+            }
+        }
+
         let task_id = Uuid::new_v4();
         Ok(MapReduceTask {
             task_type: task_type,
             map_reduce_id: map_reduce_id.into(),
             task_id: task_id.to_string(),
 
-            binary_path: binary_path.into(),
-            input_key: input_key,
-            input_files: input_files,
+            perform_map_request: map_request,
+            perform_reduce_request: reduce_request,
 
             output_files: Vec::new(),
 
@@ -83,16 +113,12 @@ impl MapReduceTask {
         &self.task_id
     }
 
-    pub fn get_binary_path(&self) -> &str {
-        &self.binary_path
+    pub fn get_perform_map_request(&self) -> Option<PerformMapRequest> {
+        self.perform_map_request.clone()
     }
 
-    pub fn get_input_key(&self) -> Option<String> {
-        self.input_key.clone()
-    }
-
-    pub fn get_input_files(&self) -> &[String] {
-        self.input_files.as_slice()
+    pub fn get_perform_reduce_request(&self) -> Option<PerformReduceRequest> {
+        self.perform_reduce_request.clone()
     }
 
     pub fn get_output_files(&self) -> &[(String, String)] {
@@ -344,15 +370,49 @@ mod tests {
     }
 
     #[test]
-    fn test_get_binary_path() {
+    fn test_map_task_request() {
         let map_task = MapReduceTask::new(
             TaskType::Map,
             "map-1",
             "/tmp/bin",
             None,
-            vec!["/tmp/input/".to_owned()],
+            vec!["/tmp/input/file1".to_owned()],
         ).unwrap();
-        assert_eq!(map_task.get_binary_path(), "/tmp/bin");
+        let map_request = map_task.get_perform_map_request().unwrap();
+
+        assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
+        assert_eq!("/tmp/input/file1", map_request.get_input_file_path());
+        assert!(map_task.get_perform_reduce_request().is_none());
+    }
+
+    #[test]
+    fn test_map_task_double_input() {
+        let result = MapReduceTask::new(
+            TaskType::Map,
+            "map-1",
+            "/tmp/bin",
+            None,
+            vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reduce_task_request() {
+        let reduce_task = MapReduceTask::new(
+            TaskType::Reduce,
+            "reduce-1",
+            "/tmp/bin",
+            Some("key-1".to_owned()),
+            vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
+        ).unwrap();
+        let reduce_request = reduce_task.get_perform_reduce_request().unwrap();
+
+        assert_eq!("/tmp/bin", reduce_request.get_reducer_file_path());
+        assert_eq!("key-1", reduce_request.get_intermediate_key());
+        assert_eq!("/tmp/input/file1", reduce_request.get_input_file_paths()[0]);
+        assert_eq!("/tmp/input/file2", reduce_request.get_input_file_paths()[1]);
+        assert!(reduce_task.get_perform_map_request().is_none());
     }
 
     #[test]
@@ -365,43 +425,6 @@ mod tests {
             vec!["/tmp/input/".to_owned()],
         );
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_get_input_key() {
-        let map_task = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
-        let reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
-            "reduce-1",
-            "/tmp/bin",
-            Some("intermediate-key".to_owned()),
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
-
-        assert_eq!(None, map_task.get_input_key());
-        assert_eq!(
-            Some("intermediate-key".to_owned()),
-            reduce_task.get_input_key()
-        );
-    }
-
-    #[test]
-    fn test_get_input_files() {
-        let map_task = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
-        let input_files: &[String] = map_task.get_input_files();
-        assert_eq!(input_files[0], "/tmp/input/");
     }
 
     #[test]
@@ -515,14 +538,16 @@ mod tests {
             map_tasks[0].get_map_reduce_id(),
             map_reduce_job.get_map_reduce_id()
         );
+
+        let perform_map_req = map_tasks[0].get_perform_map_request().unwrap();
+
         assert_eq!(
-            map_tasks[0].get_binary_path(),
-            map_reduce_job.get_binary_path()
+            map_reduce_job.get_binary_path(),
+            perform_map_req.get_mapper_file_path()
         );
-        assert_eq!(map_tasks[0].input_files.len(), 1);
 
         // Read map task input and make sure it is as expected.
-        let mut input_file = fs::File::open(map_tasks[0].input_files[0].clone()).unwrap();
+        let mut input_file = fs::File::open(perform_map_req.get_input_file_path().clone()).unwrap();
         let mut map_input = String::new();
         input_file.read_to_string(&mut map_input).unwrap();
 
@@ -570,14 +595,19 @@ mod tests {
             .create_reduce_tasks(&map_reduce_job, &map_tasks)
             .unwrap();
 
-        reduce_tasks.sort_by_key(|task| task.get_input_key().unwrap());
+        reduce_tasks.sort_by_key(|task| {
+            task.get_perform_reduce_request()
+                .unwrap()
+                .get_intermediate_key()
+                .to_owned()
+        });
 
         assert_eq!(2, reduce_tasks.len());
 
-        assert_eq!(
-            "intermediate-key1",
-            reduce_tasks[0].get_input_key().unwrap()
-        );
+        let reduce_req1 = reduce_tasks[0].get_perform_reduce_request().unwrap();
+        let reduce_req2 = reduce_tasks[1].get_perform_reduce_request().unwrap();
+
+        assert_eq!("intermediate-key1", reduce_req1.get_intermediate_key());
         assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
         assert_eq!(
             map_reduce_job.get_map_reduce_id(),
@@ -585,18 +615,15 @@ mod tests {
         );
         assert_eq!(
             vec!["/tmp/output/1", "/tmp/output/3"],
-            reduce_tasks[0].get_input_files()
+            reduce_req1.get_input_file_paths()
         );
 
-        assert_eq!(
-            "intermediate-key2",
-            reduce_tasks[1].get_input_key().unwrap()
-        );
+        assert_eq!("intermediate-key2", reduce_req2.get_intermediate_key());
         assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
         assert_eq!(
             map_reduce_job.get_map_reduce_id(),
             reduce_tasks[1].get_map_reduce_id()
         );
-        assert_eq!(vec!["/tmp/output/2"], reduce_tasks[1].get_input_files());
+        assert_eq!(vec!["/tmp/output/2"], reduce_req2.get_input_file_paths());
     }
 }
