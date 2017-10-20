@@ -6,12 +6,6 @@ use chrono::Local;
 use cerberus_proto::mapreduce::*;
 use cerberus_proto::mapreduce_grpc::*;
 
-
-const TABLE_BORDERS: &'static str = "|==========================================================|";
-const TABLE_ID: &'static str = "| MRID    | ";
-const TABLE_STATUS: &'static str = "| Status  | ";
-const TABLE_REMAINDER: usize = 42; // TABLE_BORDERS.len() - TABLE_ID.len()
-
 pub fn run(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let input = matches.value_of("input").chain_err(
         || "Input directory cannot be empty",
@@ -94,20 +88,7 @@ fn print_table(rep: &MapReduceStatusResponse_MapReduceReport) {
         MapReduceStatusResponse_MapReduceReport_Status::FAILED => "FAILED".to_owned(),
     };
 
-    let l1 = format!("{}\n", TABLE_BORDERS);
-    let l2 = format!(
-        "{}{id:pad$}|\n",
-        TABLE_ID,
-        id = id,
-        pad = TABLE_REMAINDER - id.len()
-    );
-    let l3 = format!(
-        "{}{status:pad$}|\n",
-        TABLE_STATUS,
-        status = status,
-        pad = TABLE_REMAINDER - status.len()
-    );
-    println!("{}{}{}{}", l1, l2, l3, TABLE_BORDERS);
+    table!(["MRID", id], ["Status", status]).printstd();
 }
 
 fn get_time_offset(offset: i64) -> String {
