@@ -1,4 +1,3 @@
-use errors::*;
 use std::sync::{Arc, Mutex};
 use grpc::{SingleResponse, Error, RequestOptions};
 
@@ -98,7 +97,7 @@ impl MapReduceService for MapReduceServiceImpl {
             Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
             Ok(scheduler) => {
                 let mut response = ClusterStatusResponse::new();
-                response.workers = scheduler.get_available_workers() as i64;
+                response.workers = i64::from(scheduler.get_available_workers());
                 response.queue_size = scheduler.get_map_reduce_job_queue_size() as i64;
 
                 SingleResponse::completed(response)
@@ -111,6 +110,7 @@ impl MapReduceService for MapReduceServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errors::*;
     use mapreduce_job::MapReduceJob;
     use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceStatus;
     use mapreduce_tasks::{MapReduceTask, TaskProcessorTrait};
@@ -125,7 +125,7 @@ mod tests {
         fn create_reduce_tasks(
             &self,
             _: &MapReduceJob,
-            _: &Vec<MapReduceTask>,
+            _: &[MapReduceTask],
         ) -> Result<Vec<MapReduceTask>> {
             Ok(Vec::new())
         }

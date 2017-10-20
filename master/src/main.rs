@@ -1,28 +1,51 @@
+extern crate cerberus_proto;
 #[macro_use]
 extern crate error_chain;
+extern crate env_logger;
 extern crate grpc;
-extern crate cerberus_proto;
+#[macro_use]
+extern crate log;
 extern crate uuid;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
+use mapreduce_tasks::TaskProcessor;
 use worker_manager::WorkerManager;
 use worker_registration_service::WorkerRegistrationServiceImpl;
-use worker_interface::WorkerInterface;
+use worker_interface::{WorkerInterface, WorkerRegistrationInterface};
+use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use std::{thread, time};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 fn main() {
-    println!("Cerberus Master!");
+    env_logger::init().unwrap();
 
+    let task_processor = TaskProcessor;
+    let map_reduce_scheduler = Arc::new(Mutex::new(
+        MapReduceScheduler::new(Box::new(task_processor)),
+    ));
+    let worker_interface = Arc::new(RwLock::new(WorkerInterface::new()));
     let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
-    let worker_registration_service = WorkerRegistrationServiceImpl::new(worker_manager);
-    let worker_interface = WorkerInterface::new(worker_registration_service).unwrap();
+
+    let worker_registration_service = WorkerRegistrationServiceImpl::new(
+        Arc::clone(&worker_manager),
+        Arc::clone(&worker_interface),
+    );
+    let worker_registration_interface =
+        WorkerRegistrationInterface::new(worker_registration_service).unwrap();
+
+
+    run_scheduling_loop(
+        Arc::clone(&worker_interface),
+        Arc::clone(&map_reduce_scheduler),
+        Arc::clone(&worker_manager),
+    );
+
 
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        let server = worker_interface.get_server();
+        let server = worker_registration_interface.get_server();
         if !server.is_alive() {
             break;
         }
