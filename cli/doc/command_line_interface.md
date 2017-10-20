@@ -37,7 +37,7 @@ $ cli --master=locahost:10456 run --input=/shared/shakespeare --binary=/shared/b
 Scheduling MapReduce....
 MapReduce mr42 scheduled. Place in queue: 3
 
-Run cli results --mapreduce_id=mr42 to get the status.
+Run cli status --job_id=mr42 to get the status.
 ```
 
 * `cluster_status`: This command gives basic information about the curent
@@ -53,10 +53,10 @@ Queue:  3
 ```
 
 * `status`: This command is used to get the status of the scheduled MapReduce.
-  If a specific MapReduce ID is specified only one result will be returned, 
+  If a specific job ID is specified only one result will be returned,
   otherwise a list of MapReduce jobs scheduled by the client will be returned.
   It has 1 flag.
-  * `--mapreduce_id`: This specifies the outlined above MapReduce ID.
+  * `--job_id`: This specifies the outlined above MapReduce ID.
 
 Example:
 ```
@@ -67,7 +67,7 @@ $ cli status
 | Output  | /shared/mr42/output      |
 |====================================|
 
-$ cli status --mapreduce_id=mr13
+$ cli status --job_id=mr13
 |====================================|
 | MRID    | mr13                     |
 | Status  | COMPLETED (45m13s)       |
