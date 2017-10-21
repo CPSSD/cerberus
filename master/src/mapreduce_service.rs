@@ -4,8 +4,8 @@ use grpc::{SingleResponse, Error, RequestOptions};
 use scheduler::MapReduceScheduler;
 use mapreduce_job::MapReduceJob;
 
-use cerberus_proto::mapreduce::*;
-use cerberus_proto::mapreduce_grpc::*;
+use cerberus_proto::mapreduce as pb;
+use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport as MapReduceReport;
 
 const SCHEDULER_BUSY: &'static str = "Scheduler busy";
@@ -23,16 +23,16 @@ impl MapReduceServiceImpl {
     }
 }
 
-impl MapReduceService for MapReduceServiceImpl {
+impl grpc_pb::MapReduceService for MapReduceServiceImpl {
     fn perform_map_reduce(
         &self,
         _: RequestOptions,
-        req: MapReduceRequest,
-    ) -> SingleResponse<MapReduceResponse> {
+        req: pb::MapReduceRequest,
+    ) -> SingleResponse<pb::MapReduceResponse> {
         match self.scheduler.lock() {
             Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
             Ok(mut scheduler) => {
-                let mut response = MapReduceResponse::new();
+                let mut response = pb::MapReduceResponse::new();
                 let job = MapReduceJob::new(req.client_id, req.binary_path, req.input_directory);
                 response.mapreduce_id = job.get_map_reduce_id().to_owned();
                 let result = scheduler.schedule_map_reduce(job);
@@ -47,12 +47,12 @@ impl MapReduceService for MapReduceServiceImpl {
     fn map_reduce_status(
         &self,
         _: RequestOptions,
-        req: MapReduceStatusRequest,
-    ) -> SingleResponse<MapReduceStatusResponse> {
+        req: pb::MapReduceStatusRequest,
+    ) -> SingleResponse<pb::MapReduceStatusResponse> {
         match self.scheduler.lock() {
             Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
             Ok(scheduler) => {
-                let mut response = MapReduceStatusResponse::new();
+                let mut response = pb::MapReduceStatusResponse::new();
                 let jobs: Vec<&MapReduceJob>;
 
                 if !req.client_id.is_empty() {
@@ -91,12 +91,12 @@ impl MapReduceService for MapReduceServiceImpl {
     fn cluster_status(
         &self,
         _: RequestOptions,
-        _: EmptyMessage,
-    ) -> SingleResponse<ClusterStatusResponse> {
+        _: pb::EmptyMessage,
+    ) -> SingleResponse<pb::ClusterStatusResponse> {
         match self.scheduler.lock() {
             Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
             Ok(scheduler) => {
-                let mut response = ClusterStatusResponse::new();
+                let mut response = pb::ClusterStatusResponse::new();
                 response.workers = i64::from(scheduler.get_available_workers());
                 response.queue_size = scheduler.get_map_reduce_job_queue_size() as i64;
 
@@ -112,8 +112,9 @@ mod tests {
     use super::*;
     use errors::*;
     use mapreduce_job::MapReduceJob;
-    use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceStatus;
     use mapreduce_tasks::{MapReduceTask, TaskProcessorTrait};
+    use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceStatus;
+    use cerberus_proto::mapreduce_grpc::MapReduceService;
 
     struct NullTaskProcessor;
 
@@ -143,7 +144,7 @@ mod tests {
         let master_impl = MapReduceServiceImpl { scheduler: Arc::new(Mutex::new(scheduler)) };
 
         let _ = master_impl
-            .perform_map_reduce(RequestOptions::new(), MapReduceRequest::new())
+            .perform_map_reduce(RequestOptions::new(), pb::MapReduceRequest::new())
             .wait();
 
         let map_reduce_in_progress = match master_impl.scheduler.lock() {
@@ -159,7 +160,7 @@ mod tests {
         let mut scheduler = create_map_reduce_scheduler();
 
         let job = MapReduceJob::new("client-2".to_owned(), "/".to_owned(), "/".to_owned());
-        let mut request = MapReduceStatusRequest::new();
+        let mut request = pb::MapReduceStatusRequest::new();
         request.mapreduce_id = job.get_map_reduce_id().to_owned();
         let result = scheduler.schedule_map_reduce(job);
         assert!(result.is_ok());
@@ -189,7 +190,7 @@ mod tests {
         ));
 
         let master_impl = MapReduceServiceImpl { scheduler: Arc::new(Mutex::new(scheduler)) };
-        let response = master_impl.cluster_status(RequestOptions::new(), EmptyMessage::new());
+        let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();
 
         assert_eq!(5, item.workers);

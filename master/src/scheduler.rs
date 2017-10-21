@@ -1,8 +1,3 @@
-use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
-use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
-use cerberus_proto::mrworker::OperationStatus as TaskOperationStatus;
-use cerberus_proto::mrworker::{PerformMapRequest, PerformReduceRequest, MapResponse,
-                               ReduceResponse};
 use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait, TaskType};
@@ -11,6 +6,10 @@ use std::{thread, time};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use worker_interface::WorkerInterface;
 use worker_manager::{Worker, WorkerManager};
+
+use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
+use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
+use cerberus_proto::mrworker as pb;
 
 const SCHEDULING_LOOP_INTERVAL_MS: u64 = 100;
 
@@ -176,9 +175,9 @@ impl MapReduceScheduler {
     pub fn process_map_task_response(
         &mut self,
         map_task_id: String,
-        map_response: MapResponse,
+        map_response: pb::MapResponse,
     ) -> Result<()> {
-        if map_response.get_status() == TaskOperationStatus::SUCCESS {
+        if map_response.get_status() == pb::OperationStatus::SUCCESS {
             let map_reduce_id = {
                 let map_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&map_task_id)
@@ -229,9 +228,9 @@ impl MapReduceScheduler {
     pub fn process_reduce_task_response(
         &mut self,
         reduce_task_id: String,
-        reduce_response: ReduceResponse,
+        reduce_response: pb::ReduceResponse,
     ) -> Result<()> {
-        if reduce_response.get_status() == TaskOperationStatus::SUCCESS {
+        if reduce_response.get_status() == pb::OperationStatus::SUCCESS {
             let map_reduce_id = {
                 let reduce_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&reduce_task_id)
@@ -307,7 +306,7 @@ fn assign_worker_map_task(
     scheduler_resources: SchedulerResources,
     worker_id: String,
     task_id: String,
-    map_task: PerformMapRequest,
+    map_task: pb::PerformMapRequest,
 ) {
     thread::spawn(move || {
         let read_guard = scheduler_resources.worker_interface_arc.read();
@@ -331,7 +330,7 @@ fn assign_worker_reduce_task(
     scheduler_resources: SchedulerResources,
     worker_id: String,
     task_id: String,
-    reduce_task: PerformReduceRequest,
+    reduce_task: pb::PerformReduceRequest,
 ) {
     thread::spawn(move || {
         let read_guard = scheduler_resources.worker_interface_arc.read();

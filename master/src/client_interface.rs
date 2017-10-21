@@ -1,7 +1,9 @@
 use errors::*;
 use grpc::{ServerBuilder, Server};
+
 use mapreduce_service::MapReduceServiceImpl;
-use cerberus_proto::mapreduce_grpc::*;
+
+use cerberus_proto::mapreduce_grpc as grpc_pb;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const GRPC_PORT: u16 = 8081;
@@ -17,7 +19,9 @@ impl ClientInterface {
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );
-        server_builder.add_service(MapReduceServiceServer::new_service_def(mapreduce_service));
+        server_builder.add_service(grpc_pb::MapReduceServiceServer::new_service_def(
+            mapreduce_service,
+        ));
 
         Ok(ClientInterface { server: server_builder.build()? })
     }

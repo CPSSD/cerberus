@@ -1,16 +1,17 @@
 use errors::*;
-use cerberus_proto::mrworker::*;
 use uuid::Uuid;
 use std::net::SocketAddr;
 use std::str::FromStr;
+
+use cerberus_proto::mrworker as pb;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Worker {
     address: SocketAddr,
 
     scheduling_in_progress: bool,
-    status: WorkerStatusResponse_WorkerStatus,
-    operation_status: WorkerStatusResponse_OperationStatus,
+    status: pb::WorkerStatusResponse_WorkerStatus,
+    operation_status: pb::WorkerStatusResponse_OperationStatus,
 
     current_task_id: String,
     worker_id: String,
@@ -24,8 +25,8 @@ impl Worker {
             )?,
 
             scheduling_in_progress: false,
-            status: WorkerStatusResponse_WorkerStatus::AVAILABLE,
-            operation_status: WorkerStatusResponse_OperationStatus::UNKNOWN,
+            status: pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
+            operation_status: pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
 
             current_task_id: String::new(),
             worker_id: Uuid::new_v4().to_string(),
@@ -52,11 +53,11 @@ impl Worker {
         self.address
     }
 
-    pub fn get_status(&self) -> WorkerStatusResponse_WorkerStatus {
+    pub fn get_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
         self.status
     }
 
-    pub fn get_operation_status(&self) -> WorkerStatusResponse_OperationStatus {
+    pub fn get_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
         self.operation_status
     }
 
@@ -64,11 +65,14 @@ impl Worker {
         &self.current_task_id
     }
 
-    pub fn set_status(&mut self, status: WorkerStatusResponse_WorkerStatus) {
+    pub fn set_status(&mut self, status: pb::WorkerStatusResponse_WorkerStatus) {
         self.status = status;
     }
 
-    pub fn set_operation_status(&mut self, operation_status: WorkerStatusResponse_OperationStatus) {
+    pub fn set_operation_status(
+        &mut self,
+        operation_status: pb::WorkerStatusResponse_OperationStatus,
+    ) {
         self.operation_status = operation_status;
     }
 
@@ -131,10 +135,13 @@ mod tests {
             SocketAddr::from_str("127.0.0.1:8080").unwrap()
         );
 
-        assert_eq!(worker.status, WorkerStatusResponse_WorkerStatus::AVAILABLE);
+        assert_eq!(
+            worker.status,
+            pb::WorkerStatusResponse_WorkerStatus::AVAILABLE
+        );
         assert_eq!(
             worker.operation_status,
-            WorkerStatusResponse_OperationStatus::UNKNOWN
+            pb::WorkerStatusResponse_OperationStatus::UNKNOWN
         );
     }
 

@@ -1,10 +1,11 @@
 use grpc::{RequestOptions, SingleResponse, Error};
-use cerberus_proto::mrworker::*;
-use cerberus_proto::mrworker_grpc::*;
 use std::sync::{Arc, Mutex, RwLock};
 use worker_interface::WorkerInterface;
 use worker_manager::WorkerManager;
 use worker_manager::Worker;
+
+use cerberus_proto::mrworker as pb;
+use cerberus_proto::mrworker_grpc as grpc_pb;
 
 const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker interface not available";
 const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager not available";
@@ -26,12 +27,12 @@ impl WorkerRegistrationServiceImpl {
     }
 }
 
-impl MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
+impl grpc_pb::MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
     fn register_worker(
         &self,
         _o: RequestOptions,
-        request: RegisterWorkerRequest,
-    ) -> SingleResponse<EmptyMessage> {
+        request: pb::RegisterWorkerRequest,
+    ) -> SingleResponse<pb::EmptyMessage> {
         let worker_result = Worker::new(request.get_worker_address().to_string());
         let worker = {
             match worker_result {
@@ -58,7 +59,7 @@ impl MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
             Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
             Ok(mut manager) => {
                 manager.add_worker(worker);
-                let response = EmptyMessage::new();
+                let response = pb::EmptyMessage::new();
                 SingleResponse::completed(response)
             }
         }
@@ -68,6 +69,7 @@ impl MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cerberus_proto::mrworker_grpc::MRWorkerRegistrationService;
 
     #[test]
     fn test_register_worker() {
@@ -76,7 +78,7 @@ mod tests {
         let worker_registration_service =
             WorkerRegistrationServiceImpl::new(worker_manager.clone(), worker_interface);
 
-        let mut register_worker_request = RegisterWorkerRequest::new();
+        let mut register_worker_request = pb::RegisterWorkerRequest::new();
         register_worker_request.set_worker_address(String::from("127.0.0.1:8080"));
 
         // Register worker
