@@ -1,4 +1,3 @@
-use cerberus_proto::mrworker::{PerformMapRequest, PerformReduceRequest};
 use errors::*;
 use uuid::Uuid;
 use mapreduce_job::MapReduceJob;
@@ -7,6 +6,8 @@ use std::collections::HashMap;
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;
 use std::fs;
+
+use cerberus_proto::mrworker as pb;
 
 const MEGA_BYTE: usize = 1000 * 1000;
 const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
@@ -33,9 +34,9 @@ pub struct MapReduceTask {
     task_id: String,
 
     // This will only exist if TaskType is Map.
-    perform_map_request: Option<PerformMapRequest>,
+    perform_map_request: Option<pb::PerformMapRequest>,
     // This will only exist if TaskType is Reduce.
-    perform_reduce_request: Option<PerformReduceRequest>,
+    perform_reduce_request: Option<pb::PerformReduceRequest>,
 
     // Output files are a key-value pair.
     output_files: Vec<(String, String)>,
@@ -55,8 +56,8 @@ impl MapReduceTask {
         if input_files.is_empty() {
             return Err("Input files cannot be empty".into());
         }
-        let mut map_request: Option<PerformMapRequest> = None;
-        let mut reduce_request: Option<PerformReduceRequest> = None;
+        let mut map_request: Option<pb::PerformMapRequest> = None;
+        let mut reduce_request: Option<pb::PerformReduceRequest> = None;
         match task_type {
             TaskType::Reduce => {
                 let key = {
@@ -65,7 +66,7 @@ impl MapReduceTask {
                         None => return Err("Input key cannot be None for reduce task".into()),
                     }
                 };
-                let mut reduce_req = PerformReduceRequest::new();
+                let mut reduce_req = pb::PerformReduceRequest::new();
                 reduce_req.set_intermediate_key(key);
                 for input_file in input_files {
                     reduce_req.mut_input_file_paths().push(input_file);
@@ -78,7 +79,7 @@ impl MapReduceTask {
                     return Err("Map task can only have one input file".into());
                 }
 
-                let mut map_req = PerformMapRequest::new();
+                let mut map_req = pb::PerformMapRequest::new();
                 map_req.set_input_file_path(input_files[0].clone());
                 map_req.set_mapper_file_path(binary_path.into());
                 map_request = Some(map_req);
@@ -113,11 +114,11 @@ impl MapReduceTask {
         &self.task_id
     }
 
-    pub fn get_perform_map_request(&self) -> Option<PerformMapRequest> {
+    pub fn get_perform_map_request(&self) -> Option<pb::PerformMapRequest> {
         self.perform_map_request.clone()
     }
 
-    pub fn get_perform_reduce_request(&self) -> Option<PerformReduceRequest> {
+    pub fn get_perform_reduce_request(&self) -> Option<pb::PerformReduceRequest> {
         self.perform_reduce_request.clone()
     }
 

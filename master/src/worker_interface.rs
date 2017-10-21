@@ -1,10 +1,12 @@
 use errors::*;
 use grpc::{Server, ServerBuilder, RequestOptions};
 use std::collections::HashMap;
-use cerberus_proto::mrworker::*;
-use cerberus_proto::mrworker_grpc::*;
 use worker_registration_service::WorkerRegistrationServiceImpl;
 use worker_manager::Worker;
+
+use cerberus_proto::mrworker as pb;
+use cerberus_proto::mrworker_grpc as grpc_pb;
+use cerberus_proto::mrworker_grpc::MRWorkerService; // do not use
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const MASTER_PORT: u16 = 8008;
@@ -12,7 +14,7 @@ const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
 #[derive(Default)]
 pub struct WorkerInterface {
-    clients: HashMap<String, MRWorkerServiceClient>,
+    clients: HashMap<String, grpc_pb::MRWorkerServiceClient>,
 }
 
 
@@ -27,7 +29,7 @@ impl WorkerInterface {
             return Err("Client already exists for this worker".into());
         }
 
-        let client = MRWorkerServiceClient::new_plain(
+        let client = grpc_pb::MRWorkerServiceClient::new_plain(
             &worker.get_address().ip().to_string(),
             worker.get_address().port(),
             Default::default(),
@@ -46,11 +48,11 @@ impl WorkerInterface {
         Ok(())
     }
 
-    pub fn get_worker_status(&self, worker_id: &str) -> Result<WorkerStatusResponse> {
+    pub fn get_worker_status(&self, worker_id: &str) -> Result<pb::WorkerStatusResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client
-                    .worker_status(RequestOptions::new(), EmptyMessage::new())
+                    .worker_status(RequestOptions::new(), pb::EmptyMessage::new())
                     .wait()
                     .chain_err(|| "Failed to get worker status")?
                     .1,
@@ -60,7 +62,7 @@ impl WorkerInterface {
         }
     }
 
-    pub fn schedule_map(&self, request: PerformMapRequest, worker_id: &str) -> Result<()> {
+    pub fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()> {
         if let Some(client) = self.clients.get(worker_id) {
             client
                 .perform_map(RequestOptions::new(), request)
@@ -72,7 +74,11 @@ impl WorkerInterface {
         }
     }
 
-    pub fn schedule_reduce(&self, request: PerformReduceRequest, worker_id: &str) -> Result<()> {
+    pub fn schedule_reduce(
+        &self,
+        request: pb::PerformReduceRequest,
+        worker_id: &str,
+    ) -> Result<()> {
         if let Some(client) = self.clients.get(worker_id) {
             client
                 .perform_reduce(RequestOptions::new(), request)
@@ -84,11 +90,11 @@ impl WorkerInterface {
         }
     }
 
-    pub fn get_map_result(&self, worker_id: &str) -> Result<MapResponse> {
+    pub fn get_map_result(&self, worker_id: &str) -> Result<pb::MapResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client
-                    .get_map_result(RequestOptions::new(), EmptyMessage::new())
+                    .get_map_result(RequestOptions::new(), pb::EmptyMessage::new())
                     .wait()
                     .chain_err(|| "Failed to get map result")?
                     .1,
@@ -98,11 +104,11 @@ impl WorkerInterface {
         }
     }
 
-    pub fn get_reduce_result(&self, worker_id: &str) -> Result<ReduceResponse> {
+    pub fn get_reduce_result(&self, worker_id: &str) -> Result<pb::ReduceResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client
-                    .get_reduce_result(RequestOptions::new(), EmptyMessage::new())
+                    .get_reduce_result(RequestOptions::new(), pb::EmptyMessage::new())
                     .wait()
                     .chain_err(|| "Failed to get reduce result")?
                     .1,
@@ -122,9 +128,11 @@ impl WorkerRegistrationInterface {
     pub fn new(worker_registration_service: WorkerRegistrationServiceImpl) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(MASTER_PORT);
-        server_builder.add_service(MRWorkerRegistrationServiceServer::new_service_def(
-            worker_registration_service,
-        ));
+        server_builder.add_service(
+            grpc_pb::MRWorkerRegistrationServiceServer::new_service_def(
+                worker_registration_service,
+            ),
+        );
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );
