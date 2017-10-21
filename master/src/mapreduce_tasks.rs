@@ -173,7 +173,7 @@ pub trait TaskProcessorTrait {
     fn create_reduce_tasks(
         &self,
         map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &[MapReduceTask],
+        completed_map_tasks: &[&MapReduceTask],
     ) -> Result<Vec<MapReduceTask>>;
 }
 
@@ -299,7 +299,7 @@ impl TaskProcessorTrait for TaskProcessor {
     fn create_reduce_tasks(
         &self,
         map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &[MapReduceTask],
+        completed_map_tasks: &[&MapReduceTask],
     ) -> Result<Vec<MapReduceTask>> {
         let mut reduce_tasks = Vec::new();
         let mut key_results_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -590,7 +590,7 @@ mod tests {
 
         map_task2.push_output_file("intermediate-key1", "/tmp/output/3");
 
-        let map_tasks: Vec<MapReduceTask> = vec![map_task1, map_task2];
+        let map_tasks: Vec<&MapReduceTask> = vec![&map_task1, &map_task2];
         let mut reduce_tasks: Vec<MapReduceTask> = task_processor
             .create_reduce_tasks(&map_reduce_job, &map_tasks)
             .unwrap();

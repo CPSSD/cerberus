@@ -1,5 +1,8 @@
+use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
 use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
-use cerberus_proto::mrworker::{PerformMapRequest, PerformReduceRequest};
+use cerberus_proto::mrworker::OperationStatus as TaskOperationStatus;
+use cerberus_proto::mrworker::{PerformMapRequest, PerformReduceRequest, MapResponse,
+                               ReduceResponse};
 use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait, TaskType};
@@ -122,6 +125,135 @@ impl MapReduceScheduler {
         task.set_assigned_worker_id(String::new());
         task.set_status(MapReduceTaskStatus::Queued);
 
+        Ok(())
+    }
+
+    fn create_reduce_tasks(&mut self, map_reduce_id: String) -> Result<()> {
+        let map_reduce_job = self.map_reduce_job_queue
+            .get_work_by_id_mut(&map_reduce_id)
+            .chain_err(|| "Error incrementing completeted map tasks.")?;
+
+        let reduce_tasks = {
+            let map_tasks = self.map_reduce_task_queue
+                .get_work_bucket_items(&map_reduce_id)
+                .chain_err(|| "Error creating reduce tasks.")?;
+
+            self.task_processor
+                .create_reduce_tasks(map_reduce_job, map_tasks.as_slice())
+                .chain_err(|| "Error creating reduce tasks.")?
+        };
+
+        map_reduce_job.set_reduce_tasks_total(reduce_tasks.len() as u32);
+
+        for reduce_task in reduce_tasks {
+            self.map_reduce_task_queue
+                .add_to_store(Box::new(reduce_task))
+                .chain_err(|| "Error adding reduce task to store.")?;
+        }
+
+        Ok(())
+    }
+
+    fn increment_map_tasks_completed(&mut self, map_reduce_id: String) -> Result<()> {
+        let all_maps_completed = {
+            let map_reduce_job = self.map_reduce_job_queue
+                .get_work_by_id_mut(&map_reduce_id)
+                .chain_err(|| "Error incrementing completeted map tasks.")?;
+            let map_tasks_completed = map_reduce_job.get_map_tasks_completed() + 1;
+            map_reduce_job.set_map_tasks_completed(map_tasks_completed);
+            map_tasks_completed == map_reduce_job.get_map_tasks_total()
+        };
+
+        if all_maps_completed {
+            // Create Reduce tasks.
+            self.create_reduce_tasks(map_reduce_id).chain_err(
+                || "Error incrementing completed map tasks.",
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn process_map_task_response(
+        &mut self,
+        map_task_id: String,
+        map_response: MapResponse,
+    ) -> Result<()> {
+        if map_response.get_status() == TaskOperationStatus::SUCCESS {
+            let map_reduce_id = {
+                let map_task = self.map_reduce_task_queue
+                    .get_work_by_id_mut(&map_task_id)
+                    .chain_err(|| "Error marking map task as completed.")?;
+
+                map_task.set_status(MapReduceTaskStatus::Complete);
+                for map_result in map_response.get_map_results() {
+                    map_task.push_output_file(
+                        map_result.get_key(),
+                        map_result.get_output_file_path(),
+                    );
+                }
+                map_task.get_map_reduce_id().to_owned()
+            };
+            self.increment_map_tasks_completed(map_reduce_id)
+                .chain_err(|| "Error marking map task as completed.")?;
+        } else {
+            self.unschedule_task(map_task_id).chain_err(
+                || "Error marking map task as complete.",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn increment_reduce_tasks_completed(&mut self, map_reduce_id: String) -> Result<()> {
+        let completed_map_reduce: bool = {
+            let map_reduce_job = self.map_reduce_job_queue
+                .get_work_by_id_mut(&map_reduce_id)
+                .chain_err(|| "Error incrementing completeted reduce tasks.")?;
+
+            let reduce_tasks_completed = map_reduce_job.get_reduce_tasks_completed() + 1;
+            map_reduce_job.set_reduce_tasks_completed(reduce_tasks_completed);
+
+            if reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total() {
+                map_reduce_job.set_status(MapReduceJobStatus::DONE);
+            }
+            reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total()
+        };
+
+        if completed_map_reduce {
+            self.process_next_map_reduce().chain_err(
+                || "Error incrementing completed reduce tasks.",
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn process_reduce_task_response(
+        &mut self,
+        reduce_task_id: String,
+        reduce_response: ReduceResponse,
+    ) -> Result<()> {
+        if reduce_response.get_status() == TaskOperationStatus::SUCCESS {
+            let map_reduce_id = {
+                let reduce_task = self.map_reduce_task_queue
+                    .get_work_by_id_mut(&reduce_task_id)
+                    .chain_err(|| "Error marking reduce task as completed.")?;
+
+                let perform_reduce_request = reduce_task.get_perform_reduce_request().chain_err(
+                    || "Error marking reduce task as complete.",
+                )?;
+                let reduce_key = perform_reduce_request.get_intermediate_key();
+
+                reduce_task.set_status(MapReduceTaskStatus::Complete);
+                reduce_task.push_output_file(reduce_key, reduce_response.get_output_file_path());
+                reduce_task.get_map_reduce_id().to_owned()
+            };
+
+            self.increment_reduce_tasks_completed(map_reduce_id)
+                .chain_err(|| "Error marking reduce task as completed.")?;
+        } else {
+            self.unschedule_task(reduce_task_id).chain_err(
+                || "Error marking reduce task as complete.",
+            )?;
+        }
         Ok(())
     }
 }
@@ -376,7 +508,7 @@ mod tests {
         fn create_reduce_tasks(
             &self,
             _map_reduce_job: &MapReduceJob,
-            _completed_map_tasks: &[MapReduceTask],
+            _completed_map_tasks: &[&MapReduceTask],
         ) -> Result<Vec<MapReduceTask>> {
             Ok(Vec::new())
         }
