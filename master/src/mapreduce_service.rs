@@ -125,7 +125,7 @@ mod tests {
         fn create_reduce_tasks(
             &self,
             _: &MapReduceJob,
-            _: &[MapReduceTask],
+            _: &[&MapReduceTask],
         ) -> Result<Vec<MapReduceTask>> {
             Ok(Vec::new())
         }
