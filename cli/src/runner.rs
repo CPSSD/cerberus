@@ -1,12 +1,13 @@
+use chrono::Local;
 use clap::ArgMatches;
 use errors::*;
 use grpc::RequestOptions;
-use chrono::Local;
 
-use cerberus_proto::mapreduce::*;
-use cerberus_proto::mapreduce_grpc::*;
+use cerberus_proto::mapreduce as pb;
+use cerberus_proto::mapreduce_grpc as grpc_pb;
+use cerberus_proto::mapreduce_grpc::MapReduceService; // do not use
 
-pub fn run(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
+pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let input = matches.value_of("input").chain_err(
         || "Input directory cannot be empty",
     )?;
@@ -15,7 +16,7 @@ pub fn run(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<()> 
         || "Binary cannot be empty",
     )?;
 
-    let mut req = MapReduceRequest::new();
+    let mut req = pb::MapReduceRequest::new();
     req.set_binary_path(binary.to_owned());
     req.set_input_directory(input.to_owned());
     // TODO(voy): Replace it with generated ClientID.
@@ -33,9 +34,9 @@ pub fn run(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<()> 
     Ok(())
 }
 
-pub fn cluster_status(client: &MapReduceServiceClient) -> Result<()> {
+pub fn cluster_status(client: &grpc_pb::MapReduceServiceClient) -> Result<()> {
     let res = client
-        .cluster_status(RequestOptions::new(), EmptyMessage::new())
+        .cluster_status(RequestOptions::new(), pb::EmptyMessage::new())
         .wait()
         .chain_err(|| "Failed to get cluster status")?
         .1;
@@ -48,8 +49,8 @@ pub fn cluster_status(client: &MapReduceServiceClient) -> Result<()> {
     Ok(())
 }
 
-pub fn status(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
-    let mut req = MapReduceStatusRequest::new();
+pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
+    let mut req = pb::MapReduceStatusRequest::new();
     req.set_client_id("abc".to_owned());
     if let Some(id) = matches.value_of("mapreduce_id") {
         req.set_mapreduce_id(id.to_owned());
@@ -68,24 +69,24 @@ pub fn status(client: &MapReduceServiceClient, matches: &ArgMatches) -> Result<(
     Ok(())
 }
 
-fn print_table(rep: &MapReduceStatusResponse_MapReduceReport) {
+fn print_table(rep: &pb::MapReduceStatusResponse_MapReduceReport) {
     let id = rep.get_mapreduce_id();
 
     let status: String = match rep.get_status() {
-        MapReduceStatusResponse_MapReduceReport_Status::UNKNOWN => "UNKNOWN".to_owned(),
-        MapReduceStatusResponse_MapReduceReport_Status::DONE => {
+        pb::MapReduceStatusResponse_MapReduceReport_Status::UNKNOWN => "UNKNOWN".to_owned(),
+        pb::MapReduceStatusResponse_MapReduceReport_Status::DONE => {
             format!("DONE ({})", get_time_offset(rep.get_done_timestamp()))
         }
-        MapReduceStatusResponse_MapReduceReport_Status::IN_PROGRESS => {
+        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_PROGRESS => {
             format!(
                 "IN_PROGRESS ({})",
                 get_time_offset(rep.get_started_timestamp())
             )
         }
-        MapReduceStatusResponse_MapReduceReport_Status::IN_QUEUE => {
+        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_QUEUE => {
             format!("IN_QUEUE ({})", rep.get_queue_length())
         }
-        MapReduceStatusResponse_MapReduceReport_Status::FAILED => "FAILED".to_owned(),
+        pb::MapReduceStatusResponse_MapReduceReport_Status::FAILED => "FAILED".to_owned(),
     };
 
     table!(["MRID", id], ["Status", status]).printstd();
