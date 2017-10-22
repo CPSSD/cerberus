@@ -52,7 +52,7 @@ pub fn cluster_status(client: &grpc_pb::MapReduceServiceClient) -> Result<()> {
 pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let mut req = pb::MapReduceStatusRequest::new();
     req.set_client_id("abc".to_owned());
-    if let Some(id) = matches.value_of("mapreduce_id") {
+    if let Some(id) = matches.value_of("job_id") {
         req.set_mapreduce_id(id.to_owned());
     }
 
