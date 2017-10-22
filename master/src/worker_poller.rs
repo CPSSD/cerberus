@@ -9,7 +9,7 @@ use scheduler::MapReduceScheduler;
 const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager unavailable";
 const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker Interface unavailable";
 const SCHEDULER_UNAVAILABLE: &'static str = "Scheduler unavailable";
-const POLLING_LOOP_INTERVAL_MS: u64 = 5000;
+const POLLING_LOOP_INTERVAL_MS: u64 = 100;
 
 pub struct WorkerPoller {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
@@ -128,6 +128,7 @@ impl WorkerPoller {
                                 None => error!("No worker exists with the given ID: {}", worker_id),
                                 Some(worker) => {
                                     worker.set_completed_operation_flag(false);
+                                    worker.set_current_task_id("");
                                 }
                             }
                         }
@@ -184,7 +185,7 @@ impl WorkerPoller {
         self.poll_mapreduce_results()
     }
 
-    fn get_worker_info_list(&self) -> Result<Vec<WorkerInfo>> {
+    fn get_workers_with_completed_task(&self) -> Result<Vec<WorkerInfo>> {
         let mut worker_info_list = Vec::new();
         match self.worker_manager.lock() {
             Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
@@ -192,7 +193,8 @@ impl WorkerPoller {
                 let workers = worker_manager.get_workers();
                 for worker in workers {
                     if worker.get_operation_status() ==
-                        WorkerStatusResponse_OperationStatus::COMPLETE
+                        WorkerStatusResponse_OperationStatus::COMPLETE &&
+                        worker.get_completed_operation_flag()
                     {
                         worker_info_list.push(WorkerInfo {
                             worker_id: worker.get_worker_id().to_owned(),
@@ -207,7 +209,7 @@ impl WorkerPoller {
     }
 
     fn poll_mapreduce_results(&self) -> Result<()> {
-        let worker_info_list_result = self.get_worker_info_list();
+        let worker_info_list_result = self.get_workers_with_completed_task();
 
         let worker_info_list = match worker_info_list_result {
             Err(_) => return Err("Unable to retrieve worker info list.".into()),

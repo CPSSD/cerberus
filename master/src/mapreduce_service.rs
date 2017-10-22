@@ -171,7 +171,7 @@ mod tests {
         let (_, mut item, _) = response.wait().unwrap();
         let status = item.reports.pop().unwrap().status;
 
-        assert_eq!(MapReduceStatus::IN_QUEUE, status)
+        assert_eq!(MapReduceStatus::IN_PROGRESS, status)
     }
 
     #[test]
@@ -194,9 +194,6 @@ mod tests {
         let (_, item, _) = response.wait().unwrap();
 
         assert_eq!(5, item.workers);
-
-        // Queue size should be 1 as the first task will be popped from the queue.
-        assert_eq!(1, item.queue_size);
-
+        assert_eq!(2, item.queue_size);
     }
 }

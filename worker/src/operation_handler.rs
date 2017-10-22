@@ -340,6 +340,7 @@ impl OperationHandler {
         let mut output_path = PathBuf::new();
         output_path.push(WORKER_OUTPUT_DIRECTORY);
         output_path.push(&self.output_dir_uuid);
+        output_path.push("map");
 
         fs::create_dir_all(output_path.clone()).chain_err(
             || "Failed to create output directory",
@@ -431,6 +432,7 @@ impl OperationHandler {
         let mut output_path = PathBuf::new();
         output_path.push(WORKER_OUTPUT_DIRECTORY);
         output_path.push(&self.output_dir_uuid);
+        output_path.push("reduce");
 
         fs::create_dir_all(output_path.clone()).chain_err(
             || "Failed to create output directory",
