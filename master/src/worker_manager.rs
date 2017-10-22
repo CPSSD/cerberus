@@ -17,7 +17,6 @@ pub enum WorkerTaskType {
 pub struct Worker {
     address: SocketAddr,
 
-    scheduling_in_progress: bool,
     status: pb::WorkerStatusResponse_WorkerStatus,
     operation_status: pb::WorkerStatusResponse_OperationStatus,
 
@@ -35,7 +34,6 @@ impl Worker {
                 || "Invalid address when creating worker",
             )?,
 
-            scheduling_in_progress: false,
             status: pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
             operation_status: pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
 
@@ -48,15 +46,7 @@ impl Worker {
     }
 
     pub fn is_available_for_scheduling(&self) -> bool {
-        !self.scheduling_in_progress && self.current_task_id == ""
-    }
-
-    pub fn get_scheduling_in_progress(&self) -> bool {
-        self.scheduling_in_progress
-    }
-
-    pub fn set_scheduling_in_progress(&mut self, in_progress: bool) {
-        self.scheduling_in_progress = in_progress;
+        self.current_task_id == ""
     }
 
     pub fn get_worker_id(&self) -> &str {
@@ -118,6 +108,10 @@ impl Worker {
     pub fn set_completed_operation_flag(&mut self, val: bool) {
         self.completed_operation_flag = val;
     }
+
+    pub fn get_completed_operation_flag(&self) -> bool {
+        self.completed_operation_flag
+    }
 }
 
 #[derive(Default)]
@@ -140,6 +134,10 @@ impl WorkerManager {
             ids.push(worker.get_worker_id().to_owned());
         }
         ids
+    }
+
+    pub fn get_total_workers(&self) -> u32 {
+        self.workers.len() as u32
     }
 
     pub fn get_available_workers(&mut self) -> Vec<&mut Worker> {

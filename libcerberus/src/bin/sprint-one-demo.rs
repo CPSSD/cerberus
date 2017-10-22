@@ -9,14 +9,14 @@ use std::str::FromStr;
 struct WordCountMapper;
 impl Map for WordCountMapper {
     type Key = String;
-    type Value = u8;
+    type Value = String;
     fn map<E>(&self, input: MapInputKV, mut emitter: E) -> Result<()>
     where
         E: EmitIntermediate<Self::Key, Self::Value>,
     {
         for token in input.value.split(char::is_whitespace) {
             if !token.is_empty() {
-                emitter.emit(token.to_owned(), 1).chain_err(
+                emitter.emit(token.to_owned(), "1".to_owned()).chain_err(
                     || "Error emitting map key-value pair.",
                 )?;
             }
@@ -27,7 +27,7 @@ impl Map for WordCountMapper {
 
 struct WordCountReducer;
 impl Reduce for WordCountReducer {
-    type Value = u64;
+    type Value = String;
     fn reduce<E>(&self, input: ReduceInputKV, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
@@ -39,7 +39,7 @@ impl Reduce for WordCountReducer {
             })?;
             total += int_val;
         }
-        emitter.emit(total).chain_err(|| {
+        emitter.emit(total.to_string()).chain_err(|| {
             format!("Error emitting value {:?}.", total)
         })?;
         Ok(())

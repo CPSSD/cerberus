@@ -44,11 +44,15 @@ impl MapReduceScheduler {
     fn process_next_map_reduce(&mut self) -> Result<()> {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
+                map_reduce_job.set_status(MapReduceJobStatus::IN_PROGRESS);
                 self.map_reduce_in_progress = true;
                 self.in_progress_map_reduce_id =
                     Some(map_reduce_job.get_map_reduce_id().to_owned());
+
                 let map_tasks: Vec<MapReduceTask> =
                     self.task_processor.create_map_tasks(map_reduce_job)?;
+                map_reduce_job.set_map_tasks_total(map_tasks.len() as u32);
+
                 for task in map_tasks {
                     self.map_reduce_task_queue
                         .add_to_store(Box::new(task))
@@ -69,6 +73,9 @@ impl MapReduceScheduler {
     }
 
     pub fn get_map_reduce_job_queue_size(&self) -> usize {
+        if self.map_reduce_in_progress {
+            return self.map_reduce_job_queue.queue_size() + (1 as usize);
+        }
         self.map_reduce_job_queue.queue_size()
     }
 
@@ -130,7 +137,7 @@ impl MapReduceScheduler {
     fn create_reduce_tasks(&mut self, map_reduce_id: String) -> Result<()> {
         let map_reduce_job = self.map_reduce_job_queue
             .get_work_by_id_mut(&map_reduce_id)
-            .chain_err(|| "Error incrementing completeted map tasks.")?;
+            .chain_err(|| "Error creating reduce tasks.")?;
 
         let reduce_tasks = {
             let map_tasks = self.map_reduce_task_queue
@@ -158,6 +165,7 @@ impl MapReduceScheduler {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id)
                 .chain_err(|| "Error incrementing completeted map tasks.")?;
+
             let map_tasks_completed = map_reduce_job.get_map_tasks_completed() + 1;
             map_reduce_job.set_map_tasks_completed(map_tasks_completed);
             map_tasks_completed == map_reduce_job.get_map_tasks_total()
@@ -217,7 +225,7 @@ impl MapReduceScheduler {
             reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total()
         };
 
-        if completed_map_reduce {
+        if completed_map_reduce && self.map_reduce_job_queue.queue_size() > 0 {
             self.process_next_map_reduce().chain_err(
                 || "Error incrementing completed reduce tasks.",
             )?;
@@ -274,7 +282,6 @@ fn handle_assign_task_failure(
             let worker_option = worker_manager.get_worker(worker_id);
             match worker_option {
                 Some(worker) => {
-                    worker.set_scheduling_in_progress(false);
                     worker.set_current_task_id(String::new());
                     worker.set_current_task_type(None);
                     worker.set_operation_status(OperationStatus::UNKNOWN);
@@ -410,6 +417,7 @@ fn do_scheduling_loop_step(
     mut scheduler: MutexGuard<MapReduceScheduler>,
     mut worker_manager: MutexGuard<WorkerManager>,
 ) {
+    scheduler.set_available_workers(worker_manager.get_total_workers());
     let mut available_workers: Vec<&mut Worker> = worker_manager.get_available_workers();
     while scheduler.get_map_reduce_task_queue_size() > 0 {
         if available_workers.is_empty() {
@@ -436,7 +444,6 @@ fn do_scheduling_loop_step(
             }
         };
 
-        worker.set_scheduling_in_progress(true);
         worker.set_current_task_id(task.get_task_id());
         worker.set_current_task_type(Some(task.get_task_type()));
         worker.set_operation_status(OperationStatus::IN_PROGRESS);

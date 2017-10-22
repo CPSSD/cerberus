@@ -8,6 +8,7 @@ extern crate tls_api;
 extern crate uuid;
 extern crate protobuf;
 extern crate cerberus_proto;
+#[macro_use]
 extern crate serde_json;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
