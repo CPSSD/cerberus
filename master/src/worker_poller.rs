@@ -144,8 +144,8 @@ impl WorkerPoller {
     ) -> Result<()> {
         let worker_result = worker_manager.get_worker(poll.worker_id.as_str());
         match worker_result {
-            None => return Err("Unable to get worker".into()),
-            Some(mut worker) => {
+            None => Err("Unable to get worker".into()),
+            Some(worker) => {
                 worker.set_status(poll.worker_status);
                 worker.set_operation_status(poll.operation_status);
                 Ok(())
@@ -214,7 +214,7 @@ impl WorkerPoller {
             Ok(worker_info_list) => worker_info_list,
         };
 
-        if worker_info_list.len() == 0 {
+        if worker_info_list.is_empty() {
             return Ok(());
         }
 
