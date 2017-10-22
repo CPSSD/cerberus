@@ -2,8 +2,16 @@ use errors::*;
 use uuid::Uuid;
 use std::net::SocketAddr;
 use std::str::FromStr;
+use mapreduce_tasks::TaskType;
 
 use cerberus_proto::mrworker as pb;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum WorkerTaskType {
+    Map,
+    Reduce,
+    Idle,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Worker {
@@ -14,7 +22,10 @@ pub struct Worker {
     operation_status: pb::WorkerStatusResponse_OperationStatus,
 
     current_task_id: String,
+    current_task_type: WorkerTaskType,
     worker_id: String,
+
+    completed_operation_flag: bool,
 }
 
 impl Worker {
@@ -29,7 +40,10 @@ impl Worker {
             operation_status: pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
 
             current_task_id: String::new(),
+            current_task_type: WorkerTaskType::Idle,
             worker_id: Uuid::new_v4().to_string(),
+
+            completed_operation_flag: false,
         })
     }
 
@@ -69,15 +83,40 @@ impl Worker {
         self.status = status;
     }
 
+    pub fn get_current_task_type(&self) -> WorkerTaskType {
+        self.current_task_type.clone()
+    }
+
     pub fn set_operation_status(
         &mut self,
         operation_status: pb::WorkerStatusResponse_OperationStatus,
     ) {
+        if self.operation_status != pb::WorkerStatusResponse_OperationStatus::COMPLETE &&
+            operation_status == pb::WorkerStatusResponse_OperationStatus::COMPLETE
+        {
+            self.completed_operation_flag = true;
+        }
         self.operation_status = operation_status;
     }
 
     pub fn set_current_task_id<S: Into<String>>(&mut self, task_id: S) {
         self.current_task_id = task_id.into();
+    }
+
+    pub fn set_current_task_type(&mut self, task_type: Option<TaskType>) {
+        self.current_task_type = match task_type {
+            None => WorkerTaskType::Idle,
+            Some(task_type) => {
+                match task_type {
+                    TaskType::Map => WorkerTaskType::Map,
+                    TaskType::Reduce => WorkerTaskType::Reduce,
+                }
+            }
+        }
+    }
+
+    pub fn set_completed_operation_flag(&mut self, val: bool) {
+        self.completed_operation_flag = val;
     }
 }
 
@@ -93,6 +132,14 @@ impl WorkerManager {
 
     pub fn get_workers(&self) -> &Vec<Worker> {
         &self.workers
+    }
+
+    pub fn get_worker_ids(&self) -> Vec<String> {
+        let mut ids = Vec::new();
+        for worker in &self.workers {
+            ids.push(worker.get_worker_id().to_owned());
+        }
+        ids
     }
 
     pub fn get_available_workers(&mut self) -> Vec<&mut Worker> {
