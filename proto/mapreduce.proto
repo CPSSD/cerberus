@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package mapreduce;
+
+// Map reduce service is responsible for scheduling jobs on the cluster
+// and getting information about the running jobs.
+service MapReduceService {
+    // Schedules a map reduce. Returns various gRPC error codes if the
+    // operation failed before even starting.
+    // TODO(voy): Decide do we want to return more information about scheduled
+    //            request.
+    rpc PerformMapReduce (MapReduceRequest) returns (MapReduceResponse);
+
+    // Gets the status of the map reduce.
+    rpc MapReduceStatus (MapReduceStatusRequest) returns (MapReduceStatusResponse);
+
+
+    // Cluster Status checks.
+    rpc ClusterStatus (EmptyMessage) returns (ClusterStatusResponse);
+}
+
+// Empty message where there is nothing to be send or replied with.
+message EmptyMessage {}
+
+message MapReduceRequest {
+    // TODO(voy): Rename/Remove this field once we actually send a library.
+    string binary_path = 1;
+
+    // Location of the input data on an accessible filesystem.
+    string input_directory = 2;
+
+    // ID of the client. Generated to be used for easier recognising who is
+    // making the request. Generated on a single machine for now
+    // TODO(voy): Convert to unique identity once we have authentication.
+    string client_id = 3;
+}
+
+// Response from the master about the map reduce.
+message MapReduceResponse {
+    string mapreduce_id = 1;
+}
+
+message MapReduceStatusRequest {
+    // ID of the client. This is used to filter the responses from the master
+    // to only show map reduces scheduled by the client itself.
+    // THIS IS NOT AUTHENTICATION
+    string client_id = 1;
+
+    // Optionally instead of the client_id the specific ID of the map reduce
+    // can be given to get its status.
+    // TODO(voy): Add restrictions on the type of data that is returned if the
+    //            client performing the MapReduce is not the same as the client
+    //            requesting the status.
+    string mapreduce_id = 2;
+}
+
+// Response with the status of the requested map reduce.
+message MapReduceStatusResponse {
+    // TODO(voy): Consider unnesting this message.
+    message MapReduceReport {
+        enum Status {
+            UNKNOWN = 0;
+            DONE = 1;
+            IN_PROGRESS = 2;
+            IN_QUEUE = 3;
+            FAILED = 4;
+        };
+
+        string mapreduce_id = 1;
+        Status status = 2;
+        int64 queue_length = 3;
+        // Unix timestamp at which the MapReduce has been scheduled.
+        int64 scheduled_timestamp = 4;
+        // Unix timestamp at which the MapReduce has been started.
+        int64 started_timestamp = 5;
+        // Unix timestamp at which the MapReduce has been finished.
+        int64 done_timestamp = 6;
+    }
+
+    repeated MapReduceReport reports = 1;
+}
+
+message ClusterStatusResponse {
+    // Amount of workers in the cluster.
+    int64 workers = 1;
+    int64 queue_size = 2;
+}

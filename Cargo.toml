@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "cli",
+    "libcerberus",
+    "master",
+    "proto",
+    "worker"
+]
