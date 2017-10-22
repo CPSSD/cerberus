@@ -44,6 +44,7 @@ impl MapReduceScheduler {
     fn process_next_map_reduce(&mut self) -> Result<()> {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
+                map_reduce_job.set_status(MapReduceJobStatus::IN_PROGRESS);
                 self.map_reduce_in_progress = true;
                 self.in_progress_map_reduce_id =
                     Some(map_reduce_job.get_map_reduce_id().to_owned());
