@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs::File;
+use std::fs;
 use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
 use serde_json;
@@ -13,15 +14,15 @@ use protobuf::RepeatedField;
 use uuid::Uuid;
 use errors::*;
 
-const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/";
+const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/cerberus/";
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
-#[derive(Default)]
 pub struct OperationHandler {
     worker_status: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     operation_status: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
     map_result: Arc<Mutex<Option<MapResponse>>>,
     reduce_result: Arc<Mutex<Option<ReduceResponse>>>,
+    output_dir_uuid: String,
 }
 
 fn set_worker_status(
@@ -94,7 +95,10 @@ fn set_failed_status(
     }
 }
 
-fn parse_map_results(map_result_string: &str) -> Result<Vec<MapResponse_MapResult>> {
+fn parse_map_results(
+    map_result_string: &str,
+    output_dir: &str,
+) -> Result<Vec<MapResponse_MapResult>> {
     let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
@@ -119,7 +123,7 @@ fn parse_map_results(map_result_string: &str) -> Result<Vec<MapResponse_MapResul
 
             let file_name = Uuid::new_v4().to_string();
             let mut file_path = PathBuf::new();
-            file_path.push(WORKER_OUTPUT_DIRECTORY);
+            file_path.push(output_dir);
             file_path.push(&file_name);
 
             let mut map_result = MapResponse_MapResult::new();
@@ -166,6 +170,7 @@ fn log_reduce_operation_err(
 
 fn map_operation_thread_impl(
     map_input_value: &str,
+    output_dir: &str,
     mut child: Child,
     map_result_arc: Arc<Mutex<Option<MapResponse>>>,
 ) -> Result<()> {
@@ -185,7 +190,7 @@ fn map_operation_thread_impl(
         || "Error accessing payload output.",
     )?;
 
-    let map_results = parse_map_results(&output_str).chain_err(
+    let map_results = parse_map_results(&output_str, output_dir).chain_err(
         || "Error parsing map results.",
     )?;
 
@@ -204,6 +209,8 @@ fn map_operation_thread_impl(
 
 fn reduce_operation_thread_impl(
     reduce_input: &str,
+    reduce_intermediate_key: &str,
+    output_dir: &str,
     mut child: Child,
     reduce_result_arc: Arc<Mutex<Option<ReduceResponse>>>,
 ) -> Result<()> {
@@ -230,11 +237,9 @@ fn reduce_operation_thread_impl(
         || "Error prettifying reduce results",
     )?;
 
-    let file_name = Uuid::new_v4().to_string();
-
     let mut file_path = PathBuf::new();
-    file_path.push(WORKER_OUTPUT_DIRECTORY);
-    file_path.push(&file_name);
+    file_path.push(output_dir);
+    file_path.push(reduce_intermediate_key);
 
     let mut response = ReduceResponse::new();
     response.set_status(OperationStatus::SUCCESS);
@@ -260,7 +265,13 @@ fn reduce_operation_thread_impl(
 
 impl OperationHandler {
     pub fn new() -> Self {
-        Default::default()
+        OperationHandler {
+            worker_status: Arc::new(Mutex::new(WorkerStatusResponse_WorkerStatus::AVAILABLE)),
+            operation_status: Arc::new(Mutex::new(WorkerStatusResponse_OperationStatus::UNKNOWN)),
+            map_result: Arc::new(Mutex::new(None)),
+            reduce_result: Arc::new(Mutex::new(None)),
+            output_dir_uuid: Uuid::new_v4().to_string(),
+        }
     }
 
     pub fn get_worker_status(&self) -> WorkerStatusResponse_WorkerStatus {
@@ -319,15 +330,28 @@ impl OperationHandler {
         let worker_status_arc = Arc::clone(&self.worker_status);
         let map_result_arc = Arc::clone(&self.map_result);
 
-        let map_input =
-            format!(
-            "{{ \"key\": {}, \"value\": {} }}",
-            map_options.get_input_file_path(),
-            map_input_value,
-        );
+        let map_input = json!({
+            "key": map_options.get_input_file_path(),
+            "value": map_input_value,
+        });
+
+        let map_input_str = map_input.to_string();
+
+        let mut output_path = PathBuf::new();
+        output_path.push(WORKER_OUTPUT_DIRECTORY);
+        output_path.push(&self.output_dir_uuid);
+
+        fs::create_dir_all(output_path.clone()).chain_err(
+            || "Failed to create output directory",
+        )?;
 
         thread::spawn(move || {
-            let result = map_operation_thread_impl(&map_input, child, map_result_arc);
+            let result = map_operation_thread_impl(
+                &map_input_str,
+                &*output_path.to_string_lossy(),
+                child,
+                map_result_arc,
+            );
             match result {
                 Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
                 Err(err) => log_map_operation_err(&err, &worker_status_arc, &operation_status_arc),
@@ -370,16 +394,12 @@ impl OperationHandler {
             reduce_input_values.push(file_contents);
         }
 
-        let mut values_list_str = String::from("\"");
-        values_list_str.push_str(&reduce_input_values.join("\",\n\""));
-        values_list_str.push('"');
+        let reduce_json_input = json!({
+            "key": reduce_options.get_intermediate_key(),
+            "values": reduce_input_values,
+        });
 
-        let reduce_json_input =
-            format!(
-            "{{ \"key\": {}, \"values\": [{}] }}",
-            reduce_options.get_intermediate_key(),
-            values_list_str,
-        );
+        let reduce_input_str = reduce_json_input.to_string();
 
         let worker_status_result = self.worker_status.lock();
         let operation_status_result = self.operation_status.lock();
@@ -408,8 +428,22 @@ impl OperationHandler {
         let worker_status_arc = Arc::clone(&self.worker_status);
         let reduce_result_arc = Arc::clone(&self.reduce_result);
 
+        let mut output_path = PathBuf::new();
+        output_path.push(WORKER_OUTPUT_DIRECTORY);
+        output_path.push(&self.output_dir_uuid);
+
+        fs::create_dir_all(output_path.clone()).chain_err(
+            || "Failed to create output directory",
+        )?;
+
         thread::spawn(move || {
-            let result = reduce_operation_thread_impl(&reduce_json_input, child, reduce_result_arc);
+            let result = reduce_operation_thread_impl(
+                &reduce_input_str,
+                &reduce_options.get_intermediate_key(),
+                &*output_path.to_string_lossy(),
+                child,
+                reduce_result_arc,
+            );
             match result {
                 Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
                 Err(err) => {
