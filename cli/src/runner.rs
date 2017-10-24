@@ -69,24 +69,24 @@ pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) ->
     Ok(())
 }
 
-fn print_table(rep: &pb::MapReduceStatusResponse_MapReduceReport) {
+fn print_table(rep: &pb::MapReduceReport) {
     let id = rep.get_mapreduce_id();
 
     let status: String = match rep.get_status() {
-        pb::MapReduceStatusResponse_MapReduceReport_Status::UNKNOWN => "UNKNOWN".to_owned(),
-        pb::MapReduceStatusResponse_MapReduceReport_Status::DONE => {
+        pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
+        pb::Status::DONE => {
             format!("DONE ({})", get_time_offset(rep.get_done_timestamp()))
         }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_PROGRESS => {
+        pb::Status::IN_PROGRESS => {
             format!(
                 "IN_PROGRESS ({})",
                 get_time_offset(rep.get_started_timestamp())
             )
         }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_QUEUE => {
+        pb::Status::IN_QUEUE => {
             format!("IN_QUEUE ({})", rep.get_queue_length())
         }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::FAILED => "FAILED".to_owned(),
+        pb::Status::FAILED => "FAILED".to_owned(),
     };
 
     table!(["MRID", id], ["Status", status]).printstd();

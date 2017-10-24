@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use worker_interface::WorkerInterface;
 use worker_manager::{Worker, WorkerManager};
 
-use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
+use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
 use cerberus_proto::mrworker as pb;
 

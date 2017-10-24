@@ -56,28 +56,27 @@ message MapReduceStatusRequest {
 
 // Response with the status of the requested map reduce.
 message MapReduceStatusResponse {
-    // TODO(voy): Consider unnesting this message.
-    message MapReduceReport {
-        enum Status {
-            UNKNOWN = 0;
-            DONE = 1;
-            IN_PROGRESS = 2;
-            IN_QUEUE = 3;
-            FAILED = 4;
-        };
-
-        string mapreduce_id = 1;
-        Status status = 2;
-        int64 queue_length = 3;
-        // Unix timestamp at which the MapReduce has been scheduled.
-        int64 scheduled_timestamp = 4;
-        // Unix timestamp at which the MapReduce has been started.
-        int64 started_timestamp = 5;
-        // Unix timestamp at which the MapReduce has been finished.
-        int64 done_timestamp = 6;
-    }
-
     repeated MapReduceReport reports = 1;
+}
+
+enum Status {
+    UNKNOWN = 0;
+    DONE = 1;
+    IN_PROGRESS = 2;
+    IN_QUEUE = 3;
+    FAILED = 4;
+};
+
+message MapReduceReport {
+    string mapreduce_id = 1;
+    Status status = 2;
+    int64 queue_length = 3;
+    // Unix timestamp at which the MapReduce has been scheduled.
+    int64 scheduled_timestamp = 4;
+    // Unix timestamp at which the MapReduce has been started.
+    int64 started_timestamp = 5;
+    // Unix timestamp at which the MapReduce has been finished.
+    int64 done_timestamp = 6;
 }
 
 message ClusterStatusResponse {
