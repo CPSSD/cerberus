@@ -15,26 +15,31 @@ const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 
+use errors::*;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
 use worker_interface::WorkerInterface;
 use mrworkerservice::MRWorkerServiceImpl;
 use operation_handler::OperationHandler;
 
-fn main() {
+fn run() -> Result<()> {
     println!("Cerberus Worker!");
-    env_logger::init().unwrap();
+    env_logger::init().chain_err(
+        || "Failed to initialise logging.",
+    )?;
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
     let worker_service_impl = MRWorkerServiceImpl::new(operation_handler);
-    let worker_server_interface = WorkerInterface::new(worker_service_impl).unwrap();
+    let worker_server_interface = WorkerInterface::new(worker_service_impl).chain_err(
+        || "Error building worker interface.",
+    )?;
 
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
         match worker_server_interface.register_worker() {
             Err(err) => {
                 if retries == 0 {
-                    panic!(err);
+                    return Err(err.chain_err(|| "Error registering worker with master"));
                 }
             }
             Ok(_) => break,
@@ -51,10 +56,14 @@ fn main() {
 
         let server = worker_server_interface.get_server();
         if !server.is_alive() {
-            break;
+            return Err("Worker interface server has unexpectingly died.".into());
         }
     }
 }
+
+// Macro to generate a quick error_chain main function.
+// https://github.com/rust-lang-nursery/error-chain/blob/master/examples/quickstart.rs
+quick_main!(run);
 
 mod errors {
     error_chain! {
