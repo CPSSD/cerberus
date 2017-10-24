@@ -6,7 +6,6 @@ use mapreduce_job::MapReduceJob;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
-use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport as MapReduceReport;
 
 const SCHEDULER_BUSY: &'static str = "Scheduler busy";
 const JOB_SCHEDULE_ERROR: &'static str = "Unable to schedule mapreduce job";
@@ -73,7 +72,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                 }
 
                 for job in jobs {
-                    let mut report = MapReduceReport::new();
+                    let mut report = pb::MapReduceReport::new();
                     report.mapreduce_id = job.get_map_reduce_id().to_owned();
                     report.status = job.get_status().to_owned();
 
@@ -113,7 +112,7 @@ mod tests {
     use errors::*;
     use mapreduce_job::MapReduceJob;
     use mapreduce_tasks::{MapReduceTask, TaskProcessorTrait};
-    use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceStatus;
+    use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
 
     struct NullTaskProcessor;

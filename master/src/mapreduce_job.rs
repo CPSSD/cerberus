@@ -1,7 +1,7 @@
 use uuid::Uuid;
 use queued_work_store::QueuedWork;
 
-use cerberus_proto::mapreduce::MapReduceStatusResponse_MapReduceReport_Status as MapReduceJobStatus;
+use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 
 /// The `MapReduceJob` is a struct that represents a `MapReduce` job submitted by a client.
 #[derive(Clone)]
