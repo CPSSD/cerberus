@@ -1,8 +1,8 @@
 use errors::*;
 use grpc::{Server, ServerBuilder, RequestOptions};
 use std::collections::HashMap;
-use worker_registration_service::WorkerRegistrationServiceImpl;
-use worker_manager::Worker;
+use worker_communication::WorkerRegistrationServiceImpl;
+use worker_management::Worker;
 
 use cerberus_proto::mrworker as pb;
 use cerberus_proto::mrworker_grpc as grpc_pb;
