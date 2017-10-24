@@ -1,8 +1,8 @@
 use errors::*;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::{thread, time};
-use worker_manager::{WorkerTaskType, WorkerManager};
-use worker_interface::WorkerInterface;
+use worker_management::{WorkerTaskType, WorkerManager};
+use worker_communication::WorkerInterface;
 use cerberus_proto::mrworker::*;
 use scheduler::MapReduceScheduler;
 

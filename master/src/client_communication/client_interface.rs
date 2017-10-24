@@ -1,7 +1,7 @@
 use errors::*;
 use grpc::{ServerBuilder, Server};
 
-use mapreduce_service::MapReduceServiceImpl;
+use client_communication::MapReduceServiceImpl;
 
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 

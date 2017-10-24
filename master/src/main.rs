@@ -10,13 +10,13 @@ extern crate uuid;
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
 use mapreduce_tasks::TaskProcessor;
-use worker_manager::WorkerManager;
-use worker_registration_service::WorkerRegistrationServiceImpl;
-use worker_interface::{WorkerInterface, WorkerRegistrationInterface};
-use mapreduce_service::MapReduceServiceImpl;
-use client_interface::ClientInterface;
+use worker_management::WorkerManager;
+use worker_communication::WorkerRegistrationServiceImpl;
+use worker_communication::{WorkerInterface, WorkerRegistrationInterface};
+use client_communication::MapReduceServiceImpl;
+use client_communication::ClientInterface;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
-use worker_poller::{WorkerPoller, run_polling_loop};
+use worker_management::{WorkerPoller, run_polling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -79,13 +79,10 @@ mod errors {
     }
 }
 
-pub mod client_interface;
+pub mod mapreduce_tasks;
 pub mod scheduler;
 pub mod queued_work_store;
 pub mod mapreduce_job;
-pub mod mapreduce_tasks;
-pub mod mapreduce_service;
-pub mod worker_interface;
-pub mod worker_manager;
-pub mod worker_poller;
-pub mod worker_registration_service;
+pub mod client_communication;
+pub mod worker_communication;
+pub mod worker_management;
