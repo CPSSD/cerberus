@@ -1,4 +1,5 @@
 use cerberus_proto::mrworker::*;
+use std::collections::HashMap;
 use std::thread;
 use std::path::PathBuf;
 use std::io::BufReader;
@@ -10,7 +11,6 @@ use std::process::{Child, Command, Stdio};
 use serde_json;
 use serde_json::Value;
 use serde_json::Value::Array;
-use protobuf::RepeatedField;
 use uuid::Uuid;
 use errors::*;
 
@@ -99,12 +99,13 @@ fn set_failed_status(
 fn parse_map_results(
     map_result_string: &str,
     output_dir: &str,
-) -> Result<Vec<MapResponse_MapResult>> {
+) -> Result<HashMap<String, String>> {
     let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 
-    let mut map_results: Vec<MapResponse_MapResult> = Vec::new();
+    // let mut map_results: Vec<MapResponse_MapResult> = Vec::new();
+    let mut map_results = HashMap::new();
 
     if let Array(ref pairs) = parse_value["pairs"] {
         for value in pairs {
@@ -127,18 +128,14 @@ fn parse_map_results(
             file_path.push(output_dir);
             file_path.push(&file_name);
 
-            let mut map_result = MapResponse_MapResult::new();
-            map_result.set_key(key.to_owned());
-            map_result.set_output_file_path((*file_path.to_string_lossy()).to_owned());
-
-            let mut file = File::create(file_path).chain_err(
+            let mut file = File::create(&file_path).chain_err(
                 || "Failed to create map output file.",
             )?;
             file.write_all(value.as_bytes()).chain_err(
                 || "Failed to write to map output file.",
             )?;
 
-            map_results.push(map_result);
+            map_results.insert(key.to_owned(), (*file_path.to_string_lossy()).to_owned());
         }
     }
 
@@ -191,7 +188,7 @@ fn map_operation_thread_impl(
 
     let mut response = MapResponse::new();
     response.set_status(OperationStatus::SUCCESS);
-    response.set_map_results(RepeatedField::from_vec(map_results));
+    response.set_map_results(map_results);
 
     match map_result_arc.lock() {
         Ok(mut map_result) => {

@@ -192,11 +192,8 @@ impl MapReduceScheduler {
                     .chain_err(|| "Error marking map task as completed.")?;
 
                 map_task.set_status(MapReduceTaskStatus::Complete);
-                for map_result in map_response.get_map_results() {
-                    map_task.push_output_file(
-                        map_result.get_key(),
-                        map_result.get_output_file_path(),
-                    );
+                for (key, file_path) in map_response.get_map_results() {
+                    map_task.push_output_file(key.to_owned(), file_path.to_owned());
                 }
                 map_task.get_map_reduce_id().to_owned()
             };
