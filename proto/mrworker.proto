@@ -16,17 +16,17 @@ message RegisterWorkerRequest {
     string worker_address = 1;
 }
 
-// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once 
+// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once
 //              in the future.
 service MRWorkerService {
     // Returns the status of a worker, is an operation in progress or if the worker is available.
     rpc WorkerStatus (EmptyMessage) returns (WorkerStatusResponse);
-    
+
     // Tells a worker to start a map operation with a certain set of data.
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
 
-    // Returns the result of the completed map operation. 
+    // Returns the result of the completed map operation.
     // Throws an error if an operation is in progress or the last operation was not a map operation.
     rpc GetMapResult (EmptyMessage) returns (MapResponse);
 
@@ -34,7 +34,7 @@ service MRWorkerService {
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
 
-    // Returns the result of the completed reduce operation. 
+    // Returns the result of the completed reduce operation.
     // Throws an error if an operation is in progress or the last operation was not a reduce operation.
     rpc GetReduceResult (EmptyMessage) returns (ReduceResponse);
 }
@@ -68,13 +68,9 @@ message PerformMapRequest {
 }
 
 message MapResponse {
-    message MapResult {
-        string key = 1;
-        string output_file_path = 2;
-    }
     OperationStatus status  = 1;
     // The mapping of result keys to output files if the operation is a success.
-    repeated MapResult map_results = 2;
+    map<string, string> map_results = 2;
 }
 
 message PerformReduceRequest {
