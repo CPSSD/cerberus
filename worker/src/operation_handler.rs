@@ -17,6 +17,7 @@ use errors::*;
 const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/cerberus/";
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
+#[derive(Default)]
 pub struct OperationHandler {
     worker_status: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     operation_status: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
@@ -26,7 +27,7 @@ pub struct OperationHandler {
 }
 
 fn set_worker_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
+    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     status: WorkerStatusResponse_WorkerStatus,
 ) -> Result<()> {
     let worker_status_result = worker_status_arc.lock();
@@ -40,7 +41,7 @@ fn set_worker_status(
 }
 
 fn set_operation_status(
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
+    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
     status: WorkerStatusResponse_OperationStatus,
 ) -> Result<()> {
     let operation_status_result = operation_status_arc.lock();
@@ -54,8 +55,8 @@ fn set_operation_status(
 }
 
 fn set_complete_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
+    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
+    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
     let worker_status_result = set_worker_status(
         worker_status_arc,
@@ -75,8 +76,8 @@ fn set_complete_status(
 }
 
 fn set_failed_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
+    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
+    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
     let worker_status_result = set_worker_status(
         worker_status_arc,
@@ -150,10 +151,7 @@ fn log_map_operation_err(
     operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
     error!("Map thread error: {}", err);
-    self::set_failed_status(
-        Arc::clone(worker_status_arc),
-        Arc::clone(operation_status_arc),
-    );
+    self::set_failed_status(worker_status_arc, operation_status_arc);
 }
 
 fn log_reduce_operation_err(
@@ -162,17 +160,14 @@ fn log_reduce_operation_err(
     operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
     error!("Reduce thread error: {}", err);
-    self::set_failed_status(
-        Arc::clone(worker_status_arc),
-        Arc::clone(operation_status_arc),
-    );
+    self::set_failed_status(worker_status_arc, operation_status_arc);
 }
 
 fn map_operation_thread_impl(
     map_input_value: &str,
     output_dir: &str,
     mut child: Child,
-    map_result_arc: Arc<Mutex<Option<MapResponse>>>,
+    map_result_arc: &Arc<Mutex<Option<MapResponse>>>,
 ) -> Result<()> {
     if let Some(stdin) = child.stdin.as_mut() {
         stdin.write_all(map_input_value.as_bytes()).chain_err(
@@ -212,7 +207,7 @@ fn reduce_operation_thread_impl(
     reduce_intermediate_key: &str,
     output_dir: &str,
     mut child: Child,
-    reduce_result_arc: Arc<Mutex<Option<ReduceResponse>>>,
+    reduce_result_arc: &Arc<Mutex<Option<ReduceResponse>>>,
 ) -> Result<()> {
     if let Some(stdin) = child.stdin.as_mut() {
         stdin.write_all(reduce_input.as_bytes()).chain_err(
@@ -351,10 +346,10 @@ impl OperationHandler {
                 &map_input_str,
                 &*output_path.to_string_lossy(),
                 child,
-                map_result_arc,
+                &map_result_arc,
             );
             match result {
-                Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
+                Ok(_) => self::set_complete_status(&worker_status_arc, &operation_status_arc),
                 Err(err) => log_map_operation_err(&err, &worker_status_arc, &operation_status_arc),
             }
         });
@@ -441,13 +436,13 @@ impl OperationHandler {
         thread::spawn(move || {
             let result = reduce_operation_thread_impl(
                 &reduce_input_str,
-                &reduce_options.get_intermediate_key(),
+                reduce_options.get_intermediate_key(),
                 &*output_path.to_string_lossy(),
                 child,
-                reduce_result_arc,
+                &reduce_result_arc,
             );
             match result {
-                Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
+                Ok(_) => self::set_complete_status(&worker_status_arc, &operation_status_arc),
                 Err(err) => {
                     log_reduce_operation_err(&err, &worker_status_arc, &operation_status_arc)
                 }
