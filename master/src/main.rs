@@ -9,6 +9,7 @@ extern crate uuid;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
+use errors::*;
 use mapreduce_tasks::TaskProcessor;
 use worker_management::WorkerManager;
 use worker_communication::WorkerRegistrationServiceImpl;
@@ -20,8 +21,11 @@ use worker_management::{WorkerPoller, run_polling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
 
-fn main() {
-    env_logger::init().unwrap();
+
+fn run() -> Result<()> {
+    env_logger::init().chain_err(
+        || "Failed to initialise logging.",
+    )?;
 
     let task_processor = TaskProcessor;
     let map_reduce_scheduler = Arc::new(Mutex::new(
@@ -35,11 +39,14 @@ fn main() {
         Arc::clone(&worker_interface),
     );
     let worker_registration_interface =
-        WorkerRegistrationInterface::new(worker_registration_service).unwrap();
+        WorkerRegistrationInterface::new(worker_registration_service)
+            .chain_err(|| "Error building worker registration service.")?;
 
     // Cli to Master Communications
     let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
-    let client_interface = ClientInterface::new(mapreduce_service).unwrap();
+    let client_interface = ClientInterface::new(mapreduce_service).chain_err(
+        || "Error building client interface.",
+    )?;
 
     run_scheduling_loop(
         Arc::clone(&worker_interface),
@@ -60,15 +67,19 @@ fn main() {
         // TODO: Merge the client_interface and worker_registration_interface into one server.
         let server = client_interface.get_server();
         if !server.is_alive() {
-            break;
+            return Err("Client interface server unexpectantly died".into());
         }
 
         let server = worker_registration_interface.get_server();
         if !server.is_alive() {
-            break;
+            return Err("Client interface server unexpectantly died".into());
         }
     }
 }
+
+// Macro to generate a quick error_chain main function.
+// https://github.com/rust-lang-nursery/error-chain/blob/master/examples/quickstart.rs
+quick_main!(run);
 
 mod errors {
     error_chain! {
