@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use scheduler::MapReduceScheduler;
 use worker_communication::WorkerInterface;
 use worker_management::{Worker, WorkerManager};
+use util::output_error;
 
 use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
 use cerberus_proto::mrworker as pb;
@@ -66,7 +67,7 @@ fn assign_worker_map_task(
             Ok(worker_interface) => {
                 let result = worker_interface.schedule_map(map_task, &worker_id);
                 if let Err(err) = result {
-                    error!("Error assigning worker task: {}", err);
+                    output_error(&err.chain_err(|| "Error assigning worker task."));
                     handle_assign_task_failure(&scheduler_resources, &worker_id, &task_id);
                 }
             }
@@ -90,7 +91,7 @@ fn assign_worker_reduce_task(
             Ok(worker_interface) => {
                 let result = worker_interface.schedule_reduce(reduce_task, &worker_id);
                 if let Err(err) = result {
-                    error!("Error assigning worker task: {}", err);
+                    output_error(&err.chain_err(|| "Error assigning worker task."));
                     handle_assign_task_failure(&scheduler_resources, &worker_id, &task_id);
                 }
             }
