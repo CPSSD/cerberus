@@ -504,28 +504,39 @@ pub fn run_scheduling_loop(
 mod tests {
     use super::*;
     use mapreduce_tasks::TaskType;
+    use queued_work_store::QueuedWork;
 
     struct TaskProcessorStub {
-        map_reduce_tasks: Vec<MapReduceTask>,
+        map_tasks: Vec<MapReduceTask>,
+        reduce_tasks: Vec<MapReduceTask>,
+    }
+
+    impl TaskProcessorStub {
+        fn new(map_tasks: Vec<MapReduceTask>, reduce_tasks: Vec<MapReduceTask>) -> Self {
+            TaskProcessorStub {
+                map_tasks: map_tasks,
+                reduce_tasks: reduce_tasks,
+            }
+        }
     }
 
     impl TaskProcessorTrait for TaskProcessorStub {
         fn create_map_tasks(&self, _map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
-            Ok(self.map_reduce_tasks.clone())
+            Ok(self.map_tasks.clone())
         }
         fn create_reduce_tasks(
             &self,
             _map_reduce_job: &MapReduceJob,
             _completed_map_tasks: &[&MapReduceTask],
         ) -> Result<Vec<MapReduceTask>> {
-            Ok(Vec::new())
+            Ok(self.reduce_tasks.clone())
         }
     }
 
 
     fn create_map_reduce_scheduler() -> MapReduceScheduler {
-        MapReduceScheduler::new(Box::new(TaskProcessorStub {
-            map_reduce_tasks: vec![
+        MapReduceScheduler::new(Box::new(TaskProcessorStub::new(
+            vec![
                 MapReduceTask::new(
                     TaskType::Map,
                     "map-reduce1",
@@ -534,7 +545,8 @@ mod tests {
                     vec!["input-1".to_owned()]
                 ).unwrap(),
             ],
-        }))
+            Vec::new(),
+        )))
     }
 
     #[test]
@@ -561,5 +573,135 @@ mod tests {
             .schedule_map_reduce(MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input"))
             .unwrap();
         assert!(map_reduce_scheduler.get_map_reduce_in_progress());
+    }
+
+    #[test]
+    fn test_process_completed_task() {
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input");
+        let map_task1 = MapReduceTask::new(
+            TaskType::Map,
+            map_reduce_job.get_map_reduce_id(),
+            "/tmp/bin",
+            None,
+            vec!["input-1".to_owned()],
+        ).unwrap();
+
+        let mut map_response = pb::MapResponse::new();
+        map_response.set_status(pb::OperationStatus::SUCCESS);
+
+        let mut map_result1 = pb::MapResponse_MapResult::new();
+        map_result1.set_key("key-1".to_owned());
+        map_result1.set_output_file_path("/tmp/worker/intermediate1".to_owned());
+
+        let mut map_result2 = pb::MapResponse_MapResult::new();
+        map_result2.set_key("key-2".to_owned());
+        map_result2.set_output_file_path("/tmp/worker/intermediate2".to_owned());
+
+        map_response.mut_map_results().push(map_result1);
+        map_response.mut_map_results().push(map_result2);
+
+        let reduce_task1 = MapReduceTask::new(
+            TaskType::Reduce,
+            map_reduce_job.get_map_reduce_id(),
+            "/tmp/bin",
+            Some("key-1".to_owned()),
+            vec!["/tmp/worker/intermediate1".to_owned()],
+        ).unwrap();
+
+        let mut reduce_response1 = pb::ReduceResponse::new();
+        reduce_response1.set_status(pb::OperationStatus::SUCCESS);
+        reduce_response1.set_output_file_path("/tmp/worker/key-2".to_owned());
+
+        let reduce_task2 = MapReduceTask::new(
+            TaskType::Reduce,
+            map_reduce_job.get_map_reduce_id(),
+            "/tmp/bin",
+            Some("key-2".to_owned()),
+            vec!["/tmp/worker/intermediate2".to_owned()],
+        ).unwrap();
+
+        let mut reduce_response2 = pb::ReduceResponse::new();
+        reduce_response2.set_status(pb::OperationStatus::SUCCESS);
+        reduce_response2.set_output_file_path("/tmp/worker/key-2".to_owned());
+
+        let mock_map_tasks = vec![map_task1.clone()];
+        let mock_reduce_tasks = vec![reduce_task1.clone(), reduce_task2.clone()];
+
+        let mut map_reduce_scheduler = MapReduceScheduler::new(Box::new(
+            TaskProcessorStub::new(mock_map_tasks, mock_reduce_tasks),
+        ));
+        map_reduce_scheduler
+            .schedule_map_reduce(map_reduce_job.clone())
+            .unwrap();
+
+        // Assert that the scheduler state starts as good.
+        assert_eq!(
+            map_reduce_job.get_map_reduce_id(),
+            map_reduce_scheduler
+                .get_in_progress_map_reduce_id()
+                .unwrap()
+        );
+        assert_eq!(1, map_reduce_scheduler.map_reduce_task_queue.queue_size());
+
+        map_reduce_scheduler.pop_queued_map_reduce_task().unwrap();
+
+        // Process response for map task
+        map_reduce_scheduler
+            .process_map_task_response(map_task1.get_task_id().to_owned(), map_response)
+            .unwrap();
+
+        {
+            let map_reduce_job = map_reduce_scheduler
+                .map_reduce_job_queue
+                .get_work_by_id(&map_reduce_job.get_work_id())
+                .unwrap();
+
+            let map_task1 = map_reduce_scheduler
+                .map_reduce_task_queue
+                .get_work_by_id(&map_task1.get_work_id())
+                .unwrap();
+
+            assert_eq!(1, map_reduce_job.get_map_tasks_completed());
+            assert_eq!(MapReduceTaskStatus::Complete, map_task1.get_status());
+            assert_eq!(
+                vec![
+                    ("key-1".to_owned(), "/tmp/worker/intermediate1".to_owned()),
+                    ("key-2".to_owned(), "/tmp/worker/intermediate2".to_owned()),
+                ],
+                map_task1.get_output_files()
+            );
+            assert_eq!(2, map_reduce_scheduler.map_reduce_task_queue.queue_size());
+        }
+
+        map_reduce_scheduler.pop_queued_map_reduce_task().unwrap();
+        map_reduce_scheduler.pop_queued_map_reduce_task().unwrap();
+
+        // Process response for reduce tasks
+        map_reduce_scheduler
+            .process_reduce_task_response(reduce_task1.get_task_id().to_owned(), reduce_response1)
+            .unwrap();
+        map_reduce_scheduler
+            .process_reduce_task_response(reduce_task2.get_task_id().to_owned(), reduce_response2)
+            .unwrap();
+
+        let map_reduce_job = map_reduce_scheduler
+            .map_reduce_job_queue
+            .get_work_by_id(&map_reduce_job.get_work_id())
+            .unwrap();
+
+        let reduce_task1 = map_reduce_scheduler
+            .map_reduce_task_queue
+            .get_work_by_id(&reduce_task1.get_work_id())
+            .unwrap();
+
+        let reduce_task2 = map_reduce_scheduler
+            .map_reduce_task_queue
+            .get_work_by_id(&reduce_task2.get_work_id())
+            .unwrap();
+
+        assert_eq!(2, map_reduce_job.get_reduce_tasks_completed());
+        assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.get_status());
+        assert_eq!(MapReduceTaskStatus::Complete, reduce_task2.get_status());
+        assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.get_status());
     }
 }
