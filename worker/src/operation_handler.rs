@@ -13,6 +13,7 @@ use serde_json::Value::Array;
 use protobuf::RepeatedField;
 use uuid::Uuid;
 use errors::*;
+use util::output_error;
 
 const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/cerberus/";
 
@@ -68,10 +69,14 @@ fn set_complete_status(
     );
 
     if let Err(err) = worker_status_result {
-        error!("Error setting complete status for operation: {}", err);
+        output_error(&err.chain_err(
+            || "Error setting completed status for operation.",
+        ));
     }
     if let Err(err) = operation_status_result {
-        error!("Error setting complete status for operation: {}", err);
+        output_error(&err.chain_err(
+            || "Error setting completed status for operation.",
+        ));
     }
 }
 
@@ -89,10 +94,14 @@ fn set_failed_status(
     );
 
     if let Err(err) = worker_status_result {
-        error!("Error setting failed status for operation: {}", err);
+        output_error(&err.chain_err(
+            || "Error setting failed status for operation.",
+        ));
     }
     if let Err(err) = operation_status_result {
-        error!("Error setting failed status for operation: {}", err);
+        output_error(&err.chain_err(
+            || "Error setting failed status for operation.",
+        ));
     }
 }
 
@@ -146,20 +155,20 @@ fn parse_map_results(
 }
 
 fn log_map_operation_err(
-    err: &Error,
+    err: Error,
     worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
-    error!("Map thread error: {}", err);
+    output_error(&err.chain_err(|| "Error running map operation."));
     self::set_failed_status(worker_status_arc, operation_status_arc);
 }
 
 fn log_reduce_operation_err(
-    err: &Error,
+    err: Error,
     worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
     operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
 ) {
-    error!("Reduce thread error: {}", err);
+    output_error(&err.chain_err(|| "Error running reduce operation."));
     self::set_failed_status(worker_status_arc, operation_status_arc);
 }
 
@@ -350,7 +359,7 @@ impl OperationHandler {
             );
             match result {
                 Ok(_) => self::set_complete_status(&worker_status_arc, &operation_status_arc),
-                Err(err) => log_map_operation_err(&err, &worker_status_arc, &operation_status_arc),
+                Err(err) => log_map_operation_err(err, &worker_status_arc, &operation_status_arc),
             }
         });
 
@@ -444,7 +453,7 @@ impl OperationHandler {
             match result {
                 Ok(_) => self::set_complete_status(&worker_status_arc, &operation_status_arc),
                 Err(err) => {
-                    log_reduce_operation_err(&err, &worker_status_arc, &operation_status_arc)
+                    log_reduce_operation_err(err, &worker_status_arc, &operation_status_arc)
                 }
             }
         });

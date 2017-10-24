@@ -74,6 +74,7 @@ mod errors {
     }
 }
 
+pub mod util;
 pub mod worker_interface;
 pub mod mrworkerservice;
 pub mod operation_handler;
