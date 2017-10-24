@@ -1,5 +1,10 @@
 pipeline {
-    agent { docker 'goldenbadger/cerberus-ci' }
+    agent { 
+        docker {
+            image 'goldenbadger/cerberus-ci'
+            args '-v $HOME/.cargo:/root/.cargo'
+        }
+    }
     stages {
         stage('build') {
             steps {
