@@ -7,6 +7,9 @@
 # Unignore Dockerfile
 !Dockerfile
 
+# Unignore Jenkinsfile
+!Jenkinsfile
+
 # Unignore all dirs
 !*/
 

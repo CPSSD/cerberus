@@ -1,7 +1,0 @@
-pipeline:
-    test:
-        image: goldenbadger/cerberus-ci
-        pull: true
-        commands:
-            - cargo build --all
-            - cargo test --all
