@@ -1,4 +1,3 @@
-use errors::*;
 use uuid::Uuid;
 use queued_work_store::QueuedWork;
 
@@ -38,60 +37,56 @@ pub struct MapReduceTask {
 }
 
 impl MapReduceTask {
-    pub fn new<S: Into<String>>(
-        task_type: TaskType,
-        map_reduce_id: S,
-        binary_path: S,
-        input_key: Option<String>,
-        input_files: Vec<String>,
-    ) -> Result<Self> {
-        if input_files.is_empty() {
-            return Err("Input files cannot be empty".into());
-        }
-        let mut map_request: Option<pb::PerformMapRequest> = None;
-        let mut reduce_request: Option<pb::PerformReduceRequest> = None;
-        match task_type {
-            TaskType::Reduce => {
-                let key = {
-                    match input_key {
-                        Some(key) => key,
-                        None => return Err("Input key cannot be None for reduce task".into()),
-                    }
-                };
-                let mut reduce_req = pb::PerformReduceRequest::new();
-                reduce_req.set_intermediate_key(key);
-                for input_file in input_files {
-                    reduce_req.mut_input_file_paths().push(input_file);
-                }
-                reduce_req.set_reducer_file_path(binary_path.into());
-                reduce_request = Some(reduce_req);
-            }
-            TaskType::Map => {
-                if input_files.len() != 1 {
-                    return Err("Map task can only have one input file".into());
-                }
-
-                let mut map_req = pb::PerformMapRequest::new();
-                map_req.set_input_file_path(input_files[0].clone());
-                map_req.set_mapper_file_path(binary_path.into());
-                map_request = Some(map_req);
-            }
-        }
+    pub fn new_map_task<S: Into<String>>(map_reduce_id: S, binary_path: S, input_file: S) -> Self {
+        let mut map_request = pb::PerformMapRequest::new();
+        map_request.set_input_file_path(input_file.into());
+        map_request.set_mapper_file_path(binary_path.into());
 
         let task_id = Uuid::new_v4();
-        Ok(MapReduceTask {
-            task_type: task_type,
+        MapReduceTask {
+            task_type: TaskType::Map,
             map_reduce_id: map_reduce_id.into(),
             task_id: task_id.to_string(),
 
-            perform_map_request: map_request,
-            perform_reduce_request: reduce_request,
+            perform_map_request: Some(map_request),
+            perform_reduce_request: None,
 
             output_files: Vec::new(),
 
             assigned_worker_id: String::new(),
             status: MapReduceTaskStatus::Queued,
-        })
+        }
+    }
+
+    pub fn new_reduce_task<S: Into<String>>(
+        map_reduce_id: S,
+        binary_path: S,
+        input_key: S,
+        input_files: Vec<String>,
+        output_directory: S,
+    ) -> Self {
+        let mut reduce_request = pb::PerformReduceRequest::new();
+        reduce_request.set_intermediate_key(input_key.into());
+        for input_file in input_files {
+            reduce_request.mut_input_file_paths().push(input_file);
+        }
+        reduce_request.set_reducer_file_path(binary_path.into());
+        reduce_request.set_output_directory(output_directory.into());
+
+        let task_id = Uuid::new_v4();
+        MapReduceTask {
+            task_type: TaskType::Reduce,
+            map_reduce_id: map_reduce_id.into(),
+            task_id: task_id.to_string(),
+
+            perform_map_request: None,
+            perform_reduce_request: Some(reduce_request),
+
+            output_files: Vec::new(),
+
+            assigned_worker_id: String::new(),
+            status: MapReduceTaskStatus::Queued,
+        }
     }
 
     pub fn get_task_type(&self) -> TaskType {
@@ -160,21 +155,15 @@ mod tests {
     // MapReduceTask Tests
     #[test]
     fn test_get_task_type() {
-        let map_task = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
+        let map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
 
-        let reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("intermediate-key".to_owned()),
+            "intermediate-key",
             vec!["/tmp/input/".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
 
         assert_eq!(map_task.get_task_type(), TaskType::Map);
         assert_eq!(reduce_task.get_task_type(), TaskType::Reduce);
@@ -182,25 +171,13 @@ mod tests {
 
     #[test]
     fn test_get_map_reduce_id() {
-        let map_task = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
+        let map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
         assert_eq!(map_task.get_map_reduce_id(), "map-1");
     }
 
     #[test]
     fn test_map_task_request() {
-        let map_task = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/file1".to_owned()],
-        ).unwrap();
+        let map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/file1");
         let map_request = map_task.get_perform_map_request().unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
@@ -209,56 +186,34 @@ mod tests {
     }
 
     #[test]
-    fn test_map_task_double_input() {
-        let result = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
-        );
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_reduce_task_request() {
-        let reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("key-1".to_owned()),
+            "key-1",
             vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
         let reduce_request = reduce_task.get_perform_reduce_request().unwrap();
 
         assert_eq!("/tmp/bin", reduce_request.get_reducer_file_path());
         assert_eq!("key-1", reduce_request.get_intermediate_key());
         assert_eq!("/tmp/input/file1", reduce_request.get_input_file_paths()[0]);
         assert_eq!("/tmp/input/file2", reduce_request.get_input_file_paths()[1]);
+        assert_eq!("/tmp/output/", reduce_request.get_output_directory());
         assert!(reduce_task.get_perform_map_request().is_none());
     }
 
     #[test]
-    fn test_input_key_reduce_none() {
-        let result = MapReduceTask::new(
-            TaskType::Reduce,
-            "reduce-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        );
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_set_output_files() {
-        let mut reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let mut reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("intermediate-key".to_owned()),
+            "intermediate-key",
             vec!["/tmp/input/inter_mediate".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
+
         reduce_task.push_output_file("output-key1", "output_file_1");
         {
             let output_files: &[(String, String)] = reduce_task.get_output_files();
@@ -284,13 +239,13 @@ mod tests {
 
     #[test]
     fn test_assigned_worker_id() {
-        let mut reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let mut reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("intermediate-key".to_owned()),
+            "intermediate-key",
             vec!["/tmp/input/inter_mediate".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
         // Assert assigned worker id starts as an empty string.
         assert_eq!(reduce_task.get_assigned_worker_id(), "");
 
@@ -300,13 +255,13 @@ mod tests {
 
     #[test]
     fn test_set_status() {
-        let mut reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let mut reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("intermediate-key".to_owned()),
+            "intermediate-key",
             vec!["/tmp/input/inter_mediate".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
         // Assert that the default status for a task is Queued.
         assert_eq!(reduce_task.get_status(), MapReduceTaskStatus::Queued);
 
@@ -317,13 +272,13 @@ mod tests {
 
     #[test]
     fn test_queued_work_impl() {
-        let reduce_task = MapReduceTask::new(
-            TaskType::Reduce,
+        let reduce_task = MapReduceTask::new_reduce_task(
             "reduce-1",
             "/tmp/bin",
-            Some("intermediate-key".to_owned()),
+            "intermediate-key",
             vec!["/tmp/input/inter_mediate".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
 
         assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
         assert_eq!(reduce_task.get_work_id(), reduce_task.get_task_id());

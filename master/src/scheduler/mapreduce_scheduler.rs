@@ -260,7 +260,6 @@ impl MapReduceScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mapreduce_tasks::TaskType;
     use queued_work_store::QueuedWork;
 
     struct TaskProcessorStub {
@@ -294,13 +293,11 @@ mod tests {
     fn create_map_reduce_scheduler() -> MapReduceScheduler {
         MapReduceScheduler::new(Box::new(TaskProcessorStub::new(
             vec![
-                MapReduceTask::new(
-                    TaskType::Map,
+                MapReduceTask::new_map_task(
                     "map-reduce1",
                     "/tmp/bin",
-                    None,
-                    vec!["input-1".to_owned()]
-                ).unwrap(),
+                    "input-1"
+                ),
             ],
             Vec::new(),
         )))
@@ -309,7 +306,7 @@ mod tests {
     #[test]
     fn test_schedule_map_reduce() {
         let mut map_reduce_scheduler = create_map_reduce_scheduler();
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input");
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap();
         map_reduce_scheduler
             .schedule_map_reduce(map_reduce_job.clone())
             .unwrap();
@@ -327,21 +324,18 @@ mod tests {
         // Assert that map reduce in progress starts as false.
         assert!(!map_reduce_scheduler.get_map_reduce_in_progress());
         map_reduce_scheduler
-            .schedule_map_reduce(MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input"))
+            .schedule_map_reduce(
+                MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap(),
+            )
             .unwrap();
         assert!(map_reduce_scheduler.get_map_reduce_in_progress());
     }
 
     #[test]
     fn test_process_completed_task() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input");
-        let map_task1 = MapReduceTask::new(
-            TaskType::Map,
-            map_reduce_job.get_map_reduce_id(),
-            "/tmp/bin",
-            None,
-            vec!["input-1".to_owned()],
-        ).unwrap();
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap();
+        let map_task1 =
+            MapReduceTask::new_map_task(map_reduce_job.get_map_reduce_id(), "/tmp/bin", "input-1");
 
         let mut map_response = pb::MapResponse::new();
         map_response.set_status(pb::OperationStatus::SUCCESS);
@@ -357,25 +351,25 @@ mod tests {
         map_response.mut_map_results().push(map_result1);
         map_response.mut_map_results().push(map_result2);
 
-        let reduce_task1 = MapReduceTask::new(
-            TaskType::Reduce,
+        let reduce_task1 = MapReduceTask::new_reduce_task(
             map_reduce_job.get_map_reduce_id(),
             "/tmp/bin",
-            Some("key-1".to_owned()),
+            "key-1",
             vec!["/tmp/worker/intermediate1".to_owned()],
-        ).unwrap();
+            "/tmp/output",
+        );
 
         let mut reduce_response1 = pb::ReduceResponse::new();
         reduce_response1.set_status(pb::OperationStatus::SUCCESS);
         reduce_response1.set_output_file_path("/tmp/worker/key-2".to_owned());
 
-        let reduce_task2 = MapReduceTask::new(
-            TaskType::Reduce,
+        let reduce_task2 = MapReduceTask::new_reduce_task(
             map_reduce_job.get_map_reduce_id(),
             "/tmp/bin",
-            Some("key-2".to_owned()),
+            "key-2",
             vec!["/tmp/worker/intermediate2".to_owned()],
-        ).unwrap();
+            "/tmp/output/",
+        );
 
         let mut reduce_response2 = pb::ReduceResponse::new();
         reduce_response2.set_status(pb::OperationStatus::SUCCESS);
