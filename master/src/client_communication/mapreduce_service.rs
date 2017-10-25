@@ -44,7 +44,10 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                 response.mapreduce_id = job.get_map_reduce_id().to_owned();
                 let result = scheduler.schedule_map_reduce(job);
                 match result {
-                    Err(_) => SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
+                    Err(err) => {
+                        error!("Error scheduling map reduce job: {}", err);
+                        SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
+                    }
                     Ok(_) => SingleResponse::completed(response),
                 }
             }
@@ -66,13 +69,19 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                     let client_result =
                         scheduler.get_mapreduce_client_status(req.client_id.clone());
                     jobs = match client_result {
-                        Err(_) => return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR)),
+                        Err(err) => {
+                            error!("Error getting map reduce status for client: {}", err);
+                            return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
+                        }
                         Ok(js) => js,
                     };
                 } else if !req.mapreduce_id.is_empty() {
                     let result = scheduler.get_mapreduce_status(req.mapreduce_id);
                     jobs = match result {
-                        Err(_) => return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR)),
+                        Err(err) => {
+                            error!("Error getting map reduce status: {}", err);
+                            return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
+                        }
                         Ok(job) => vec![job],
                     };
                 } else {
