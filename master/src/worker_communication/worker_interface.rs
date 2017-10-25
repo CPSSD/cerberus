@@ -12,6 +12,19 @@ const GRPC_THREAD_POOL_SIZE: usize = 1;
 const MASTER_PORT: u16 = 8008;
 const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
+pub trait WorkerInterfaceTrait {
+    fn add_client(&mut self, worker: &Worker) -> Result<()>;
+    fn remove_client(&mut self, worker_id: &str) -> Result<()>;
+
+    fn get_worker_status(&self, worker_id: &str) -> Result<pb::WorkerStatusResponse>;
+
+    fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()>;
+    fn schedule_reduce(&self, request: pb::PerformReduceRequest, worker_id: &str) -> Result<()>;
+
+    fn get_map_result(&self, worker_id: &str) -> Result<pb::MapResponse>;
+    fn get_reduce_result(&self, worker_id: &str) -> Result<pb::ReduceResponse>;
+}
+
 #[derive(Default)]
 pub struct WorkerInterface {
     clients: HashMap<String, grpc_pb::WorkerServiceClient>,
@@ -23,8 +36,10 @@ impl WorkerInterface {
     pub fn new() -> Self {
         Default::default()
     }
+}
 
-    pub fn add_client(&mut self, worker: &Worker) -> Result<()> {
+impl WorkerInterfaceTrait for WorkerInterface {
+    fn add_client(&mut self, worker: &Worker) -> Result<()> {
         if self.clients.get(worker.get_worker_id()).is_some() {
             return Err("Client already exists for this worker".into());
         }
@@ -39,7 +54,7 @@ impl WorkerInterface {
         Ok(())
     }
 
-    pub fn remove_client(&mut self, worker_id: &str) -> Result<()> {
+    fn remove_client(&mut self, worker_id: &str) -> Result<()> {
         if self.clients.get(worker_id).is_none() {
             return Err(NO_CLIENT_FOUND_ERR.into());
         }
@@ -48,7 +63,7 @@ impl WorkerInterface {
         Ok(())
     }
 
-    pub fn get_worker_status(&self, worker_id: &str) -> Result<pb::WorkerStatusResponse> {
+    fn get_worker_status(&self, worker_id: &str) -> Result<pb::WorkerStatusResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client
@@ -62,7 +77,7 @@ impl WorkerInterface {
         }
     }
 
-    pub fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()> {
+    fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()> {
         if let Some(client) = self.clients.get(worker_id) {
             client
                 .perform_map(RequestOptions::new(), request)
@@ -74,11 +89,7 @@ impl WorkerInterface {
         }
     }
 
-    pub fn schedule_reduce(
-        &self,
-        request: pb::PerformReduceRequest,
-        worker_id: &str,
-    ) -> Result<()> {
+    fn schedule_reduce(&self, request: pb::PerformReduceRequest, worker_id: &str) -> Result<()> {
         if let Some(client) = self.clients.get(worker_id) {
             client
                 .perform_reduce(RequestOptions::new(), request)
@@ -90,7 +101,7 @@ impl WorkerInterface {
         }
     }
 
-    pub fn get_map_result(&self, worker_id: &str) -> Result<pb::MapResponse> {
+    fn get_map_result(&self, worker_id: &str) -> Result<pb::MapResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client
@@ -104,7 +115,7 @@ impl WorkerInterface {
         }
     }
 
-    pub fn get_reduce_result(&self, worker_id: &str) -> Result<pb::ReduceResponse> {
+    fn get_reduce_result(&self, worker_id: &str) -> Result<pb::ReduceResponse> {
         if let Some(client) = self.clients.get(worker_id) {
             Ok(
                 client

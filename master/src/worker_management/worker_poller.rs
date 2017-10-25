@@ -2,7 +2,7 @@ use errors::*;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::{thread, time};
 use worker_management::{WorkerTaskType, WorkerManager};
-use worker_communication::WorkerInterface;
+use worker_communication::{WorkerInterface, WorkerInterfaceTrait};
 use cerberus_proto::worker::*;
 use scheduler::MapReduceScheduler;
 use util::output_error;

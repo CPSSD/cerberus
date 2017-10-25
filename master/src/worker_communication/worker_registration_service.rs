@@ -1,6 +1,6 @@
 use grpc::{RequestOptions, SingleResponse, Error};
 use std::sync::{Arc, Mutex, RwLock};
-use worker_communication::WorkerInterface;
+use worker_communication::{WorkerInterface, WorkerInterfaceTrait};
 use worker_management::{Worker, WorkerManager};
 
 use cerberus_proto::worker as pb;

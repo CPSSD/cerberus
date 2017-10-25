@@ -2,7 +2,7 @@ use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskType};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use scheduler::MapReduceScheduler;
-use worker_communication::WorkerInterface;
+use worker_communication::WorkerInterfaceTrait;
 use worker_management::{Worker, WorkerManager};
 use util::output_error;
 
@@ -11,18 +11,35 @@ use cerberus_proto::worker as pb;
 
 const SCHEDULING_LOOP_INTERVAL_MS: u64 = 100;
 
-#[derive(Clone)]
-struct SchedulerResources {
+struct SchedulerResources<I>
+where
+    I: WorkerInterfaceTrait + Send + Sync,
+{
     scheduler_arc: Arc<Mutex<MapReduceScheduler>>,
     worker_manager_arc: Arc<Mutex<WorkerManager>>,
-    worker_interface_arc: Arc<RwLock<WorkerInterface>>,
+    worker_interface_arc: Arc<RwLock<I>>,
 }
 
-fn handle_assign_task_failure(
-    scheduler_resources: &SchedulerResources,
+impl<I> Clone for SchedulerResources<I>
+where
+    I: WorkerInterfaceTrait + Send + Sync,
+{
+    fn clone(&self) -> Self {
+        SchedulerResources {
+            scheduler_arc: Arc::clone(&self.scheduler_arc),
+            worker_manager_arc: Arc::clone(&self.worker_manager_arc),
+            worker_interface_arc: Arc::clone(&self.worker_interface_arc),
+        }
+    }
+}
+
+fn handle_assign_task_failure<I>(
+    scheduler_resources: &SchedulerResources<I>,
     worker_id: &str,
     task_id: &str,
-) {
+) where
+    I: WorkerInterfaceTrait + Send + Sync,
+{
     match scheduler_resources.worker_manager_arc.lock() {
         Ok(mut worker_manager) => {
             let worker_option = worker_manager.get_worker(worker_id);
@@ -55,12 +72,14 @@ fn handle_assign_task_failure(
     }
 }
 
-fn assign_worker_map_task(
-    scheduler_resources: SchedulerResources,
+fn assign_worker_map_task<I>(
+    scheduler_resources: SchedulerResources<I>,
     worker_id: String,
     task_id: String,
     map_task: pb::PerformMapRequest,
-) {
+) where
+    I: WorkerInterfaceTrait + Send + Sync + 'static,
+{
     thread::spawn(move || {
         let read_guard = scheduler_resources.worker_interface_arc.read();
         match read_guard {
@@ -79,12 +98,14 @@ fn assign_worker_map_task(
     });
 }
 
-fn assign_worker_reduce_task(
-    scheduler_resources: SchedulerResources,
+fn assign_worker_reduce_task<I>(
+    scheduler_resources: SchedulerResources<I>,
     worker_id: String,
     task_id: String,
     reduce_task: pb::PerformReduceRequest,
-) {
+) where
+    I: WorkerInterfaceTrait + Send + Sync + 'static,
+{
     thread::spawn(move || {
         let read_guard = scheduler_resources.worker_interface_arc.read();
         match read_guard {
@@ -103,12 +124,15 @@ fn assign_worker_reduce_task(
     });
 }
 
-fn assign_worker_task<S: Into<String>>(
-    scheduler_resources: SchedulerResources,
+fn assign_worker_task<S, I>(
+    scheduler_resources: SchedulerResources<I>,
     worker_id: S,
     task_id: S,
     task: &MapReduceTask,
-) {
+) where
+    S: Into<String>,
+    I: WorkerInterfaceTrait + Send + Sync + 'static,
+{
     match task.get_task_type() {
         TaskType::Map => {
             let map_request = {
@@ -157,11 +181,13 @@ fn assign_worker_task<S: Into<String>>(
     }
 }
 
-fn do_scheduling_loop_step(
-    scheduler_resources: &SchedulerResources,
+fn do_scheduling_loop_step<I>(
+    scheduler_resources: &SchedulerResources<I>,
     mut scheduler: MutexGuard<MapReduceScheduler>,
     mut worker_manager: MutexGuard<WorkerManager>,
-) {
+) where
+    I: WorkerInterfaceTrait + Send + Sync + 'static,
+{
     scheduler.set_available_workers(worker_manager.get_total_workers());
     let mut available_workers: Vec<&mut Worker> = worker_manager.get_available_workers();
     while scheduler.get_map_reduce_task_queue_size() > 0 {
@@ -205,11 +231,13 @@ fn do_scheduling_loop_step(
     }
 }
 
-pub fn run_scheduling_loop(
-    worker_interface_arc: Arc<RwLock<WorkerInterface>>,
+pub fn run_scheduling_loop<I>(
+    worker_interface_arc: Arc<RwLock<I>>,
     scheduler_arc: Arc<Mutex<MapReduceScheduler>>,
     worker_manager_arc: Arc<Mutex<WorkerManager>>,
-) {
+) where
+    I: WorkerInterfaceTrait + Send + Sync + 'static,
+{
     thread::spawn(move || loop {
         thread::sleep(time::Duration::from_millis(SCHEDULING_LOOP_INTERVAL_MS));
 
