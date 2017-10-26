@@ -12,7 +12,7 @@ const GRPC_THREAD_POOL_SIZE: usize = 1;
 const MASTER_PORT: u16 = 8008;
 const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
-pub trait WorkerInterfaceTrait {
+pub trait WorkerInterface {
     fn add_client(&mut self, worker: &Worker) -> Result<()>;
     fn remove_client(&mut self, worker_id: &str) -> Result<()>;
 
@@ -26,19 +26,19 @@ pub trait WorkerInterfaceTrait {
 }
 
 #[derive(Default)]
-pub struct WorkerInterface {
+pub struct WorkerInterfaceImpl {
     clients: HashMap<String, grpc_pb::WorkerServiceClient>,
 }
 
 
-/// `WorkerInterface` is used to schedule `MapReduce` operations on the workers.
-impl WorkerInterface {
+/// `WorkerInterfaceImpl` is used to schedule `MapReduce` operations on the workers.
+impl WorkerInterfaceImpl {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl WorkerInterfaceTrait for WorkerInterface {
+impl WorkerInterface for WorkerInterfaceImpl {
     fn add_client(&mut self, worker: &Worker) -> Result<()> {
         if self.clients.get(worker.get_worker_id()).is_some() {
             return Err("Client already exists for this worker".into());

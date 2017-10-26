@@ -38,7 +38,7 @@ use mapreduce_tasks::TaskProcessor;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use util::init_logger;
 use worker_communication::WorkerRegistrationServiceImpl;
-use worker_communication::{WorkerInterface, WorkerRegistrationInterface};
+use worker_communication::{WorkerInterfaceImpl, WorkerRegistrationInterface};
 use worker_management::WorkerManager;
 use worker_management::{WorkerPoller, run_polling_loop};
 
@@ -51,7 +51,7 @@ fn run() -> Result<()> {
     let map_reduce_scheduler = Arc::new(Mutex::new(
         MapReduceScheduler::new(Box::new(task_processor)),
     ));
-    let worker_interface = Arc::new(RwLock::new(WorkerInterface::new()));
+    let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
     let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
 
     let worker_registration_service = WorkerRegistrationServiceImpl::new(
