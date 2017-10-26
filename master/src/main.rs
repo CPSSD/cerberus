@@ -7,7 +7,23 @@ extern crate grpc;
 extern crate log;
 extern crate uuid;
 
-const MAIN_LOOP_SLEEP_MS: u64 = 100;
+mod errors {
+    error_chain! {
+        foreign_links {
+            Grpc(::grpc::Error);
+            Io(::std::io::Error);
+        }
+    }
+}
+
+pub mod client_communication;
+pub mod mapreduce_tasks;
+pub mod mapreduce_job;
+pub mod queued_work_store;
+pub mod scheduler;
+pub mod util;
+pub mod worker_communication;
+pub mod worker_management;
 
 use errors::*;
 use mapreduce_tasks::TaskProcessor;
@@ -21,6 +37,7 @@ use worker_management::{WorkerPoller, run_polling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
 
+const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
 fn run() -> Result<()> {
     env_logger::init().chain_err(
@@ -80,21 +97,3 @@ fn run() -> Result<()> {
 // Macro to generate a quick error_chain main function.
 // https://github.com/rust-lang-nursery/error-chain/blob/master/examples/quickstart.rs
 quick_main!(run);
-
-mod errors {
-    error_chain! {
-        foreign_links {
-            Grpc(::grpc::Error);
-            Io(::std::io::Error);
-        }
-    }
-}
-
-pub mod mapreduce_tasks;
-pub mod scheduler;
-pub mod queued_work_store;
-pub mod mapreduce_job;
-pub mod client_communication;
-pub mod worker_communication;
-pub mod worker_management;
-pub mod util;
