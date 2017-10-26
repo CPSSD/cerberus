@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use worker_communication::WorkerRegistrationServiceImpl;
 use worker_management::Worker;
 
-use cerberus_proto::mrworker as pb;
-use cerberus_proto::mrworker_grpc as grpc_pb;
-use cerberus_proto::mrworker_grpc::MRWorkerService; // do not use
+use cerberus_proto::worker as pb;
+use cerberus_proto::worker_grpc as grpc_pb;
+use cerberus_proto::worker_grpc::WorkerService; // do not use
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const MASTER_PORT: u16 = 8008;
@@ -14,7 +14,7 @@ const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
 #[derive(Default)]
 pub struct WorkerInterface {
-    clients: HashMap<String, grpc_pb::MRWorkerServiceClient>,
+    clients: HashMap<String, grpc_pb::WorkerServiceClient>,
 }
 
 
@@ -29,7 +29,7 @@ impl WorkerInterface {
             return Err("Client already exists for this worker".into());
         }
 
-        let client = grpc_pb::MRWorkerServiceClient::new_plain(
+        let client = grpc_pb::WorkerServiceClient::new_plain(
             &worker.get_address().ip().to_string(),
             worker.get_address().port(),
             Default::default(),
@@ -129,7 +129,7 @@ impl WorkerRegistrationInterface {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(MASTER_PORT);
         server_builder.add_service(
-            grpc_pb::MRWorkerRegistrationServiceServer::new_service_def(
+            grpc_pb::WorkerRegistrationServiceServer::new_service_def(
                 worker_registration_service,
             ),
         );

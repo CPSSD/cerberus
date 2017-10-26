@@ -50,5 +50,5 @@ fn compile(proto_name: &str) {
 
 fn main() {
     compile("mapreduce");
-    compile("mrworker");
+    compile("worker");
 }

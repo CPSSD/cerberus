@@ -4,7 +4,7 @@ use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
 use queued_work_store::QueuedWorkStore;
 
 use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
-use cerberus_proto::mrworker as pb;
+use cerberus_proto::worker as pb;
 
 pub struct MapReduceScheduler {
     map_reduce_job_queue: QueuedWorkStore<MapReduceJob>,

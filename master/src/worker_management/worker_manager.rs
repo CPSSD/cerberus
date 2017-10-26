@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use mapreduce_tasks::TaskType;
 
-use cerberus_proto::mrworker as pb;
+use cerberus_proto::worker as pb;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum WorkerTaskType {

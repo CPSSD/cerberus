@@ -19,7 +19,7 @@ use errors::*;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
 use worker_interface::WorkerInterface;
-use mrworkerservice::MRWorkerServiceImpl;
+use worker_service::WorkerServiceImpl;
 use operation_handler::OperationHandler;
 
 fn run() -> Result<()> {
@@ -29,7 +29,7 @@ fn run() -> Result<()> {
     )?;
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
-    let worker_service_impl = MRWorkerServiceImpl::new(operation_handler);
+    let worker_service_impl = WorkerServiceImpl::new(operation_handler);
     let worker_server_interface = WorkerInterface::new(worker_service_impl).chain_err(
         || "Error building worker interface.",
     )?;
@@ -76,5 +76,5 @@ mod errors {
 
 pub mod util;
 pub mod worker_interface;
-pub mod mrworkerservice;
+pub mod worker_service;
 pub mod operation_handler;

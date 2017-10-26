@@ -6,5 +6,5 @@ extern crate tls_api;
 pub mod mapreduce;
 pub mod mapreduce_grpc;
 
-pub mod mrworker;
-pub mod mrworker_grpc;
+pub mod worker;
+pub mod worker_grpc;
