@@ -5,6 +5,7 @@ extern crate env_logger;
 extern crate grpc;
 #[macro_use]
 extern crate log;
+extern crate util;
 extern crate uuid;
 
 mod errors {
@@ -12,6 +13,9 @@ mod errors {
         foreign_links {
             Grpc(::grpc::Error);
             Io(::std::io::Error);
+        }
+        links {
+            Util(::util::errors::Error, ::util::errors::ErrorKind);
         }
     }
 }
@@ -21,7 +25,6 @@ pub mod mapreduce_tasks;
 pub mod mapreduce_job;
 pub mod queued_work_store;
 pub mod scheduler;
-pub mod util;
 pub mod worker_communication;
 pub mod worker_management;
 
@@ -36,13 +39,12 @@ use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use worker_management::{WorkerPoller, run_polling_loop};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, RwLock};
+use util::init_logger;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let task_processor = TaskProcessor;
     let map_reduce_scheduler = Arc::new(Mutex::new(

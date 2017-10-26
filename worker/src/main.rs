@@ -1,10 +1,8 @@
 #[macro_use]
 extern crate error_chain;
-extern crate env_logger;
-#[macro_use]
-extern crate log;
 extern crate grpc;
 extern crate tls_api;
+extern crate util;
 extern crate uuid;
 extern crate protobuf;
 extern crate cerberus_proto;
@@ -17,17 +15,20 @@ mod errors {
             Grpc(::grpc::Error);
             Io(::std::io::Error);
         }
+        links {
+            Util(::util::errors::Error, ::util::errors::ErrorKind);
+        }
     }
 }
 
 pub mod operation_handler;
-pub mod util;
 pub mod worker_interface;
 pub mod worker_service;
 
 use errors::*;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
+use util::init_logger;
 use worker_interface::WorkerInterface;
 use worker_service::WorkerServiceImpl;
 use operation_handler::OperationHandler;
@@ -38,9 +39,7 @@ const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 
 fn run() -> Result<()> {
     println!("Cerberus Worker!");
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
     let worker_service_impl = WorkerServiceImpl::new(operation_handler);
