@@ -11,9 +11,19 @@ extern crate cerberus_proto;
 #[macro_use]
 extern crate serde_json;
 
-const WORKER_REGISTRATION_RETRIES: u16 = 5;
-const MAIN_LOOP_SLEEP_MS: u64 = 100;
-const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
+mod errors {
+    error_chain! {
+        foreign_links {
+            Grpc(::grpc::Error);
+            Io(::std::io::Error);
+        }
+    }
+}
+
+pub mod operation_handler;
+pub mod util;
+pub mod worker_interface;
+pub mod worker_service;
 
 use errors::*;
 use std::{thread, time};
@@ -21,6 +31,10 @@ use std::sync::{Arc, Mutex};
 use worker_interface::WorkerInterface;
 use worker_service::WorkerServiceImpl;
 use operation_handler::OperationHandler;
+
+const WORKER_REGISTRATION_RETRIES: u16 = 5;
+const MAIN_LOOP_SLEEP_MS: u64 = 100;
+const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 
 fn run() -> Result<()> {
     println!("Cerberus Worker!");
@@ -64,17 +78,3 @@ fn run() -> Result<()> {
 // Macro to generate a quick error_chain main function.
 // https://github.com/rust-lang-nursery/error-chain/blob/master/examples/quickstart.rs
 quick_main!(run);
-
-mod errors {
-    error_chain! {
-        foreign_links {
-            Grpc(::grpc::Error);
-            Io(::std::io::Error);
-        }
-    }
-}
-
-pub mod util;
-pub mod worker_interface;
-pub mod worker_service;
-pub mod operation_handler;
