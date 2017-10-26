@@ -1,18 +1,18 @@
 use grpc::{RequestOptions, SingleResponse, Error};
-use cerberus_proto::mrworker::*;
-use cerberus_proto::mrworker_grpc::*;
+use cerberus_proto::worker::*;
+use cerberus_proto::worker_grpc::*;
 use operation_handler::OperationHandler;
 use std::sync::{Arc, Mutex};
 
 const OPERATION_HANDLER_UNAVAILABLE: &'static str = "Operation Handler not available";
 
-pub struct MRWorkerServiceImpl {
+pub struct WorkerServiceImpl {
     operation_handler: Arc<Mutex<OperationHandler>>,
 }
 
-impl MRWorkerServiceImpl {
+impl WorkerServiceImpl {
     pub fn new(operation_handler: Arc<Mutex<OperationHandler>>) -> Self {
-        MRWorkerServiceImpl { operation_handler: operation_handler }
+        WorkerServiceImpl { operation_handler: operation_handler }
     }
 
     fn get_worker_status(&self) -> WorkerStatusResponse_WorkerStatus {
@@ -30,7 +30,7 @@ impl MRWorkerServiceImpl {
     }
 }
 
-impl MRWorkerService for MRWorkerServiceImpl {
+impl WorkerService for WorkerServiceImpl {
     fn worker_status(
         &self,
         _o: RequestOptions,

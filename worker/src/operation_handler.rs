@@ -1,4 +1,4 @@
-use cerberus_proto::mrworker::*;
+use cerberus_proto::worker::*;
 use std::thread;
 use std::path::PathBuf;
 use std::io::BufReader;

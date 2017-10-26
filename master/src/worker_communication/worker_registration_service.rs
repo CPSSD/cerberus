@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use worker_communication::WorkerInterface;
 use worker_management::{Worker, WorkerManager};
 
-use cerberus_proto::mrworker as pb;
-use cerberus_proto::mrworker_grpc as grpc_pb;
+use cerberus_proto::worker as pb;
+use cerberus_proto::worker_grpc as grpc_pb;
 
 const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker interface not available";
 const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager not available";
@@ -26,7 +26,7 @@ impl WorkerRegistrationServiceImpl {
     }
 }
 
-impl grpc_pb::MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
+impl grpc_pb::WorkerRegistrationService for WorkerRegistrationServiceImpl {
     fn register_worker(
         &self,
         _o: RequestOptions,
@@ -68,7 +68,7 @@ impl grpc_pb::MRWorkerRegistrationService for WorkerRegistrationServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cerberus_proto::mrworker_grpc::MRWorkerRegistrationService;
+    use cerberus_proto::worker_grpc::WorkerRegistrationService;
 
     #[test]
     fn test_register_worker() {

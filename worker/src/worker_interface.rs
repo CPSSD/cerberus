@@ -1,8 +1,8 @@
 use grpc::{Server, RequestOptions, ServerBuilder};
 use errors::*;
-use cerberus_proto::mrworker::*;
-use cerberus_proto::mrworker_grpc::*;
-use mrworkerservice::MRWorkerServiceImpl;
+use cerberus_proto::worker::*;
+use cerberus_proto::worker_grpc::*;
+use worker_service::WorkerServiceImpl;
 use std::net::IpAddr;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
@@ -11,21 +11,21 @@ const MASTER_PORT: u16 = 8008;
 
 pub struct WorkerInterface {
     server: Server,
-    client: MRWorkerRegistrationServiceClient,
+    client: WorkerRegistrationServiceClient,
 }
 
 /// `WorkerInterface` is the implementation of the interface used by the worker to recieve commands
 /// from the master. This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new(worker_service_impl: MRWorkerServiceImpl) -> Result<Self> {
+    pub fn new(worker_service_impl: WorkerServiceImpl) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(WORKER_PORT);
-        server_builder.add_service(MRWorkerServiceServer::new_service_def(worker_service_impl));
+        server_builder.add_service(WorkerServiceServer::new_service_def(worker_service_impl));
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );
 
-        let client = MRWorkerRegistrationServiceClient::new_plain(
+        let client = WorkerRegistrationServiceClient::new_plain(
             "localhost",
             MASTER_PORT,
             Default::default(),

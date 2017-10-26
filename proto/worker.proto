@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package mrworker;
+package worker;
 
-// The MRWorkerRegistrationService is implemented by the Master to allow workers to register with the Cluster.
-service MRWorkerRegistrationService {
+// The WorkerRegistrationService is implemented by the Master to allow workers to register with the Cluster.
+service WorkerRegistrationService {
     // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
     rpc RegisterWorker (RegisterWorkerRequest) returns (EmptyMessage);
 }
@@ -16,17 +16,17 @@ message RegisterWorkerRequest {
     string worker_address = 1;
 }
 
-// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once 
+// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once
 //              in the future.
-service MRWorkerService {
+service WorkerService {
     // Returns the status of a worker, is an operation in progress or if the worker is available.
     rpc WorkerStatus (EmptyMessage) returns (WorkerStatusResponse);
-    
+
     // Tells a worker to start a map operation with a certain set of data.
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
 
-    // Returns the result of the completed map operation. 
+    // Returns the result of the completed map operation.
     // Throws an error if an operation is in progress or the last operation was not a map operation.
     rpc GetMapResult (EmptyMessage) returns (MapResponse);
 
@@ -34,7 +34,7 @@ service MRWorkerService {
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
 
-    // Returns the result of the completed reduce operation. 
+    // Returns the result of the completed reduce operation.
     // Throws an error if an operation is in progress or the last operation was not a reduce operation.
     rpc GetReduceResult (EmptyMessage) returns (ReduceResponse);
 }

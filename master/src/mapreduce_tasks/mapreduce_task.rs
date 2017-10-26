@@ -1,7 +1,7 @@
 use uuid::Uuid;
 use queued_work_store::QueuedWork;
 
-use cerberus_proto::mrworker as pb;
+use cerberus_proto::worker as pb;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MapReduceTaskStatus {

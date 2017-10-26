@@ -6,8 +6,8 @@ use worker_communication::WorkerInterface;
 use worker_management::{Worker, WorkerManager};
 use util::output_error;
 
-use cerberus_proto::mrworker::WorkerStatusResponse_OperationStatus as OperationStatus;
-use cerberus_proto::mrworker as pb;
+use cerberus_proto::worker::WorkerStatusResponse_OperationStatus as OperationStatus;
+use cerberus_proto::worker as pb;
 
 const SCHEDULING_LOOP_INTERVAL_MS: u64 = 100;
 
