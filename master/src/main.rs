@@ -27,20 +27,21 @@ mod queued_work_store;
 mod scheduler;
 mod worker_communication;
 mod worker_management;
+mod grpc_server;
 
 use std::sync::{Arc, Mutex, RwLock};
 use std::{thread, time};
 
-use client_communication::ClientInterface;
 use client_communication::MapReduceServiceImpl;
 use errors::*;
 use mapreduce_tasks::TaskProcessor;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use util::init_logger;
 use worker_communication::WorkerRegistrationServiceImpl;
-use worker_communication::{WorkerInterfaceImpl, WorkerRegistrationInterface};
+use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
 use worker_management::{WorkerPoller, run_polling_loop};
+use grpc_server::GRPCServer;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
@@ -58,15 +59,11 @@ fn run() -> Result<()> {
         Arc::clone(&worker_manager),
         Arc::clone(&worker_interface),
     );
-    let worker_registration_interface =
-        WorkerRegistrationInterface::new(worker_registration_service)
-            .chain_err(|| "Error building worker registration service.")?;
 
     // Cli to Master Communications
     let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
-    let client_interface = ClientInterface::new(mapreduce_service).chain_err(
-        || "Error building client interface.",
-    )?;
+    let grpc_server = GRPCServer::new(mapreduce_service, worker_registration_service)
+        .chain_err(|| "Error building grpc server.")?;
 
     run_scheduling_loop(
         Arc::clone(&worker_interface),
@@ -84,15 +81,9 @@ fn run() -> Result<()> {
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        // TODO: Merge the client_interface and worker_registration_interface into one server.
-        let server = client_interface.get_server();
+        let server = grpc_server.get_server();
         if !server.is_alive() {
-            return Err("Client interface server unexpectantly died".into());
-        }
-
-        let server = worker_registration_interface.get_server();
-        if !server.is_alive() {
-            return Err("Client interface server unexpectantly died".into());
+            return Err("GRPC server unexpectedly died".into());
         }
     }
 }

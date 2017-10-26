@@ -8,7 +8,7 @@ use std::net::IpAddr;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
-const MASTER_PORT: u16 = 8008;
+const MASTER_PORT: u16 = 8081;
 
 pub struct WorkerInterface {
     server: Server,

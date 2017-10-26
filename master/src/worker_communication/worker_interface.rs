@@ -1,15 +1,12 @@
 use errors::*;
-use grpc::{Server, ServerBuilder, RequestOptions};
+use grpc::RequestOptions;
 use std::collections::HashMap;
-use worker_communication::WorkerRegistrationServiceImpl;
 use worker_management::Worker;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::WorkerService; // do not use
 
-const GRPC_THREAD_POOL_SIZE: usize = 1;
-const MASTER_PORT: u16 = 8008;
 const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
 
 pub trait WorkerInterface {
@@ -127,33 +124,5 @@ impl WorkerInterface for WorkerInterfaceImpl {
         } else {
             Err(NO_CLIENT_FOUND_ERR.into())
         }
-    }
-}
-
-pub struct WorkerRegistrationInterface {
-    server: Server,
-}
-
-/// `WorkerRegistrationInterface` handles the registration of workers.
-impl WorkerRegistrationInterface {
-    pub fn new(worker_registration_service: WorkerRegistrationServiceImpl) -> Result<Self> {
-        let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(MASTER_PORT);
-        server_builder.add_service(grpc_pb::WorkerRegistrationServiceServer::new_service_def(
-            worker_registration_service,
-        ));
-        server_builder.http.set_cpu_pool_threads(
-            GRPC_THREAD_POOL_SIZE,
-        );
-
-        Ok(WorkerRegistrationInterface {
-            server: server_builder.build().chain_err(
-                || "Error building worker server",
-            )?,
-        })
-    }
-
-    pub fn get_server(&self) -> &Server {
-        &self.server
     }
 }
