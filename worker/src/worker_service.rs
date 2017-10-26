@@ -1,6 +1,6 @@
 use grpc::{RequestOptions, SingleResponse, Error};
-use cerberus_proto::worker::*;
-use cerberus_proto::worker_grpc::*;
+use cerberus_proto::worker as pb;
+use cerberus_proto::worker_grpc as grpc_pb;
 use operation_handler::OperationHandler;
 use std::sync::{Arc, Mutex};
 
@@ -15,28 +15,28 @@ impl WorkerServiceImpl {
         WorkerServiceImpl { operation_handler: operation_handler }
     }
 
-    fn get_worker_status(&self) -> WorkerStatusResponse_WorkerStatus {
+    fn get_worker_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
         match self.operation_handler.lock() {
-            Err(_) => WorkerStatusResponse_WorkerStatus::BUSY,
+            Err(_) => pb::WorkerStatusResponse_WorkerStatus::BUSY,
             Ok(handler) => handler.get_worker_status(),
         }
     }
 
-    fn get_worker_operation_status(&self) -> WorkerStatusResponse_OperationStatus {
+    fn get_worker_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
         match self.operation_handler.lock() {
-            Err(_) => WorkerStatusResponse_OperationStatus::UNKNOWN,
+            Err(_) => pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
             Ok(handler) => handler.get_worker_operation_status(),
         }
     }
 }
 
-impl WorkerService for WorkerServiceImpl {
+impl grpc_pb::WorkerService for WorkerServiceImpl {
     fn worker_status(
         &self,
         _o: RequestOptions,
-        _message: EmptyMessage,
-    ) -> SingleResponse<WorkerStatusResponse> {
-        let mut response = WorkerStatusResponse::new();
+        _message: pb::EmptyMessage,
+    ) -> SingleResponse<pb::WorkerStatusResponse> {
+        let mut response = pb::WorkerStatusResponse::new();
         response.set_worker_status(self.get_worker_status());
         response.set_operation_status(self.get_worker_operation_status());
 
@@ -46,8 +46,8 @@ impl WorkerService for WorkerServiceImpl {
     fn perform_map(
         &self,
         _o: RequestOptions,
-        map_options: PerformMapRequest,
-    ) -> SingleResponse<EmptyMessage> {
+        map_options: pb::PerformMapRequest,
+    ) -> SingleResponse<pb::EmptyMessage> {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
@@ -55,7 +55,7 @@ impl WorkerService for WorkerServiceImpl {
 
                 match result {
                     Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
-                    Ok(_) => SingleResponse::completed(EmptyMessage::new()),
+                    Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
                 }
             }
         }
@@ -64,8 +64,8 @@ impl WorkerService for WorkerServiceImpl {
     fn get_map_result(
         &self,
         _o: RequestOptions,
-        _message: EmptyMessage,
-    ) -> SingleResponse<MapResponse> {
+        _message: pb::EmptyMessage,
+    ) -> SingleResponse<pb::MapResponse> {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
@@ -81,15 +81,15 @@ impl WorkerService for WorkerServiceImpl {
     fn perform_reduce(
         &self,
         _o: RequestOptions,
-        reduce_options: PerformReduceRequest,
-    ) -> SingleResponse<EmptyMessage> {
+        reduce_options: pb::PerformReduceRequest,
+    ) -> SingleResponse<pb::EmptyMessage> {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
                 let result = handler.perform_reduce(reduce_options);
                 match result {
                     Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
-                    Ok(_) => SingleResponse::completed(EmptyMessage::new()),
+                    Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
                 }
             }
         }
@@ -98,8 +98,8 @@ impl WorkerService for WorkerServiceImpl {
     fn get_reduce_result(
         &self,
         _o: RequestOptions,
-        _message: EmptyMessage,
-    ) -> SingleResponse<ReduceResponse> {
+        _message: pb::EmptyMessage,
+    ) -> SingleResponse<pb::ReduceResponse> {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
