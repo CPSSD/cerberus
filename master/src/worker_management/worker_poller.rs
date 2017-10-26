@@ -5,6 +5,7 @@ use worker_management::{WorkerTaskType, WorkerManager};
 use worker_communication::WorkerInterface;
 use cerberus_proto::mrworker::*;
 use scheduler::MapReduceScheduler;
+use util::output_error;
 
 const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager unavailable";
 const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker Interface unavailable";
@@ -118,7 +119,12 @@ impl WorkerPoller {
             };
 
             match result {
-                Err(err) => error!("Error occured for worker '{}': {:?}", worker_id, err),
+                Err(err) => output_error(&err.chain_err(|| {
+                    format!(
+                        "Error occured handling mapreduce results for worker '{}'",
+                        worker_id
+                    )
+                })),
                 Ok(_) => {
                     match self.worker_manager.lock() {
                         Err(_) => error!("{}", WORKER_MANAGER_UNAVAILABLE),
@@ -235,8 +241,8 @@ pub fn run_polling_loop(worker_poller: WorkerPoller) {
     thread::spawn(move || loop {
         thread::sleep(time::Duration::from_millis(POLLING_LOOP_INTERVAL_MS));
         let result = worker_poller.poll();
-        if result.is_err() {
-            error!("Error encountered during polling loop: {:?}", result);
+        if let Err(err) = result {
+            output_error(&err.chain_err(|| "Error encountered during polling loop"));
         }
     });
 }

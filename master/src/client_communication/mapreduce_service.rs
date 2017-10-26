@@ -3,6 +3,7 @@ use grpc::{SingleResponse, Error, RequestOptions};
 
 use scheduler::MapReduceScheduler;
 use mapreduce_job::MapReduceJob;
+use util::output_error;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
@@ -45,7 +46,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                 let result = scheduler.schedule_map_reduce(job);
                 match result {
                     Err(err) => {
-                        error!("Error scheduling map reduce job: {}", err);
+                        output_error(&err.chain_err(|| "Error scheduling map reduce job."));
                         SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
                     }
                     Ok(_) => SingleResponse::completed(response),
@@ -70,7 +71,9 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                         scheduler.get_mapreduce_client_status(req.client_id.clone());
                     jobs = match client_result {
                         Err(err) => {
-                            error!("Error getting map reduce status for client: {}", err);
+                            output_error(&err.chain_err(
+                                || "Error getting map reduce status for client.",
+                            ));
                             return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
                         }
                         Ok(js) => js,
@@ -79,7 +82,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                     let result = scheduler.get_mapreduce_status(req.mapreduce_id);
                     jobs = match result {
                         Err(err) => {
-                            error!("Error getting map reduce status: {}", err);
+                            output_error(&err.chain_err(|| "Error getting map reduce status."));
                             return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
                         }
                         Ok(job) => vec![job],
