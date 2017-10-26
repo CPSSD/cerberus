@@ -1,7 +1,7 @@
 use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
-use queued_work_store::QueuedWorkStore;
+use queued_work_store::{QueuedWork, QueuedWorkStore};
 
 use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 use cerberus_proto::worker as pb;
@@ -212,6 +212,9 @@ impl MapReduceScheduler {
             map_reduce_job.set_reduce_tasks_completed(reduce_tasks_completed);
 
             if reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total() {
+                self.map_reduce_task_queue
+                    .remove_work_bucket(&map_reduce_job.get_work_id())
+                    .chain_err(|| "Error marking map reduce job as complete.")?;
                 map_reduce_job.set_status(MapReduceJobStatus::DONE);
             }
             reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total()
@@ -427,10 +430,27 @@ mod tests {
         map_reduce_scheduler.pop_queued_map_reduce_task().unwrap();
         map_reduce_scheduler.pop_queued_map_reduce_task().unwrap();
 
-        // Process response for reduce tasks
+        // Process response for reduce task 1.
         map_reduce_scheduler
             .process_reduce_task_response(reduce_task1.get_task_id().to_owned(), reduce_response1)
             .unwrap();
+
+        {
+            let map_reduce_job = map_reduce_scheduler
+                .map_reduce_job_queue
+                .get_work_by_id(&map_reduce_job.get_work_id())
+                .unwrap();
+
+            let reduce_task1 = map_reduce_scheduler
+                .map_reduce_task_queue
+                .get_work_by_id(&reduce_task1.get_work_id())
+                .unwrap();
+
+            assert_eq!(1, map_reduce_job.get_reduce_tasks_completed());
+            assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.get_status());
+
+        }
+
         map_reduce_scheduler
             .process_reduce_task_response(reduce_task2.get_task_id().to_owned(), reduce_response2)
             .unwrap();
@@ -440,19 +460,13 @@ mod tests {
             .get_work_by_id(&map_reduce_job.get_work_id())
             .unwrap();
 
-        let reduce_task1 = map_reduce_scheduler
-            .map_reduce_task_queue
-            .get_work_by_id(&reduce_task1.get_work_id())
-            .unwrap();
-
-        let reduce_task2 = map_reduce_scheduler
-            .map_reduce_task_queue
-            .get_work_by_id(&reduce_task2.get_work_id())
-            .unwrap();
-
+        assert!(
+            map_reduce_scheduler
+                .map_reduce_task_queue
+                .get_work_by_id(&reduce_task2.get_work_id())
+                .is_none()
+        );
         assert_eq!(2, map_reduce_job.get_reduce_tasks_completed());
-        assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.get_status());
-        assert_eq!(MapReduceTaskStatus::Complete, reduce_task2.get_status());
         assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.get_status());
     }
 }
