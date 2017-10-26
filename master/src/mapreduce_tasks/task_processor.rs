@@ -1,6 +1,6 @@
 use errors::*;
 use mapreduce_job::MapReduceJob;
-use mapreduce_tasks::{TaskType, MapReduceTask};
+use mapreduce_tasks::MapReduceTask;
 use std::collections::HashMap;
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;
@@ -82,13 +82,11 @@ impl TaskProcessor {
 
             let ammount_read: usize = read_str.len();
             if ammount_read > map_task_file.bytes_to_write {
-                map_tasks.push(MapReduceTask::new(
-                    TaskType::Map,
+                map_tasks.push(MapReduceTask::new_map_task(
                     map_reduce_job.get_map_reduce_id(),
                     map_reduce_job.get_binary_path(),
-                    None,
-                    vec![map_task_file.file_path.to_owned()],
-                ).chain_err(|| "Error creating map task")?);
+                    &map_task_file.file_path,
+                ));
 
                 *map_task_file =
                     self.create_new_task_file(map_task_file.task_num + 1, output_directory)
@@ -134,13 +132,11 @@ impl TaskProcessorTrait for TaskProcessor {
             }
         }
         if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
-            map_tasks.push(MapReduceTask::new(
-                TaskType::Map,
+            map_tasks.push(MapReduceTask::new_map_task(
                 map_reduce_job.get_map_reduce_id(),
                 map_reduce_job.get_binary_path(),
-                None,
-                vec![map_task_file.file_path.to_owned()],
-            ).chain_err(|| "Error creating map task")?);
+                &map_task_file.file_path,
+            ));
         }
         Ok(map_tasks)
     }
@@ -163,13 +159,13 @@ impl TaskProcessorTrait for TaskProcessor {
         }
 
         for (reduce_key, reduce_input) in key_results_map {
-            reduce_tasks.push(MapReduceTask::new(
-                TaskType::Reduce,
+            reduce_tasks.push(MapReduceTask::new_reduce_task(
                 map_reduce_job.get_map_reduce_id(),
                 map_reduce_job.get_binary_path(),
-                Some(reduce_key),
+                &reduce_key,
                 reduce_input,
-            ).chain_err(|| "Error creating reduce task")?);
+                map_reduce_job.get_output_directory(),
+            ));
         }
 
         Ok(reduce_tasks)
@@ -182,6 +178,7 @@ mod tests {
     use std::path::Path;
     use std::io::Read;
     use std::collections::HashSet;
+    use mapreduce_tasks::TaskType;
 
     #[test]
     fn test_create_map_tasks() {
@@ -204,7 +201,7 @@ mod tests {
             .unwrap();
 
         let map_reduce_job =
-            MapReduceJob::new("test-client", "/tmp/bin", test_path.to_str().unwrap());
+            MapReduceJob::new("test-client", "/tmp/bin", test_path.to_str().unwrap(), "").unwrap();
 
         let map_tasks: Vec<MapReduceTask> =
             task_processor.create_map_tasks(&map_reduce_job).unwrap();
@@ -244,27 +241,14 @@ mod tests {
     fn test_create_reduce_tasks() {
         let task_processor = TaskProcessor;
 
-        let map_reduce_job = MapReduceJob::new("test-client", "/tmp/bin", "/tmp/inputdir");
+        let map_reduce_job = MapReduceJob::new("test-client", "/tmp/bin", "/tmp/inputdir", "")
+            .unwrap();
 
-        let mut map_task1 = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
-
+        let mut map_task1 = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
         map_task1.push_output_file("intermediate-key1", "/tmp/output/1");
         map_task1.push_output_file("intermediate-key2", "/tmp/output/2");
 
-        let mut map_task2 = MapReduceTask::new(
-            TaskType::Map,
-            "map-1",
-            "/tmp/bin",
-            None,
-            vec!["/tmp/input/".to_owned()],
-        ).unwrap();
-
+        let mut map_task2 = MapReduceTask::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
         map_task2.push_output_file("intermediate-key1", "/tmp/output/3");
 
         let map_tasks: Vec<&MapReduceTask> = vec![&map_task1, &map_task2];

@@ -12,6 +12,11 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         || "Input directory cannot be empty",
     )?;
 
+    let output = match matches.value_of("output") {
+        Some(output) => output,
+        None => "",
+    };
+
     let binary = matches.value_of("binary").chain_err(
         || "Binary cannot be empty",
     )?;
@@ -21,7 +26,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
     req.set_input_directory(input.to_owned());
     // TODO(voy): Replace it with generated ClientID.
     req.set_client_id("abc".to_owned());
-    // TODO(voy): Add the output directory once its implemented in the proto.
+    req.set_output_directory(output.to_owned());
 
     let res = client
         .perform_map_reduce(RequestOptions::new(), req)
@@ -74,18 +79,14 @@ fn print_table(rep: &pb::MapReduceReport) {
 
     let status: String = match rep.get_status() {
         pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
-        pb::Status::DONE => {
-            format!("DONE ({})", get_time_offset(rep.get_done_timestamp()))
-        }
+        pb::Status::DONE => format!("DONE ({})", get_time_offset(rep.get_done_timestamp())),
         pb::Status::IN_PROGRESS => {
             format!(
                 "IN_PROGRESS ({})",
                 get_time_offset(rep.get_started_timestamp())
             )
         }
-        pb::Status::IN_QUEUE => {
-            format!("IN_QUEUE ({})", rep.get_queue_length())
-        }
+        pb::Status::IN_QUEUE => format!("IN_QUEUE ({})", rep.get_queue_length()),
         pb::Status::FAILED => "FAILED".to_owned(),
     };
 

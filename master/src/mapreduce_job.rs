@@ -1,5 +1,7 @@
+use errors::*;
 use uuid::Uuid;
 use queued_work_store::QueuedWork;
+use std::path::PathBuf;
 
 use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 
@@ -10,6 +12,7 @@ pub struct MapReduceJob {
     map_reduce_id: String,
     binary_path: String,
     input_directory: String,
+    output_directory: String,
 
     status: MapReduceJobStatus,
 
@@ -21,13 +24,31 @@ pub struct MapReduceJob {
 }
 
 impl MapReduceJob {
-    pub fn new<S: Into<String>>(client_id: S, binary_path: S, input_directory: S) -> Self {
+    pub fn new<S: Into<String>>(
+        client_id: S,
+        binary_path: S,
+        input_directory: S,
+        output_directory: S,
+    ) -> Result<Self> {
         let map_reduce_id = Uuid::new_v4();
-        MapReduceJob {
+        let input_directory = input_directory.into();
+        let mut output_directory = output_directory.into();
+        if output_directory == "" {
+            let mut output_path_buf = PathBuf::new();
+            output_path_buf.push(input_directory.clone());
+            output_path_buf.push("output/");
+            output_directory = match output_path_buf.to_str() {
+                Some(output) => output.to_owned(),
+                None => return Err("Error generating output file path".into()),
+            }
+        }
+
+        Ok(MapReduceJob {
             client_id: client_id.into(),
             map_reduce_id: map_reduce_id.to_string(),
             binary_path: binary_path.into(),
-            input_directory: input_directory.into(),
+            input_directory: input_directory,
+            output_directory: output_directory,
 
             status: MapReduceJobStatus::IN_QUEUE,
 
@@ -36,7 +57,7 @@ impl MapReduceJob {
 
             reduce_tasks_completed: 0,
             reduce_tasks_total: 0,
-        }
+        })
     }
 
     pub fn get_client_id(&self) -> &str {
@@ -53,6 +74,10 @@ impl MapReduceJob {
 
     pub fn get_input_directory(&self) -> &str {
         &self.input_directory
+    }
+
+    pub fn get_output_directory(&self) -> &str {
+        &self.output_directory
     }
 
     pub fn get_status(&self) -> MapReduceJobStatus {
@@ -114,25 +139,26 @@ mod tests {
 
     #[test]
     fn test_get_client_id() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "").unwrap();
         assert_eq!(map_reduce_job.get_client_id(), "client-1");
     }
 
     #[test]
     fn test_get_binary_path() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "").unwrap();
         assert_eq!(map_reduce_job.get_binary_path(), "/tmp/bin");
     }
 
     #[test]
     fn test_get_input_directory() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "").unwrap();
         assert_eq!(map_reduce_job.get_input_directory(), "/tmp/input/");
     }
 
     #[test]
     fn test_set_status() {
-        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "")
+            .unwrap();
         // Assert that the default status for a map reduce job is Queued.
         assert_eq!(MapReduceJobStatus::IN_QUEUE, map_reduce_job.get_status());
 
@@ -143,7 +169,8 @@ mod tests {
 
     #[test]
     fn test_tasks_completed() {
-        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "")
+            .unwrap();
         // Assert that completed tasks starts at 0.
         assert_eq!(0, map_reduce_job.get_map_tasks_completed());
         assert_eq!(0, map_reduce_job.get_reduce_tasks_completed());
@@ -157,7 +184,8 @@ mod tests {
 
     #[test]
     fn test_tasks_total() {
-        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let mut map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "")
+            .unwrap();
         // Assert that total tasks starts at 0.
         assert_eq!(0, map_reduce_job.get_map_tasks_total());
         assert_eq!(0, map_reduce_job.get_reduce_tasks_total());
@@ -171,12 +199,22 @@ mod tests {
 
     #[test]
     fn test_queued_work_impl() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/");
+        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "").unwrap();
 
         assert_eq!(map_reduce_job.get_work_bucket(), "client-1");
         assert_eq!(
             map_reduce_job.get_work_id(),
             map_reduce_job.get_map_reduce_id()
         );
+    }
+
+    #[test]
+    fn test_output_directory() {
+        let map_reduce_job1 = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "").unwrap();
+        let map_reduce_job2 =
+            MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input/", "/tmp/output/").unwrap();
+
+        assert_eq!("/tmp/input/output/", map_reduce_job1.get_output_directory());
+        assert_eq!("/tmp/output/", map_reduce_job2.get_output_directory());
     }
 }
