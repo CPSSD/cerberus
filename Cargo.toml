@@ -4,5 +4,6 @@ members = [
     "libcerberus",
     "master",
     "proto",
+    "util",
     "worker"
 ]

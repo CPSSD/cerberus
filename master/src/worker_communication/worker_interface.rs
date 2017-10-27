@@ -128,11 +128,9 @@ impl WorkerRegistrationInterface {
     pub fn new(worker_registration_service: WorkerRegistrationServiceImpl) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(MASTER_PORT);
-        server_builder.add_service(
-            grpc_pb::WorkerRegistrationServiceServer::new_service_def(
-                worker_registration_service,
-            ),
-        );
+        server_builder.add_service(grpc_pb::WorkerRegistrationServiceServer::new_service_def(
+            worker_registration_service,
+        ));
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );

@@ -1,0 +1,9 @@
+[package]
+name = "util"
+version = "0.1.0"
+authors = ["Cerberus Authors <cerberus@cpssd.net>"]
+
+[dependencies]
+env_logger = "0.4.3"
+error-chain = "0.11.0"
+log = "0.3.8"
