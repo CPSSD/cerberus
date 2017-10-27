@@ -264,6 +264,16 @@ impl MapReduceScheduler {
 mod tests {
     use super::*;
     use queued_work_store::QueuedWork;
+    use mapreduce_job::MapReduceJobOptions;
+
+    fn get_test_job_options() -> MapReduceJobOptions {
+        MapReduceJobOptions {
+            client_id: "client-1".to_owned(),
+            binary_path: "/tmp/bin".to_owned(),
+            input_directory: "/tmp/input".to_owned(),
+            ..Default::default()
+        }
+    }
 
     struct TaskProcessorStub {
         map_tasks: Vec<MapReduceTask>,
@@ -309,7 +319,7 @@ mod tests {
     #[test]
     fn test_schedule_map_reduce() {
         let mut map_reduce_scheduler = create_map_reduce_scheduler();
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap();
+        let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
         map_reduce_scheduler
             .schedule_map_reduce(map_reduce_job.clone())
             .unwrap();
@@ -327,16 +337,14 @@ mod tests {
         // Assert that map reduce in progress starts as false.
         assert!(!map_reduce_scheduler.get_map_reduce_in_progress());
         map_reduce_scheduler
-            .schedule_map_reduce(
-                MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap(),
-            )
+            .schedule_map_reduce(MapReduceJob::new(get_test_job_options()).unwrap())
             .unwrap();
         assert!(map_reduce_scheduler.get_map_reduce_in_progress());
     }
 
     #[test]
     fn test_process_completed_task() {
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "").unwrap();
+        let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
         let map_task1 =
             MapReduceTask::new_map_task(map_reduce_job.get_map_reduce_id(), "/tmp/bin", "input-1");
 

@@ -1,12 +1,12 @@
 extern crate cerberus_proto;
+extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
-extern crate env_logger;
 extern crate grpc;
 #[macro_use]
 extern crate log;
-extern crate util;
 extern crate uuid;
+extern crate util;
 
 mod errors {
     error_chain! {
@@ -20,26 +20,27 @@ mod errors {
     }
 }
 
-pub mod client_communication;
-pub mod mapreduce_tasks;
-pub mod mapreduce_job;
-pub mod queued_work_store;
-pub mod scheduler;
-pub mod worker_communication;
-pub mod worker_management;
+mod client_communication;
+mod mapreduce_job;
+mod mapreduce_tasks;
+mod queued_work_store;
+mod scheduler;
+mod worker_communication;
+mod worker_management;
 
+use std::sync::{Arc, Mutex, RwLock};
+use std::{thread, time};
+
+use client_communication::ClientInterface;
+use client_communication::MapReduceServiceImpl;
 use errors::*;
 use mapreduce_tasks::TaskProcessor;
-use worker_management::WorkerManager;
+use scheduler::{MapReduceScheduler, run_scheduling_loop};
+use util::init_logger;
 use worker_communication::WorkerRegistrationServiceImpl;
 use worker_communication::{WorkerInterface, WorkerRegistrationInterface};
-use client_communication::MapReduceServiceImpl;
-use client_communication::ClientInterface;
-use scheduler::{MapReduceScheduler, run_scheduling_loop};
+use worker_management::WorkerManager;
 use worker_management::{WorkerPoller, run_polling_loop};
-use std::{thread, time};
-use std::sync::{Arc, Mutex, RwLock};
-use util::init_logger;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 
