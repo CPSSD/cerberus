@@ -178,6 +178,7 @@ mod tests {
     use std::path::Path;
     use std::io::Read;
     use std::collections::HashSet;
+    use mapreduce_job::MapReduceJobOptions;
     use mapreduce_tasks::TaskType;
 
     #[test]
@@ -200,8 +201,12 @@ mod tests {
             .write_all(b"this is the second test file")
             .unwrap();
 
-        let map_reduce_job =
-            MapReduceJob::new("test-client", "/tmp/bin", test_path.to_str().unwrap(), "").unwrap();
+        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+            client_id: "test-client".to_owned(),
+            binary_path: "/tmp/bin".to_owned(),
+            input_directory: test_path.to_str().unwrap().to_owned(),
+            ..Default::default()
+        }).unwrap();
 
         let map_tasks: Vec<MapReduceTask> =
             task_processor.create_map_tasks(&map_reduce_job).unwrap();
@@ -241,8 +246,12 @@ mod tests {
     fn test_create_reduce_tasks() {
         let task_processor = TaskProcessor;
 
-        let map_reduce_job = MapReduceJob::new("test-client", "/tmp/bin", "/tmp/inputdir", "")
-            .unwrap();
+        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+            client_id: "test-client".to_owned(),
+            binary_path: "/tmp/bin".to_owned(),
+            input_directory: "/tmp/inputdir".to_owned(),
+            ..Default::default()
+        }).unwrap();
 
         let mut map_task1 = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
         map_task1.push_output_file("intermediate-key1", "/tmp/output/1");
