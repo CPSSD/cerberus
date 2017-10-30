@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use emitter::{EmitIntermediate, EmitFinal};
 use errors::*;
 use serde::Serialize;
@@ -14,15 +16,23 @@ where
     pub value: V,
 }
 
-/// `IntermediateOutputObject` is a struct comprising a collection of `IntermediateOutputPair`s,
-/// representing the entire output of a map operation, ready to be serialised to JSON.
+/// `IntermediateOutputArray` is a struct comprising a collection of `IntermediateOutputPair`s,
+/// representing a partition of the output of a map operation, ready to be serialised to JSON.
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub struct IntermediateOutputObject<K, V>
+pub struct IntermediateOutputArray<K, V>
 where
     K: Default + Serialize,
     V: Default + Serialize,
 {
     pub pairs: Vec<IntermediateOutputPair<K, V>>,
+}
+
+pub struct IntermediateOutputObject<K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    pub partitions: HashMap<u32, IntermediateOutputArray<K, V>>,
 }
 
 /// `FinalOutputObject` is a struct comprising a collection of serialisable values representing the
