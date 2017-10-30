@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
