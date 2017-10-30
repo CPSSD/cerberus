@@ -261,6 +261,7 @@ mod tests {
     use super::*;
     use errors::*;
     use mapreduce_job::MapReduceJob;
+    use mapreduce_job::MapReduceJobOptions;
     use mapreduce_tasks::TaskProcessorTrait;
     use worker_management::WorkerTaskType;
 
@@ -324,8 +325,12 @@ mod tests {
     fn create_map_reduce_scheduler(map_task: MapReduceTask) -> MapReduceScheduler {
         let mut map_reduce_scheduler =
             MapReduceScheduler::new(Box::new(TaskProcessorStub::new(vec![map_task], Vec::new())));
-        let map_reduce_job = MapReduceJob::new("client-1", "/tmp/bin", "/tmp/input", "/tmp/output")
-            .unwrap();
+        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+            client_id: "client-1".to_owned(),
+            binary_path: "/tmp/bin".to_owned(),
+            input_directory: "/tmp/input".to_owned(),
+            output_directory: Some("/tmp/output".to_owned()),
+        }).unwrap();
         map_reduce_scheduler
             .schedule_map_reduce(map_reduce_job)
             .unwrap();
