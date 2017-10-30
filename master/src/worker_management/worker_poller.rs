@@ -2,7 +2,7 @@ use errors::*;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::{thread, time};
 use worker_management::{WorkerTaskType, WorkerManager};
-use worker_communication::WorkerInterface;
+use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 use cerberus_proto::worker::*;
 use scheduler::MapReduceScheduler;
 use util::output_error;
@@ -15,7 +15,7 @@ const POLLING_LOOP_INTERVAL_MS: u64 = 100;
 pub struct WorkerPoller {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
     worker_manager: Arc<Mutex<WorkerManager>>,
-    worker_interface: Arc<RwLock<WorkerInterface>>,
+    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
 }
 
 struct PollResult {
@@ -35,7 +35,7 @@ impl WorkerPoller {
     pub fn new(
         scheduler: Arc<Mutex<MapReduceScheduler>>,
         worker_manager: Arc<Mutex<WorkerManager>>,
-        worker_interface: Arc<RwLock<WorkerInterface>>,
+        worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
     ) -> Self {
         WorkerPoller {
             scheduler: scheduler,
@@ -47,7 +47,7 @@ impl WorkerPoller {
     fn step(
         &self,
         worker_ids: Vec<String>,
-        interface: RwLockReadGuard<WorkerInterface>,
+        interface: RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Vec<Result<PollResult>> {
         let mut results = Vec::new();
         for worker_id in worker_ids {
@@ -70,7 +70,7 @@ impl WorkerPoller {
     fn handle_map_result(
         &self,
         wi: WorkerInfo,
-        interface: &RwLockReadGuard<WorkerInterface>,
+        interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Result<()> {
         let map_result = interface.get_map_result(wi.worker_id.as_str());
         match map_result {
@@ -89,7 +89,7 @@ impl WorkerPoller {
     fn handle_reduce_result(
         &self,
         wi: WorkerInfo,
-        interface: &RwLockReadGuard<WorkerInterface>,
+        interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Result<()> {
         let reduce_result_response = interface.get_reduce_result(wi.worker_id.as_str());
         match reduce_result_response {
@@ -108,7 +108,7 @@ impl WorkerPoller {
     fn handle_mapreduce_results(
         &self,
         worker_info_list: Vec<WorkerInfo>,
-        interface: &RwLockReadGuard<WorkerInterface>,
+        interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) {
         for wi in worker_info_list {
             let worker_id = wi.worker_id.clone();

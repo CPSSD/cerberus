@@ -1,6 +1,6 @@
 use grpc::{RequestOptions, SingleResponse, Error};
 use std::sync::{Arc, Mutex, RwLock};
-use worker_communication::WorkerInterface;
+use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 use worker_management::{Worker, WorkerManager};
 
 use cerberus_proto::worker as pb;
@@ -11,13 +11,13 @@ const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager not available";
 
 pub struct WorkerRegistrationServiceImpl {
     worker_manager: Arc<Mutex<WorkerManager>>,
-    worker_interface: Arc<RwLock<WorkerInterface>>,
+    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
 }
 
 impl WorkerRegistrationServiceImpl {
     pub fn new(
         worker_manager: Arc<Mutex<WorkerManager>>,
-        worker_interface: Arc<RwLock<WorkerInterface>>,
+        worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
     ) -> Self {
         WorkerRegistrationServiceImpl {
             worker_manager,
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn test_register_worker() {
         let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
-        let worker_interface = Arc::new(RwLock::new(WorkerInterface::new()));
+        let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
         let worker_registration_service =
             WorkerRegistrationServiceImpl::new(worker_manager.clone(), worker_interface);
 
