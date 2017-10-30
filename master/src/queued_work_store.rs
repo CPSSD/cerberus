@@ -1,11 +1,12 @@
-use errors::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::hash::Hash;
 
+use errors::*;
+
 /// The `QueuedWork` trait defines a an object that can be stored in a `QueuedWorkStore`.
 pub trait QueuedWork {
-    type Key: Hash + Eq + Default;
+    type Key: Hash + Eq;
     fn get_work_bucket(&self) -> Self::Key;
     fn get_work_id(&self) -> Self::Key;
 }
@@ -24,19 +25,12 @@ where
     work_queue: VecDeque<T::Key>,
 }
 
-// Default can not be derived here without forcing T to implment default, which I do not want
-// to do.
-#[allow(new_without_default_derive)]
 impl<T> QueuedWorkStore<T>
 where
     T: QueuedWork,
 {
     pub fn new() -> Self {
-        QueuedWorkStore {
-            work_map: HashMap::new(),
-            work_buckets: HashMap::new(),
-            work_queue: VecDeque::new(),
-        }
+        Default::default()
     }
 
     pub fn add_to_store(&mut self, task: Box<T>) -> Result<()> {
@@ -154,6 +148,19 @@ where
             return Ok(());
         }
         Err("Given task is not in the store".into())
+    }
+}
+
+impl<T> Default for QueuedWorkStore<T>
+where
+    T: QueuedWork,
+{
+    fn default() -> Self {
+        QueuedWorkStore {
+            work_map: HashMap::new(),
+            work_buckets: HashMap::new(),
+            work_queue: VecDeque::new(),
+        }
     }
 }
 
