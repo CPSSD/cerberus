@@ -1,8 +1,10 @@
 use chrono::prelude::*;
 use clap::{App, ArgMatches, SubCommand};
+use emitter::IntermediateVecEmitter;
 use errors::*;
 use io::*;
 use mapper::Map;
+use partition::Partition;
 use reducer::Reduce;
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
                 IntermediateOutputObjectEmitter};
@@ -14,29 +16,34 @@ use uuid::Uuid;
 ///
 /// The user does not have to interact with this class directly. It is returned from
 /// `register_mapper_reducer` and accepted by `run`.
-pub struct UserImplRegistry<'a, M, R>
+pub struct UserImplRegistry<'a, M, R, P>
 where
     M: Map + 'a,
     R: Reduce + 'a,
+    P: Partition<M::Key, M::Value> + 'a,
 {
     mapper: &'a M,
     reducer: &'a R,
+    partitioner: &'a P,
 }
 
-/// `register_mapper_reducer` registers instances of the user's Map and Reduce implementations.
+/// `register_mapper_reducer` registers instances of the user's Map, Partition and Reduce implementations.
 ///
 /// One of the functions whose outputs are required by the `run` function.
-pub fn register_mapper_reducer<'a, M, R>(
+pub fn register_mapper_reducer<'a, M, R, P>(
     mapper: &'a M,
     reducer: &'a R,
-) -> UserImplRegistry<'a, M, R>
+    partitioner: &'a P,
+) -> UserImplRegistry<'a, M, R, P>
 where
     M: Map,
     R: Reduce,
+    P: Partition<M::Key, M::Value> + 'a,
 {
     UserImplRegistry {
         mapper: mapper,
         reducer: reducer,
+        partitioner: partitioner,
     }
 }
 
@@ -62,13 +69,14 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
 ///
 /// `matches` - The output of the `parse_command_line` function.
 /// `registry` - The output of the `register_mapper_reducer` function.
-pub fn run<M, R>(matches: &ArgMatches, registry: &UserImplRegistry<M, R>) -> Result<()>
+pub fn run<M, R, P>(matches: &ArgMatches, registry: &UserImplRegistry<M, R, P>) -> Result<()>
 where
     M: Map,
     R: Reduce,
+    P: Partition<M::Key, M::Value>,
 {
     match matches.subcommand_name() {
-        Some("map") => Ok(run_map(registry.mapper)?),
+        Some("map") => Ok(run_map(registry.mapper, registry.partitioner)?),
         Some("reduce") => Ok(run_reduce(registry.reducer)?),
         Some("sanity-check") => {
             run_sanity_check();
@@ -83,20 +91,30 @@ where
     }
 }
 
-fn run_map<M: Map>(mapper: &M) -> Result<()> {
+fn run_map<M: Map, P>(mapper: &M, partitioner: &P) -> Result<()>
+where
+    P: Partition<M::Key, M::Value>,
+{
     let mut source = stdin();
     let mut sink = stdout();
     let input_kv = read_map_input(&mut source).chain_err(
         || "Error getting input to map.",
     )?;
-    let mut output_object = IntermediateOutputObject::<M::Key, M::Value>::default();
+
+    let mut pairs_vec: Vec<(M::Key, M::Value)> = Vec::new();
 
     mapper
-        .map(
-            input_kv,
+        .map(input_kv, IntermediateVecEmitter::new(&mut pairs_vec))
+        .chain_err(|| "Error running map operation.")?;
+
+    let mut output_object = IntermediateOutputObject::<M::Key, M::Value>::default();
+
+    partitioner
+        .partition(
+            pairs_vec,
             IntermediateOutputObjectEmitter::new(&mut output_object),
         )
-        .chain_err(|| "Error running map operation.")?;
+        .chain_err(|| "Error partitioning map output")?;
 
     write_map_output(&mut sink, &output_object).chain_err(
         || "Error writing map output to stdout.",

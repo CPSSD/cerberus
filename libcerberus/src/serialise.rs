@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emitter::{EmitIntermediate, EmitFinal};
+use emitter::{EmitPartitionedIntermediate, EmitFinal};
 use errors::*;
 use serde::Serialize;
 
@@ -16,23 +16,15 @@ where
     pub value: V,
 }
 
-/// `IntermediateOutputArray` is a struct comprising a collection of `IntermediateOutputPair`s,
-/// representing a partition of the output of a map operation, ready to be serialised to JSON.
+/// `IntermediateOutputObject` is a struct comprising a collection of `IntermediateOutputArray`s,
+/// representing a partitions of the output of a map operation, ready to be serialised to JSON.
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub struct IntermediateOutputArray<K, V>
-where
-    K: Default + Serialize,
-    V: Default + Serialize,
-{
-    pub pairs: Vec<IntermediateOutputPair<K, V>>,
-}
-
 pub struct IntermediateOutputObject<K, V>
 where
     K: Default + Serialize,
     V: Default + Serialize,
 {
-    pub partitions: HashMap<u32, IntermediateOutputArray<K, V>>,
+    pub partitions: HashMap<u64, Vec<IntermediateOutputPair<K, V>>>,
 }
 
 /// `FinalOutputObject` is a struct comprising a collection of serialisable values representing the
@@ -67,13 +59,14 @@ where
     }
 }
 
-impl<'a, K, V> EmitIntermediate<K, V> for IntermediateOutputObjectEmitter<'a, K, V>
+impl<'a, K, V> EmitPartitionedIntermediate<K, V> for IntermediateOutputObjectEmitter<'a, K, V>
 where
     K: Default + Serialize,
     V: Default + Serialize,
 {
-    fn emit(&mut self, key: K, value: V) -> Result<()> {
-        self.sink.pairs.push(IntermediateOutputPair {
+    fn emit(&mut self, partition: u64, key: K, value: V) -> Result<()> {
+        let output_array = self.sink.partitions.entry(partition).or_insert_with(Default::default);
+        output_array.push(IntermediateOutputPair {
             key: key,
             value: value,
         });
@@ -109,14 +102,17 @@ impl<'a, V: Default + Serialize> EmitFinal<V> for FinalOutputObjectEmitter<'a, V
 #[cfg(test)]
 mod tests {
     use serde_json;
+    use std::collections::HashSet;
     use super::*;
 
     // Test that the JSON serialisation of IntermediateOutputObject matches the libcerberus JSON
     // API.
     #[test]
     fn intermediate_output_object_json_format() {
-        let output = IntermediateOutputObject {
-            pairs: vec![
+        let mut partitions = HashMap::new();
+        partitions.insert(
+            0,
+            vec![
                 IntermediateOutputPair {
                     key: "foo_intermediate",
                     value: "bar",
@@ -126,13 +122,29 @@ mod tests {
                     value: "baz",
                 },
             ],
-        };
-        let expected_json_string =
-            r#"{"pairs":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}"#;
+        );
+        partitions.insert(
+            1,
+            vec![
+                IntermediateOutputPair {
+                    key: "foo_intermediate2",
+                    value: "bar",
+                },
+            ],
+        );
+
+        let output = IntermediateOutputObject { partitions: partitions };
+        let mut output_set = HashSet::new();
+        let expected_json_string1 =
+            r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}],"1":[{"key":"foo_intermediate2","value":"bar"}]}}"#;
+        let expected_json_string2 =
+            r#"{"partitions":{"1":[{"key":"foo_intermediate2","value":"bar"}],"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}}"#;
+        output_set.insert(expected_json_string1.to_owned());
+        output_set.insert(expected_json_string2.to_owned());
 
         let json_string = serde_json::to_string(&output).unwrap();
 
-        assert_eq!(expected_json_string, json_string)
+        assert!(output_set.contains(&json_string))
     }
 
     // Test that the JSON serialisation of FinalOutputObject matches the libcerberus JSON API.
@@ -149,18 +161,22 @@ mod tests {
     #[test]
     fn intermediate_output_emitter_works() {
         let mut output = IntermediateOutputObject::default();
-        let expected_output = IntermediateOutputObject {
-            pairs: vec![
+        let mut partitions = HashMap::new();
+        partitions.insert(
+            0,
+            vec![
                 IntermediateOutputPair {
                     key: "foo",
                     value: "bar",
                 },
             ],
-        };
+        );
+
+        let expected_output = IntermediateOutputObject { partitions: partitions };
 
         {
             let mut emitter = IntermediateOutputObjectEmitter::new(&mut output);
-            emitter.emit("foo", "bar").unwrap();
+            emitter.emit(0, "foo", "bar").unwrap();
         }
 
         assert_eq!(expected_output, output);
