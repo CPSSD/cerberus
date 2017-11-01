@@ -4,11 +4,10 @@ use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::WorkerRegistrationService;
 use worker_service::WorkerServiceImpl;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
-const MASTER_PORT: u16 = 8081;
 
 pub struct WorkerInterface {
     server: Server,
@@ -19,7 +18,7 @@ pub struct WorkerInterface {
 /// from the master.
 /// This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new(worker_service_impl: WorkerServiceImpl) -> Result<Self> {
+    pub fn new(worker_service_impl: WorkerServiceImpl, master_addr: SocketAddr) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(WORKER_PORT);
         server_builder.add_service(grpc_pb::WorkerServiceServer::new_service_def(
@@ -30,8 +29,8 @@ impl WorkerInterface {
         );
 
         let client = grpc_pb::WorkerRegistrationServiceClient::new_plain(
-            "localhost",
-            MASTER_PORT,
+            &master_addr.ip().to_string(),
+            master_addr.port(),
             Default::default(),
         ).chain_err(|| "Error building client")?;
 

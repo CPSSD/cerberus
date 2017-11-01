@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate error_chain;
 extern crate grpc;
 extern crate tls_api;
@@ -24,9 +26,12 @@ mod errors {
 pub mod operation_handler;
 pub mod worker_interface;
 pub mod worker_service;
+mod parser;
 
 use errors::*;
 use std::{thread, time};
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use util::init_logger;
 use worker_interface::WorkerInterface;
@@ -41,11 +46,14 @@ fn run() -> Result<()> {
     println!("Cerberus Worker!");
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
+    let matches = parser::parse_command_line();
+    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or("localhost:8081"))
+        .chain_err(|| "Error parsing master address")?;
+
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
     let worker_service_impl = WorkerServiceImpl::new(operation_handler);
-    let worker_server_interface = WorkerInterface::new(worker_service_impl).chain_err(
-        || "Error building worker interface.",
-    )?;
+    let worker_server_interface = WorkerInterface::new(worker_service_impl, master_addr)
+        .chain_err(|| "Error building worker interface.")?;
 
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
