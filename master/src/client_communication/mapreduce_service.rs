@@ -8,10 +8,10 @@ use util::output_error;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 
-const SCHEDULER_BUSY: &'static str = "Scheduler busy";
-const JOB_SCHEDULE_ERROR: &'static str = "Unable to schedule mapreduce job";
-const JOB_RETRIEVAL_ERROR: &'static str = "Unable to retrieve mapreduce jobs";
-const MISSING_JOB_IDS: &'static str = "No client_id or mapreduce_id provided";
+const SCHEDULER_BUSY: &str = "Scheduler busy";
+const JOB_SCHEDULE_ERROR: &str = "Unable to schedule mapreduce job";
+const JOB_RETRIEVAL_ERROR: &str = "Unable to retrieve mapreduce jobs";
+const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 
 pub struct MapReduceServiceImpl {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
@@ -37,7 +37,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                     Ok(job) => job,
                     Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
                 };
-                response.mapreduce_id = job.get_map_reduce_id().to_owned();
+                response.mapreduce_id = job.map_reduce_id.clone();
                 let result = scheduler.schedule_map_reduce(job);
                 match result {
                     Err(err) => {
@@ -88,8 +88,8 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
 
                 for job in jobs {
                     let mut report = pb::MapReduceReport::new();
-                    report.mapreduce_id = job.get_map_reduce_id().to_owned();
-                    report.status = job.get_status().to_owned();
+                    report.mapreduce_id = job.map_reduce_id.clone();
+                    report.status = job.status;
 
                     // TODO: Add timestamps for scheduled, started and done time
                     // to each report.
@@ -175,7 +175,7 @@ mod tests {
 
         let job = MapReduceJob::new(MapReduceJobOptions::default()).unwrap();
         let mut request = pb::MapReduceStatusRequest::new();
-        request.mapreduce_id = job.get_map_reduce_id().to_owned();
+        request.mapreduce_id = job.map_reduce_id.clone();
         let result = scheduler.schedule_map_reduce(job);
         assert!(result.is_ok());
 

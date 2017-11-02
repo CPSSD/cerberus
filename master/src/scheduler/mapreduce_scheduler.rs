@@ -36,14 +36,13 @@ impl MapReduceScheduler {
     fn process_next_map_reduce(&mut self) -> Result<()> {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
-                map_reduce_job.set_status(MapReduceJobStatus::IN_PROGRESS);
+                map_reduce_job.status = MapReduceJobStatus::IN_PROGRESS;
                 self.map_reduce_in_progress = true;
-                self.in_progress_map_reduce_id =
-                    Some(map_reduce_job.get_map_reduce_id().to_owned());
+                self.in_progress_map_reduce_id = Some(map_reduce_job.map_reduce_id.clone());
 
                 let map_tasks: Vec<MapReduceTask> =
                     self.task_processor.create_map_tasks(map_reduce_job)?;
-                map_reduce_job.set_map_tasks_total(map_tasks.len() as u32);
+                map_reduce_job.map_tasks_total = map_tasks.len() as u32;
 
                 for task in map_tasks {
                     self.map_reduce_task_queue
@@ -141,7 +140,7 @@ impl MapReduceScheduler {
                 .chain_err(|| "Error creating reduce tasks.")?
         };
 
-        map_reduce_job.set_reduce_tasks_total(reduce_tasks.len() as u32);
+        map_reduce_job.reduce_tasks_total = reduce_tasks.len() as u32;
 
         for reduce_task in reduce_tasks {
             self.map_reduce_task_queue
@@ -156,11 +155,10 @@ impl MapReduceScheduler {
         let all_maps_completed = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id)
-                .chain_err(|| "Error incrementing completeted map tasks.")?;
+                .chain_err(|| "Error incrementing completed map tasks.")?;
 
-            let map_tasks_completed = map_reduce_job.get_map_tasks_completed() + 1;
-            map_reduce_job.set_map_tasks_completed(map_tasks_completed);
-            map_tasks_completed == map_reduce_job.get_map_tasks_total()
+            map_reduce_job.map_tasks_completed += 1;
+            map_reduce_job.map_tasks_completed == map_reduce_job.map_tasks_total
         };
 
         if all_maps_completed {
@@ -206,18 +204,17 @@ impl MapReduceScheduler {
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id)
-                .chain_err(|| "Error incrementing completeted reduce tasks.")?;
+                .chain_err(|| "Mapreduce job not found in queue.")?;
 
-            let reduce_tasks_completed = map_reduce_job.get_reduce_tasks_completed() + 1;
-            map_reduce_job.set_reduce_tasks_completed(reduce_tasks_completed);
+            map_reduce_job.reduce_tasks_completed += 1;
 
-            if reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total() {
+            if map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total {
                 self.map_reduce_task_queue
                     .remove_work_bucket(&map_reduce_job.get_work_id())
                     .chain_err(|| "Error marking map reduce job as complete.")?;
-                map_reduce_job.set_status(MapReduceJobStatus::DONE);
+                map_reduce_job.status = MapReduceJobStatus::DONE;
             }
-            reduce_tasks_completed == map_reduce_job.get_reduce_tasks_total()
+            map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };
 
         if completed_map_reduce && self.map_reduce_job_queue.queue_size() > 0 {
@@ -327,7 +324,7 @@ mod tests {
             map_reduce_scheduler
                 .get_in_progress_map_reduce_id()
                 .unwrap(),
-            map_reduce_job.get_map_reduce_id()
+            map_reduce_job.map_reduce_id
         );
     }
 
@@ -345,8 +342,11 @@ mod tests {
     #[test]
     fn test_process_completed_task() {
         let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
-        let map_task1 =
-            MapReduceTask::new_map_task(map_reduce_job.get_map_reduce_id(), "/tmp/bin", "input-1");
+        let map_task1 = MapReduceTask::new_map_task(
+            map_reduce_job.map_reduce_id.as_str(),
+            "/tmp/bin",
+            "input-1",
+        );
 
         let mut map_response = pb::MapResponse::new();
         map_response.set_status(pb::OperationStatus::SUCCESS);
@@ -363,7 +363,7 @@ mod tests {
         map_response.mut_map_results().push(map_result2);
 
         let reduce_task1 = MapReduceTask::new_reduce_task(
-            map_reduce_job.get_map_reduce_id(),
+            map_reduce_job.map_reduce_id.as_str(),
             "/tmp/bin",
             "key-1",
             vec!["/tmp/worker/intermediate1".to_owned()],
@@ -375,7 +375,7 @@ mod tests {
         reduce_response1.set_output_file_path("/tmp/worker/key-2".to_owned());
 
         let reduce_task2 = MapReduceTask::new_reduce_task(
-            map_reduce_job.get_map_reduce_id(),
+            map_reduce_job.map_reduce_id.as_str(),
             "/tmp/bin",
             "key-2",
             vec!["/tmp/worker/intermediate2".to_owned()],
@@ -398,7 +398,7 @@ mod tests {
 
         // Assert that the scheduler state starts as good.
         assert_eq!(
-            map_reduce_job.get_map_reduce_id(),
+            map_reduce_job.map_reduce_id,
             map_reduce_scheduler
                 .get_in_progress_map_reduce_id()
                 .unwrap()
@@ -423,7 +423,7 @@ mod tests {
                 .get_work_by_id(&map_task1.get_work_id())
                 .unwrap();
 
-            assert_eq!(1, map_reduce_job.get_map_tasks_completed());
+            assert_eq!(1, map_reduce_job.map_tasks_completed);
             assert_eq!(MapReduceTaskStatus::Complete, map_task1.get_status());
             assert_eq!(
                 vec![
@@ -454,7 +454,7 @@ mod tests {
                 .get_work_by_id(&reduce_task1.get_work_id())
                 .unwrap();
 
-            assert_eq!(1, map_reduce_job.get_reduce_tasks_completed());
+            assert_eq!(1, map_reduce_job.reduce_tasks_completed);
             assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.get_status());
 
         }
@@ -474,7 +474,7 @@ mod tests {
                 .get_work_by_id(&reduce_task2.get_work_id())
                 .is_none()
         );
-        assert_eq!(2, map_reduce_job.get_reduce_tasks_completed());
-        assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.get_status());
+        assert_eq!(2, map_reduce_job.reduce_tasks_completed);
+        assert_eq!(MapReduceJobStatus::DONE, map_reduce_job.status);
     }
 }

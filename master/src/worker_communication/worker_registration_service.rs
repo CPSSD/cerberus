@@ -6,8 +6,8 @@ use worker_management::{Worker, WorkerManager};
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 
-const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker interface not available";
-const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager not available";
+const WORKER_INTERFACE_UNAVAILABLE: &str = "Worker interface not available";
+const WORKER_MANAGER_UNAVAILABLE: &str = "Worker manager not available";
 
 pub struct WorkerRegistrationServiceImpl {
     worker_manager: Arc<Mutex<WorkerManager>>,
