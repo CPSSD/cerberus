@@ -1,10 +1,11 @@
+use std::collections::HashMap;
+use std::fs;
+use std::io::{Write, BufRead, BufReader};
+use std::path::PathBuf;
+
 use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::MapReduceTask;
-use std::collections::HashMap;
-use std::io::{Write, BufRead, BufReader};
-use std::path::PathBuf;
-use std::fs;
 
 const MEGA_BYTE: usize = 1000 * 1000;
 const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
@@ -83,8 +84,8 @@ impl TaskProcessor {
             let ammount_read: usize = read_str.len();
             if ammount_read > map_task_file.bytes_to_write {
                 map_tasks.push(MapReduceTask::new_map_task(
-                    map_reduce_job.get_map_reduce_id(),
-                    map_reduce_job.get_binary_path(),
+                    map_reduce_job.map_reduce_id.as_str(),
+                    map_reduce_job.binary_path.as_str(),
                     &map_task_file.file_path,
                 ));
 
@@ -102,7 +103,7 @@ impl TaskProcessor {
 impl TaskProcessorTrait for TaskProcessor {
     fn create_map_tasks(&self, map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
         let mut map_tasks = Vec::new();
-        let input_directory = PathBuf::from(map_reduce_job.get_input_directory());
+        let input_directory = PathBuf::from(map_reduce_job.input_directory.as_str());
 
         let mut output_directory: PathBuf = input_directory.clone();
         output_directory.push("MapReduceTasks");
@@ -115,7 +116,7 @@ impl TaskProcessorTrait for TaskProcessor {
                 || "Error creating new Map input file chunk.",
             )?;
 
-        for entry in fs::read_dir(map_reduce_job.get_input_directory())? {
+        for entry in fs::read_dir(map_reduce_job.input_directory.as_str())? {
             let entry: fs::DirEntry = entry.chain_err(|| "Error reading input directory.")?;
             let path: PathBuf = entry.path();
             if path.is_file() {
@@ -133,8 +134,8 @@ impl TaskProcessorTrait for TaskProcessor {
         }
         if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
             map_tasks.push(MapReduceTask::new_map_task(
-                map_reduce_job.get_map_reduce_id(),
-                map_reduce_job.get_binary_path(),
+                map_reduce_job.map_reduce_id.as_str(),
+                map_reduce_job.binary_path.as_str(),
                 &map_task_file.file_path,
             ));
         }
@@ -160,11 +161,11 @@ impl TaskProcessorTrait for TaskProcessor {
 
         for (reduce_key, reduce_input) in key_results_map {
             reduce_tasks.push(MapReduceTask::new_reduce_task(
-                map_reduce_job.get_map_reduce_id(),
-                map_reduce_job.get_binary_path(),
+                map_reduce_job.map_reduce_id.as_str(),
+                map_reduce_job.binary_path.as_str(),
                 &reduce_key,
                 reduce_input,
-                map_reduce_job.get_output_directory(),
+                map_reduce_job.output_directory.as_str(),
             ));
         }
 
@@ -215,13 +216,13 @@ mod tests {
         assert_eq!(map_tasks[0].get_task_type(), TaskType::Map);
         assert_eq!(
             map_tasks[0].get_map_reduce_id(),
-            map_reduce_job.get_map_reduce_id()
+            map_reduce_job.map_reduce_id
         );
 
         let perform_map_req = map_tasks[0].get_perform_map_request().unwrap();
 
         assert_eq!(
-            map_reduce_job.get_binary_path(),
+            map_reduce_job.binary_path,
             perform_map_req.get_mapper_file_path()
         );
 
@@ -280,7 +281,7 @@ mod tests {
         assert_eq!("intermediate-key1", reduce_req1.get_intermediate_key());
         assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
         assert_eq!(
-            map_reduce_job.get_map_reduce_id(),
+            map_reduce_job.map_reduce_id,
             reduce_tasks[0].get_map_reduce_id()
         );
         assert_eq!(
@@ -291,7 +292,7 @@ mod tests {
         assert_eq!("intermediate-key2", reduce_req2.get_intermediate_key());
         assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
         assert_eq!(
-            map_reduce_job.get_map_reduce_id(),
+            map_reduce_job.map_reduce_id,
             reduce_tasks[1].get_map_reduce_id()
         );
         assert_eq!(vec!["/tmp/output/2"], reduce_req2.get_input_file_paths());

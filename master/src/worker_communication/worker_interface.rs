@@ -7,7 +7,7 @@ use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::WorkerService; // do not use
 
-const NO_CLIENT_FOUND_ERR: &'static str = "No client found for this worker";
+const NO_CLIENT_FOUND_ERR: &str = "No client found for this worker";
 
 pub trait WorkerInterface {
     fn add_client(&mut self, worker: &Worker) -> Result<()>;

@@ -7,9 +7,9 @@ use cerberus_proto::worker::*;
 use scheduler::MapReduceScheduler;
 use util::output_error;
 
-const WORKER_MANAGER_UNAVAILABLE: &'static str = "Worker manager unavailable";
-const WORKER_INTERFACE_UNAVAILABLE: &'static str = "Worker Interface unavailable";
-const SCHEDULER_UNAVAILABLE: &'static str = "Scheduler unavailable";
+const WORKER_MANAGER_UNAVAILABLE: &str = "Worker manager unavailable";
+const WORKER_INTERFACE_UNAVAILABLE: &str = "Worker Interface unavailable";
+const SCHEDULER_UNAVAILABLE: &str = "Scheduler unavailable";
 const POLLING_LOOP_INTERVAL_MS: u64 = 100;
 
 pub struct WorkerPoller {
