@@ -4,7 +4,7 @@ use cerberus_proto::worker_grpc as grpc_pb;
 use operation_handler::OperationHandler;
 use std::sync::{Arc, Mutex};
 
-const OPERATION_HANDLER_UNAVAILABLE: &'static str = "Operation Handler not available";
+const OPERATION_HANDLER_UNAVAILABLE: &str = "Operation Handler not available";
 
 pub struct WorkerServiceImpl {
     operation_handler: Arc<Mutex<OperationHandler>>,

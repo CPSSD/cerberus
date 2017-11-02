@@ -66,8 +66,3 @@ impl WorkerInterface {
         &self.server
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}
