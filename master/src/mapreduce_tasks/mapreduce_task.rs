@@ -8,6 +8,8 @@ pub enum MapReduceTaskStatus {
     Queued,
     InProgress,
     Complete,
+    //TODO(conor): Remove this when Failed is used.
+    #[allow(dead_code)]
     Failed,
 }
 
@@ -119,6 +121,8 @@ impl MapReduceTask {
         );
     }
 
+    //TODO(conor): Remove this when get_assigned_worker_id is used.
+    #[allow(dead_code)]
     pub fn get_assigned_worker_id(&self) -> &str {
         &self.assigned_worker_id
     }
@@ -127,6 +131,8 @@ impl MapReduceTask {
         self.assigned_worker_id = worker_id.into();
     }
 
+    //TODO(conor): Remove this when get_status is used.
+    #[allow(dead_code)]
     pub fn get_status(&self) -> MapReduceTaskStatus {
         self.status.clone()
     }

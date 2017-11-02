@@ -53,6 +53,8 @@ where
         Ok(())
     }
 
+    //TODO(conor): Remove this when remove_task is used.
+    #[allow(dead_code)]
     pub fn remove_task(&mut self, task_id: &T::Key) -> Result<()> {
         if !self.work_map.contains_key(task_id) {
             return Err("Given task is not in the store".into());
@@ -79,6 +81,8 @@ where
         self.work_queue.len()
     }
 
+    //TODO(conor): Remove this when queue_empty is used.
+    #[allow(dead_code)]
     pub fn queue_empty(&self) -> bool {
         self.work_queue.is_empty()
     }
@@ -113,6 +117,8 @@ where
         }
     }
 
+    //TODO(conor): Remove this when get_work_bucket is used.
+    #[allow(dead_code)]
     pub fn get_work_bucket(&self, work_bucket: &T::Key) -> Option<&Vec<T::Key>> {
         self.work_buckets.get(work_bucket)
     }
@@ -138,6 +144,8 @@ where
         }
     }
 
+    //TODO(conor): Remove this when has_task is used.
+    #[allow(dead_code)]
     pub fn has_task(&self, task_id: &T::Key) -> bool {
         self.work_map.contains_key(task_id)
     }
