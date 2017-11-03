@@ -107,7 +107,7 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMa
 
     let mut map_results: HashMap<u64, String> = HashMap::new();
 
-    let partition_map = match parse_value.as_object() {
+    let partition_map = match parse_value["partitions"].as_object() {
         None => return Err("Error parsing partition map.".into()),
         Some(map) => map,
     };
