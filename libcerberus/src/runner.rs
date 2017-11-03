@@ -1,16 +1,18 @@
+use std::io::{stdin, stdout};
+
 use chrono::prelude::*;
 use clap::{App, ArgMatches, SubCommand};
+use uuid::Uuid;
+
 use emitter::IntermediateVecEmitter;
 use errors::*;
 use io::*;
 use mapper::Map;
-use partition::Partition;
+use partition::{Partition, PartitionInputPairs};
 use reducer::Reduce;
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
                 IntermediateOutputObjectEmitter};
-use std::io::{stdin, stdout};
 use super::VERSION;
-use uuid::Uuid;
 
 /// `UserImplRegistry` tracks the user's implementations of Map, Reduce, etc.
 ///
@@ -111,7 +113,7 @@ where
 
     partitioner
         .partition(
-            pairs_vec,
+            PartitionInputPairs::new(pairs_vec),
             IntermediateOutputObjectEmitter::new(&mut output_object),
         )
         .chain_err(|| "Error partitioning map output")?;

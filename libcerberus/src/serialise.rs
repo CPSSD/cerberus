@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use serde::Serialize;
+
 use emitter::{EmitPartitionedIntermediate, EmitFinal};
 use errors::*;
-use serde::Serialize;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
 /// from a map operation.
@@ -17,7 +18,7 @@ where
 }
 
 /// `IntermediateOutputObject` is a struct comprising a collection of `IntermediateOutputArray`s,
-/// representing a partitions of the output of a map operation, ready to be serialised to JSON.
+/// representing a partition of the output of a map operation, ready to be serialised to JSON.
 #[derive(Debug, Default, PartialEq, Serialize)]
 pub struct IntermediateOutputObject<K, V>
 where

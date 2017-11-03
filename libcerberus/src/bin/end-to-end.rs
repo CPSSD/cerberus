@@ -37,11 +37,11 @@ impl Reduce for TestReducer {
 struct TestPartitioner;
 
 impl Partition<String, String> for TestPartitioner {
-    fn partition<E>(&self, input: Vec<(String, String)>, mut emitter: E) -> Result<()>
+    fn partition<E>(&self, input: PartitionInputPairs<String, String>, mut emitter: E) -> Result<()>
     where
         E: EmitPartitionedIntermediate<String, String>,
     {
-        for (key, value) in input {
+        for (key, value) in input.pairs {
             let first_char = key.chars().nth(0).chain_err(
                 || "Cannot partition key of empty string.",
             )?;

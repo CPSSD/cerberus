@@ -5,6 +5,29 @@ use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+/// The `PartitionInputPairs` is a struct for passing input data to a `Partition`.
+///
+/// `PartitionInputPairs` is a thin wrapper around a `Vec<(Key, Value)>`, used for creating a clearer API.
+/// It can be constructed normally or using `PartitionInputPairs::new()`.
+#[derive(Debug, Default, Deserialize, PartialEq)]
+pub struct PartitionInputPairs<K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    pub pairs: Vec<(K, V)>,
+}
+
+impl<K, V> PartitionInputPairs<K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    pub fn new(pairs: Vec<(K, V)>) -> Self {
+        PartitionInputPairs { pairs: pairs }
+    }
+}
+
 /// The `Partition` trait defines a function for partitioning the results of a `Map` operation..
 ///
 /// # Arguments
@@ -21,11 +44,12 @@ where
     K: Default + Serialize,
     V: Default + Serialize,
 {
-    fn partition<E>(&self, input: Vec<(K, V)>, emitter: E) -> Result<()>
+    fn partition<E>(&self, input: PartitionInputPairs<K, V>, emitter: E) -> Result<()>
     where
         E: EmitPartitionedIntermediate<K, V>;
 }
 
+/// `HashPartitioner` implements the `Partition` for any Key that can be hashed.
 pub struct HashPartitioner {
     partition_count: u64,
 }
@@ -51,11 +75,11 @@ where
     K: Default + Serialize + Hash,
     V: Default + Serialize,
 {
-    fn partition<E>(&self, input: Vec<(K, V)>, mut emitter: E) -> Result<()>
+    fn partition<E>(&self, input: PartitionInputPairs<K, V>, mut emitter: E) -> Result<()>
     where
         E: EmitPartitionedIntermediate<K, V>,
     {
-        for (key, value) in input {
+        for (key, value) in input.pairs {
             let hash: u64 = self.calculate_hash(&key);
             let partition_count: u64 = self.get_partition_count();
             let partition = hash % partition_count;
