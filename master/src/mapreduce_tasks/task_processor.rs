@@ -148,22 +148,21 @@ impl TaskProcessorTrait for TaskProcessor {
         completed_map_tasks: &[&MapReduceTask],
     ) -> Result<Vec<MapReduceTask>> {
         let mut reduce_tasks = Vec::new();
-        let mut key_results_map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
         for completed_map in completed_map_tasks {
-            for output_pair in completed_map.get_output_files() {
-                let map_results: &mut Vec<String> = key_results_map
-                    .entry(output_pair.0.to_owned())
-                    .or_insert_with(Vec::new);
-                map_results.push(output_pair.1.to_owned());
+            for (partition, output_file) in completed_map.get_map_output_files() {
+                let map_results: &mut Vec<String> =
+                    key_results_map.entry(*partition).or_insert_with(Vec::new);
+                map_results.push(output_file.to_owned());
             }
         }
 
-        for (reduce_key, reduce_input) in key_results_map {
+        for (reduce_partition, reduce_input) in key_results_map {
             reduce_tasks.push(MapReduceTask::new_reduce_task(
                 map_reduce_job.map_reduce_id.as_str(),
                 map_reduce_job.binary_path.as_str(),
-                &reduce_key,
+                reduce_partition,
                 reduce_input,
                 map_reduce_job.output_directory.as_str(),
             ));
@@ -255,11 +254,11 @@ mod tests {
         }).unwrap();
 
         let mut map_task1 = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
-        map_task1.push_output_file("intermediate-key1", "/tmp/output/1");
-        map_task1.push_output_file("intermediate-key2", "/tmp/output/2");
+        map_task1.insert_map_output_file(0, "/tmp/output/1");
+        map_task1.insert_map_output_file(1, "/tmp/output/2");
 
         let mut map_task2 = MapReduceTask::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
-        map_task2.push_output_file("intermediate-key1", "/tmp/output/3");
+        map_task2.insert_map_output_file(0, "/tmp/output/3");
 
         let map_tasks: Vec<&MapReduceTask> = vec![&map_task1, &map_task2];
         let mut reduce_tasks: Vec<MapReduceTask> = task_processor
@@ -267,10 +266,7 @@ mod tests {
             .unwrap();
 
         reduce_tasks.sort_by_key(|task| {
-            task.get_perform_reduce_request()
-                .unwrap()
-                .get_intermediate_key()
-                .to_owned()
+            task.get_perform_reduce_request().unwrap().get_partition()
         });
 
         assert_eq!(2, reduce_tasks.len());
@@ -278,7 +274,7 @@ mod tests {
         let reduce_req1 = reduce_tasks[0].get_perform_reduce_request().unwrap();
         let reduce_req2 = reduce_tasks[1].get_perform_reduce_request().unwrap();
 
-        assert_eq!("intermediate-key1", reduce_req1.get_intermediate_key());
+        assert_eq!(0, reduce_req1.get_partition());
         assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
         assert_eq!(
             map_reduce_job.map_reduce_id,
@@ -289,7 +285,7 @@ mod tests {
             reduce_req1.get_input_file_paths()
         );
 
-        assert_eq!("intermediate-key2", reduce_req2.get_intermediate_key());
+        assert_eq!(1, reduce_req2.get_partition());
         assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
         assert_eq!(
             map_reduce_job.map_reduce_id,

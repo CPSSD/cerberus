@@ -68,18 +68,14 @@ message PerformMapRequest {
 }
 
 message MapResponse {
-    message MapResult {
-        string key = 1;
-        string output_file_path = 2;
-    }
     OperationStatus status  = 1;
-    // The mapping of result keys to output files if the operation is a success.
-    repeated MapResult map_results = 2;
+    // The mapping of result partitions to output files if the operation is a success.
+    map<uint64, string> map_results = 2;
 }
 
 message PerformReduceRequest {
-    // The intermediate key to be reduced.
-    string intermediate_key = 1;
+    // The intermediate partition to be reduced.
+    uint64 partition = 1;
     // The file paths of the intermediate files produced by the map operations.
     repeated string input_file_paths = 2;
     // The path to the binary that performs the reduce operation.
@@ -90,6 +86,4 @@ message PerformReduceRequest {
 
 message ReduceResponse {
     OperationStatus status  = 1;
-    // The file path of the output file if the operation is a success.
-    string output_file_path = 2;
 }
