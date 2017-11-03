@@ -1,10 +1,11 @@
+use chrono::prelude::*;
+
+use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
+use cerberus_proto::worker as pb;
 use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
 use queued_work_store::{QueuedWork, QueuedWorkStore};
-
-use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
-use cerberus_proto::worker as pb;
 
 pub struct MapReduceScheduler {
     map_reduce_job_queue: QueuedWorkStore<MapReduceJob>,
@@ -37,6 +38,7 @@ impl MapReduceScheduler {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
                 map_reduce_job.status = MapReduceJobStatus::IN_PROGRESS;
+                map_reduce_job.time_started = Some(Utc::now());
                 self.map_reduce_in_progress = true;
                 self.in_progress_map_reduce_id = Some(map_reduce_job.map_reduce_id.clone());
 
@@ -213,6 +215,7 @@ impl MapReduceScheduler {
                     .remove_work_bucket(&map_reduce_job.get_work_id())
                     .chain_err(|| "Error marking map reduce job as complete.")?;
                 map_reduce_job.status = MapReduceJobStatus::DONE;
+                map_reduce_job.time_completed = Some(Utc::now());
             }
             map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };

@@ -1,9 +1,11 @@
-use errors::*;
-use queued_work_store::QueuedWork;
 use std::path::PathBuf;
+
+use chrono::prelude::*;
 use uuid::Uuid;
 
 use cerberus_proto::mapreduce as mr_proto;
+use errors::*;
+use queued_work_store::QueuedWork;
 
 /// `MapReduceJobOptions` stores arguments used to construct a `MapReduceJob`.
 #[derive(Default)]
@@ -49,6 +51,10 @@ pub struct MapReduceJob {
 
     pub reduce_tasks_completed: u32,
     pub reduce_tasks_total: u32,
+
+    pub time_requested: DateTime<Utc>,
+    pub time_started: Option<DateTime<Utc>>,
+    pub time_completed: Option<DateTime<Utc>>,
 }
 
 impl MapReduceJob {
@@ -82,6 +88,10 @@ impl MapReduceJob {
 
             reduce_tasks_completed: 0,
             reduce_tasks_total: 0,
+
+            time_requested: Utc::now(),
+            time_started: None,
+            time_completed: None,
         })
     }
 }

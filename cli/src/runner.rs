@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{Duration, Local};
 use clap::ArgMatches;
 use errors::*;
 use grpc::RequestOptions;
@@ -79,7 +79,11 @@ fn print_table(rep: &pb::MapReduceReport) {
 
     let status: String = match rep.get_status() {
         pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
-        pb::Status::DONE => format!("DONE ({})", get_time_offset(rep.get_done_timestamp())),
+        pb::Status::DONE => {
+            let time_taken =
+                Duration::seconds(rep.get_done_timestamp() - rep.get_started_timestamp());
+            format!("DONE ({})", time_taken)
+        }
         pb::Status::IN_PROGRESS => {
             format!(
                 "IN_PROGRESS ({})",

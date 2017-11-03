@@ -90,9 +90,13 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                     let mut report = pb::MapReduceReport::new();
                     report.mapreduce_id = job.map_reduce_id.clone();
                     report.status = job.status;
-
-                    // TODO: Add timestamps for scheduled, started and done time
-                    // to each report.
+                    report.scheduled_timestamp = job.time_requested.timestamp();
+                    if let Some(time) = job.time_started {
+                        report.started_timestamp = time.timestamp();
+                    }
+                    if let Some(time) = job.time_completed {
+                        report.done_timestamp = time.timestamp();
+                    }
 
                     response.reports.push(report);
                 }
