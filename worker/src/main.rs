@@ -1,15 +1,20 @@
+extern crate cerberus_proto;
 #[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
 extern crate grpc;
+#[macro_use]
+extern crate log;
+extern crate protobuf;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 extern crate tls_api;
 extern crate util;
 extern crate uuid;
-extern crate protobuf;
-extern crate cerberus_proto;
-#[macro_use]
-extern crate serde_json;
 
 mod errors {
     error_chain! {

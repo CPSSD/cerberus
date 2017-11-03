@@ -12,7 +12,9 @@ impl Map for TestMapper {
     where
         E: EmitIntermediate<Self::Key, Self::Value>,
     {
-        emitter.emit(input.value, "test".to_owned())?;
+        for word in input.value.split_whitespace() {
+            emitter.emit(word.to_owned(), "test".to_owned())?;
+        }
         Ok(())
     }
 }
@@ -32,12 +34,46 @@ impl Reduce for TestReducer {
     }
 }
 
+struct TestPartitioner;
+
+impl Partition<String, String> for TestPartitioner {
+    fn partition<E>(&self, input: PartitionInputPairs<String, String>, mut emitter: E) -> Result<()>
+    where
+        E: EmitPartitionedIntermediate<String, String>,
+    {
+        for (key, value) in input.pairs {
+            let first_char = key.chars().nth(0).chain_err(
+                || "Cannot partition key of empty string.",
+            )?;
+            let partition;
+            if first_char.is_lowercase() {
+                if first_char > 'm' {
+                    partition = 1;
+                } else {
+                    partition = 0;
+                }
+            } else if first_char > 'M' {
+                partition = 1;
+            } else {
+                partition = 0;
+            }
+
+            emitter.emit(partition, key, value).chain_err(
+                || "Error partitioning map output.",
+            )?;
+        }
+        Ok(())
+    }
+}
+
 fn run() -> Result<()> {
     let test_mapper = TestMapper;
     let test_reducer = TestReducer;
+    let test_partitioner = TestPartitioner;
 
     let matches = cerberus::parse_command_line();
-    let registry = cerberus::register_mapper_reducer(&test_mapper, &test_reducer);
+    let registry =
+        cerberus::register_mapper_reducer(&test_mapper, &test_reducer, &test_partitioner);
 
     cerberus::run(&matches, &registry)
 }
