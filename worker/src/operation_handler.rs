@@ -15,7 +15,7 @@ use uuid::Uuid;
 use errors::*;
 use util::output_error;
 
-const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/cerberus/";
+const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
 #[derive(Default)]
