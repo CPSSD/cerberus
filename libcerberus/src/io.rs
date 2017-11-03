@@ -74,6 +74,7 @@ where
 #[cfg(test)]
 mod tests {
     use serialise::IntermediateOutputPair;
+    use std::collections::HashMap;
     use std::io::Cursor;
     use super::*;
 
@@ -125,8 +126,10 @@ mod tests {
 
     #[test]
     fn write_intermediate_output_object() {
-        let test_object = IntermediateOutputObject {
-            pairs: vec![
+        let mut partitions = HashMap::new();
+        partitions.insert(
+            0,
+            vec![
                 IntermediateOutputPair {
                     key: "foo_intermediate",
                     value: "bar",
@@ -136,9 +139,11 @@ mod tests {
                     value: "baz",
                 },
             ],
-        };
-        let expected_json_string =
-            r#"{"pairs":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}"#;
+        );
+        let test_object = IntermediateOutputObject { partitions: partitions };
+
+        let expected_json_string = r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}}"#;
+
         let output_vector: Vec<u8> = Vec::new();
         let mut cursor = Cursor::new(output_vector);
 
