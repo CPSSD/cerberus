@@ -2,23 +2,52 @@ use chrono::{Duration, Local};
 use clap::ArgMatches;
 use errors::*;
 use grpc::RequestOptions;
+use std::path::Path;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService; // do not use
 
+fn verify_valid_path(path_str: &str) -> Result<String> {
+    let path = Path::new(path_str);
+
+    if !path.is_absolute() {
+        return Err("Paths passed to the CLI must be absolute.".into());
+    }
+
+    let path_option = path.to_str();
+    match path_option {
+        Some(res) => Ok(res.to_owned()),
+        None => Err("Invalid characters in path.".into()),
+    }
+}
+
 pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
-    let input = matches.value_of("input").chain_err(
-        || "Input directory cannot be empty",
+    let mut input = matches
+        .value_of("input")
+        .chain_err(|| "Input directory cannot be empty")?
+        .to_owned();
+
+    input = verify_valid_path(&input).chain_err(
+        || "Invalid input path.",
     )?;
 
     let output = match matches.value_of("output") {
-        Some(output) => output,
-        None => "",
+        Some(output) => {
+            verify_valid_path(output).chain_err(
+                || "Invalid output path.",
+            )?
+        }
+        None => String::new(),
     };
 
-    let binary = matches.value_of("binary").chain_err(
-        || "Binary cannot be empty",
+    let mut binary = matches
+        .value_of("binary")
+        .chain_err(|| "Binary cannot be empty")?
+        .to_owned();
+
+    binary = verify_valid_path(&binary).chain_err(
+        || "Invalid binary path.",
     )?;
 
     let mut req = pb::MapReduceRequest::new();
