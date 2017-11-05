@@ -2,6 +2,8 @@ extern crate cerberus_proto;
 extern crate chrono;
 extern crate env_logger;
 #[macro_use]
+extern crate clap;
+#[macro_use]
 extern crate error_chain;
 extern crate grpc;
 #[macro_use]
@@ -29,9 +31,11 @@ mod scheduler;
 mod worker_communication;
 mod worker_management;
 mod grpc_server;
+mod parser;
 
 use std::sync::{Arc, Mutex, RwLock};
 use std::{thread, time};
+use std::str::FromStr;
 
 use client_communication::MapReduceServiceImpl;
 use errors::*;
@@ -45,9 +49,14 @@ use worker_management::{WorkerPoller, run_polling_loop};
 use grpc_server::GRPCServer;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
+const DEFAULT_PORT: &str = "8081";
 
 fn run() -> Result<()> {
     init_logger().chain_err(|| "Failed to initialise logging.")?;
+
+    let matches = parser::parse_command_line();
+    let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
+        .chain_err(|| "Error parsing port")?;
 
     let task_processor = TaskProcessor;
     let map_reduce_scheduler = Arc::new(Mutex::new(
@@ -63,7 +72,7 @@ fn run() -> Result<()> {
 
     // Cli to Master Communications
     let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
-    let grpc_server = GRPCServer::new(mapreduce_service, worker_registration_service)
+    let grpc_server = GRPCServer::new(port, mapreduce_service, worker_registration_service)
         .chain_err(|| "Error building grpc server.")?;
 
     run_scheduling_loop(

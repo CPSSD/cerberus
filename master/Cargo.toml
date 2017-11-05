@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
+clap = "~2.26"
 cerberus-proto = { path = "../proto" }
 chrono = "0.4"
 env_logger = "0.4.3"
