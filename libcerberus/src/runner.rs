@@ -16,8 +16,7 @@ use super::VERSION;
 
 /// `UserImplRegistry` tracks the user's implementations of Map, Reduce, etc.
 ///
-/// The user does not have to interact with this class directly. It is returned from
-/// `register_mapper_reducer` and accepted by `run`.
+/// The user should use the `UserImplRegistryBuilder` to create this and then pass it in to `run`.
 pub struct UserImplRegistry<'a, M, R, P>
 where
     M: Map + 'a,
@@ -29,23 +28,74 @@ where
     partitioner: &'a P,
 }
 
-/// `register_mapper_reducer` registers instances of the user's Map, Partition and Reduce implementations.
-///
-/// One of the functions whose outputs are required by the `run` function.
-pub fn register_mapper_reducer<'a, M, R, P>(
-    mapper: &'a M,
-    reducer: &'a R,
-    partitioner: &'a P,
-) -> UserImplRegistry<'a, M, R, P>
+/// `UserImplRegistryBuilder` is used to create a `UserImplRegistry`.
+pub struct UserImplRegistryBuilder<'a, M, R, P>
 where
-    M: Map,
-    R: Reduce,
+    M: Map + 'a,
+    R: Reduce + 'a,
     P: Partition<M::Key, M::Value> + 'a,
 {
-    UserImplRegistry {
-        mapper: mapper,
-        reducer: reducer,
-        partitioner: partitioner,
+    mapper: Option<&'a M>,
+    reducer: Option<&'a R>,
+    partitioner: Option<&'a P>,
+}
+
+impl<'a, M, R, P> Default for UserImplRegistryBuilder<'a, M, R, P>
+where
+    M: Map + 'a,
+    R: Reduce + 'a,
+    P: Partition<M::Key, M::Value> + 'a,
+{
+    fn default() -> UserImplRegistryBuilder<'a, M, R, P> {
+        UserImplRegistryBuilder {
+            mapper: None,
+            reducer: None,
+            partitioner: None,
+        }
+    }
+}
+
+impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P>
+where
+    M: Map + 'a,
+    R: Reduce + 'a,
+    P: Partition<M::Key, M::Value> + 'a,
+{
+    pub fn new() -> UserImplRegistryBuilder<'a, M, R, P> {
+        Default::default()
+    }
+
+    pub fn mapper(mut self, mapper: &'a M) -> UserImplRegistryBuilder<'a, M, R, P> {
+        self.mapper = Some(mapper);
+        self
+    }
+
+    pub fn reducer(mut self, reducer: &'a R) -> UserImplRegistryBuilder<'a, M, R, P> {
+        self.reducer = Some(reducer);
+        self
+    }
+
+    pub fn partitioner(mut self, partitioner: &'a P) -> UserImplRegistryBuilder<'a, M, R, P> {
+        self.partitioner = Some(partitioner);
+        self
+    }
+
+    pub fn build(&self) -> Result<UserImplRegistry<'a, M, R, P>> {
+        let mapper = self.mapper.chain_err(
+            || "Error building UserImplRegistry: No Mapper provided",
+        )?;
+        let reducer = self.reducer.chain_err(
+            || "Error building UserImplRegistry: No Reducer provided",
+        )?;
+        let partitioner = self.partitioner.chain_err(
+            || "Error building UserImplRegistry: No Partitioner provided",
+        )?;
+
+        Ok(UserImplRegistry {
+            mapper: mapper,
+            reducer: reducer,
+            partitioner: partitioner,
+        })
     }
 }
 
@@ -93,8 +143,9 @@ where
     }
 }
 
-fn run_map<M: Map, P>(mapper: &M, partitioner: &P) -> Result<()>
+fn run_map<M, P>(mapper: &M, partitioner: &P) -> Result<()>
 where
+    M: Map,
     P: Partition<M::Key, M::Value>,
 {
     let mut source = stdin();

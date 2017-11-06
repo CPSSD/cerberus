@@ -35,7 +35,6 @@ impl Reduce for TestReducer {
 }
 
 struct TestPartitioner;
-
 impl Partition<String, String> for TestPartitioner {
     fn partition<E>(&self, input: PartitionInputPairs<String, String>, mut emitter: E) -> Result<()>
     where
@@ -45,18 +44,15 @@ impl Partition<String, String> for TestPartitioner {
             let first_char = key.chars().nth(0).chain_err(
                 || "Cannot partition key of empty string.",
             )?;
-            let partition;
-            if first_char.is_lowercase() {
-                if first_char > 'm' {
-                    partition = 1;
+            let partition = {
+                if first_char.is_lowercase() {
+                    if first_char > 'm' { 1 } else { 0 }
+                } else if first_char > 'M' {
+                    1
                 } else {
-                    partition = 0;
+                    0
                 }
-            } else if first_char > 'M' {
-                partition = 1;
-            } else {
-                partition = 0;
-            }
+            };
 
             emitter.emit(partition, key, value).chain_err(
                 || "Error partitioning map output.",
@@ -72,8 +68,12 @@ fn run() -> Result<()> {
     let test_partitioner = TestPartitioner;
 
     let matches = cerberus::parse_command_line();
-    let registry =
-        cerberus::register_mapper_reducer(&test_mapper, &test_reducer, &test_partitioner);
+    let registry = UserImplRegistryBuilder::new()
+        .mapper(&test_mapper)
+        .reducer(&test_reducer)
+        .partitioner(&test_partitioner)
+        .build()
+        .chain_err(|| "Error building UserImplRegistry.")?;
 
     cerberus::run(&matches, &registry)
 }

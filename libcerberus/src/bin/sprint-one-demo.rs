@@ -58,7 +58,12 @@ fn run() -> Result<()> {
     let wc_partitioner = HashPartitioner::new(MAP_OUTPUT_PARTITIONS);
 
     let matches = cerberus::parse_command_line();
-    let registry = cerberus::register_mapper_reducer(&wc_mapper, &wc_reducer, &wc_partitioner);
+    let registry = UserImplRegistryBuilder::new()
+        .mapper(&wc_mapper)
+        .reducer(&wc_reducer)
+        .partitioner(&wc_partitioner)
+        .build()
+        .chain_err(|| "Error building UserImplRegistry.")?;
 
     cerberus::run(&matches, &registry)
 }

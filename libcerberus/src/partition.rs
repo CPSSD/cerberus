@@ -1,9 +1,10 @@
-use emitter::EmitPartitionedIntermediate;
-use errors::*;
-use serde::Serialize;
-
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+use serde::Serialize;
+
+use emitter::EmitPartitionedIntermediate;
+use errors::*;
 
 /// The `PartitionInputPairs` is a struct for passing input data to a `Partition`.
 ///
@@ -59,10 +60,6 @@ impl HashPartitioner {
         HashPartitioner { partition_count: partition_count }
     }
 
-    fn get_partition_count(&self) -> u64 {
-        self.partition_count
-    }
-
     fn calculate_hash<T: Hash>(&self, t: &T) -> u64 {
         let mut hasher = DefaultHasher::new();
         t.hash(&mut hasher);
@@ -81,7 +78,7 @@ where
     {
         for (key, value) in input.pairs {
             let hash: u64 = self.calculate_hash(&key);
-            let partition_count: u64 = self.get_partition_count();
+            let partition_count: u64 = self.partition_count;
             let partition = hash % partition_count;
             emitter.emit(partition, key, value).chain_err(
                 || "Error partitioning map output.",
