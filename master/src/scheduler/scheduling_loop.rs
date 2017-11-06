@@ -65,7 +65,7 @@ fn handle_assign_task_failure<I>(
 
     match scheduler_resources.scheduler_arc.lock() {
         Ok(mut scheduler) => {
-            let result = scheduler.unschedule_task(task_assignment.task_id.to_owned());
+            let result = scheduler.unschedule_task(&task_assignment.task_id);
             if let Err(err) = result {
                 error!("Error reverting task state on task failure: {}", err);
             }

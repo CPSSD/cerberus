@@ -276,7 +276,7 @@ impl OperationHandler {
         }
     }
 
-    pub fn perform_map(&mut self, map_options: pb::PerformMapRequest) -> Result<()> {
+    pub fn perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
         if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }

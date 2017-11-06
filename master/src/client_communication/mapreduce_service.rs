@@ -62,8 +62,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                 let jobs: Vec<&MapReduceJob>;
 
                 if !req.client_id.is_empty() {
-                    let client_result =
-                        scheduler.get_mapreduce_client_status(req.client_id.clone());
+                    let client_result = scheduler.get_mapreduce_client_status(&req.client_id);
                     jobs = match client_result {
                         Err(err) => {
                             output_error(&err.chain_err(
@@ -74,7 +73,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                         Ok(js) => js,
                     };
                 } else if !req.mapreduce_id.is_empty() {
-                    let result = scheduler.get_mapreduce_status(req.mapreduce_id);
+                    let result = scheduler.get_mapreduce_status(&req.mapreduce_id);
                     jobs = match result {
                         Err(err) => {
                             output_error(&err.chain_err(|| "Error getting map reduce status."));
