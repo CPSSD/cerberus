@@ -58,7 +58,8 @@ fn run() -> Result<()> {
     let wc_partitioner = HashPartitioner::new(MAP_OUTPUT_PARTITIONS);
 
     let matches = cerberus::parse_command_line();
-    let registry = UserImplRegistryBuilder::new()
+    let mut builder = UserImplRegistryBuilder::new();
+    let registry = builder
         .mapper(&wc_mapper)
         .reducer(&wc_reducer)
         .partitioner(&wc_partitioner)

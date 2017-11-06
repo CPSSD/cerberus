@@ -68,7 +68,9 @@ fn run() -> Result<()> {
     let test_partitioner = TestPartitioner;
 
     let matches = cerberus::parse_command_line();
-    let registry = UserImplRegistryBuilder::new()
+    let mut builder = UserImplRegistryBuilder::new();
+
+    let registry = builder
         .mapper(&test_mapper)
         .reducer(&test_reducer)
         .partitioner(&test_partitioner)
