@@ -65,20 +65,17 @@ where
         Default::default()
     }
 
-    pub fn mapper(&'a mut self, mapper: &'a M) -> &'a mut UserImplRegistryBuilder<'a, M, R, P> {
+    pub fn mapper(&mut self, mapper: &'a M) -> &mut UserImplRegistryBuilder<'a, M, R, P> {
         self.mapper = Some(mapper);
         self
     }
 
-    pub fn reducer(&'a mut self, reducer: &'a R) -> &'a mut UserImplRegistryBuilder<'a, M, R, P> {
+    pub fn reducer(&mut self, reducer: &'a R) -> &mut UserImplRegistryBuilder<'a, M, R, P> {
         self.reducer = Some(reducer);
         self
     }
 
-    pub fn partitioner(
-        &'a mut self,
-        partitioner: &'a P,
-    ) -> &'a mut UserImplRegistryBuilder<'a, M, R, P> {
+    pub fn partitioner(&mut self, partitioner: &'a P) -> &mut UserImplRegistryBuilder<'a, M, R, P> {
         self.partitioner = Some(partitioner);
         self
     }
