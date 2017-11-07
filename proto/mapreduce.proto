@@ -81,6 +81,8 @@ message MapReduceReport {
     int64 started_timestamp = 5;
     // Unix timestamp at which the MapReduce has been finished.
     int64 done_timestamp = 6;
+    // Location of the output directory
+    string output_directory = 7;
 }
 
 message ClusterStatusResponse {
