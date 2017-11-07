@@ -57,10 +57,6 @@ impl Worker {
         self.address
     }
 
-    pub fn get_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
-        self.status
-    }
-
     pub fn get_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
         self.operation_status
     }

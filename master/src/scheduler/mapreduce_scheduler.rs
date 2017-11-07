@@ -55,10 +55,14 @@ impl MapReduceScheduler {
         }
     }
 
+    //TODO(conor): Remove this when get_map_reduce_in_progress is used.
+    #[allow(dead_code)]
     pub fn get_map_reduce_in_progress(&self) -> bool {
         self.map_reduce_in_progress
     }
 
+    //TODO(conor): Remove this when get_in_progress_map_reduce_id is used.
+    #[allow(dead_code)]
     pub fn get_in_progress_map_reduce_id(&self) -> Option<String> {
         self.in_progress_map_reduce_id.clone()
     }
