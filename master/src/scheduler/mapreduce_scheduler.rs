@@ -192,11 +192,8 @@ impl MapReduceScheduler {
                     .chain_err(|| "Error marking map task as completed.")?;
 
                 map_task.set_status(MapReduceTaskStatus::Complete);
-                for map_result in map_response.get_map_results() {
-                    map_task.push_output_file(
-                        map_result.get_key(),
-                        map_result.get_output_file_path(),
-                    );
+                for (partition, output_file) in map_response.get_map_results() {
+                    map_task.insert_map_output_file(*partition, output_file.to_owned());
                 }
                 map_task.get_map_reduce_id().to_owned()
             };
@@ -247,13 +244,7 @@ impl MapReduceScheduler {
                     .get_work_by_id_mut(&reduce_task_id.to_owned())
                     .chain_err(|| "Error marking reduce task as completed.")?;
 
-                let perform_reduce_request = reduce_task.get_perform_reduce_request().chain_err(
-                    || "Error marking reduce task as complete.",
-                )?;
-                let reduce_key = perform_reduce_request.get_intermediate_key();
-
                 reduce_task.set_status(MapReduceTaskStatus::Complete);
-                reduce_task.push_output_file(reduce_key, reduce_response.get_output_file_path());
                 reduce_task.get_map_reduce_id().to_owned()
             };
 
@@ -362,40 +353,38 @@ mod tests {
         let mut map_response = pb::MapResponse::new();
         map_response.set_status(pb::OperationStatus::SUCCESS);
 
-        let mut map_result1 = pb::MapResponse_MapResult::new();
-        map_result1.set_key("key-1".to_owned());
-        map_result1.set_output_file_path("/tmp/worker/intermediate1".to_owned());
-
-        let mut map_result2 = pb::MapResponse_MapResult::new();
-        map_result2.set_key("key-2".to_owned());
-        map_result2.set_output_file_path("/tmp/worker/intermediate2".to_owned());
-
-        map_response.mut_map_results().push(map_result1);
-        map_response.mut_map_results().push(map_result2);
+        map_response.mut_map_results().insert(
+            0,
+            "/tmp/worker/intermediate1"
+                .to_owned(),
+        );
+        map_response.mut_map_results().insert(
+            1,
+            "/tmp/worker/intermediate2"
+                .to_owned(),
+        );
 
         let reduce_task1 = MapReduceTask::new_reduce_task(
             map_reduce_job.map_reduce_id.as_str(),
             "/tmp/bin",
-            "key-1",
+            0,
             vec!["/tmp/worker/intermediate1".to_owned()],
             "/tmp/output",
         );
 
         let mut reduce_response1 = pb::ReduceResponse::new();
         reduce_response1.set_status(pb::OperationStatus::SUCCESS);
-        reduce_response1.set_output_file_path("/tmp/worker/key-2".to_owned());
 
         let reduce_task2 = MapReduceTask::new_reduce_task(
             map_reduce_job.map_reduce_id.as_str(),
             "/tmp/bin",
-            "key-2",
+            1,
             vec!["/tmp/worker/intermediate2".to_owned()],
             "/tmp/output/",
         );
 
         let mut reduce_response2 = pb::ReduceResponse::new();
         reduce_response2.set_status(pb::OperationStatus::SUCCESS);
-        reduce_response2.set_output_file_path("/tmp/worker/key-2".to_owned());
 
         let mock_map_tasks = vec![map_task1.clone()];
         let mock_reduce_tasks = vec![reduce_task1.clone(), reduce_task2.clone()];
@@ -437,11 +426,12 @@ mod tests {
             assert_eq!(1, map_reduce_job.map_tasks_completed);
             assert_eq!(MapReduceTaskStatus::Complete, map_task1.get_status());
             assert_eq!(
-                vec![
-                    ("key-1".to_owned(), "/tmp/worker/intermediate1".to_owned()),
-                    ("key-2".to_owned(), "/tmp/worker/intermediate2".to_owned()),
-                ],
-                map_task1.get_output_files()
+                "/tmp/worker/intermediate1",
+                map_task1.get_map_output_files().get(&0).unwrap()
+            );
+            assert_eq!(
+                "/tmp/worker/intermediate2",
+                map_task1.get_map_output_files().get(&1).unwrap()
             );
             assert_eq!(2, map_reduce_scheduler.map_reduce_task_queue.queue_size());
         }
