@@ -105,6 +105,7 @@ pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) ->
 
 fn print_table(rep: &pb::MapReduceReport) {
     let id = rep.get_mapreduce_id();
+    let output = rep.get_output_directory();
 
     let status: String = match rep.get_status() {
         pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
@@ -123,7 +124,7 @@ fn print_table(rep: &pb::MapReduceReport) {
         pb::Status::FAILED => "FAILED".to_owned(),
     };
 
-    table!(["MRID", id], ["Status", status]).printstd();
+    table!(["MRID", id], ["Status", status], ["Output", output]).printstd();
 }
 
 fn get_time_offset(offset: i64) -> String {
