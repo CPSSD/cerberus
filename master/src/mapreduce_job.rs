@@ -26,7 +26,7 @@ impl From<mr_proto::MapReduceRequest> for MapReduceJobOptions {
             client_id: other.client_id,
             binary_path: other.binary_path,
             input_directory: other.input_directory,
-            output_directory: if other.output_directory.is_empty() {
+            output_directory: if !other.output_directory.is_empty() {
                 Some(other.output_directory)
             } else {
                 None
