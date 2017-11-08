@@ -51,7 +51,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         match self.operation_handler.lock() {
             Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
-                let result = handler.perform_map(map_options);
+                let result = handler.perform_map(&map_options);
 
                 match result {
                     Err(err) => SingleResponse::err(Error::Panic(err.to_string())),

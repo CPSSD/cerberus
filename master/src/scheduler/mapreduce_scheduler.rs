@@ -100,29 +100,33 @@ impl MapReduceScheduler {
         self.available_workers = available_workers;
     }
 
-    pub fn get_mapreduce_status(&self, mapreduce_id: String) -> Result<&MapReduceJob> {
-        let result = self.map_reduce_job_queue.get_work_by_id(&mapreduce_id);
+    pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<&MapReduceJob> {
+        let result = self.map_reduce_job_queue.get_work_by_id(
+            &mapreduce_id.to_owned(),
+        );
         match result {
             None => Err("There was an error getting the result".into()),
             Some(job) => Ok(job),
         }
     }
 
-    pub fn get_mapreduce_client_status(&self, client_id: String) -> Result<Vec<&MapReduceJob>> {
-        self.map_reduce_job_queue.get_work_bucket_items(&client_id)
+    pub fn get_mapreduce_client_status(&self, client_id: &str) -> Result<Vec<&MapReduceJob>> {
+        self.map_reduce_job_queue.get_work_bucket_items(
+            &client_id.to_owned(),
+        )
     }
 
     pub fn pop_queued_map_reduce_task(&mut self) -> Option<&mut MapReduceTask> {
         self.map_reduce_task_queue.pop_queue_top()
     }
 
-    pub fn unschedule_task(&mut self, task_id: String) -> Result<()> {
+    pub fn unschedule_task(&mut self, task_id: &str) -> Result<()> {
         self.map_reduce_task_queue
             .move_task_to_queue(task_id.to_owned())
             .chain_err(|| "Error unscheduling map reduce task")?;
 
         let task = self.map_reduce_task_queue
-            .get_work_by_id_mut(&task_id)
+            .get_work_by_id_mut(&task_id.to_owned())
             .chain_err(|| "Error unschuling map reduce task")?;
 
         task.set_assigned_worker_id(String::new());
@@ -131,14 +135,14 @@ impl MapReduceScheduler {
         Ok(())
     }
 
-    fn create_reduce_tasks(&mut self, map_reduce_id: String) -> Result<()> {
+    fn create_reduce_tasks(&mut self, map_reduce_id: &str) -> Result<()> {
         let map_reduce_job = self.map_reduce_job_queue
-            .get_work_by_id_mut(&map_reduce_id)
+            .get_work_by_id_mut(&map_reduce_id.to_owned())
             .chain_err(|| "Error creating reduce tasks.")?;
 
         let reduce_tasks = {
             let map_tasks = self.map_reduce_task_queue
-                .get_work_bucket_items(&map_reduce_id)
+                .get_work_bucket_items(&map_reduce_id.to_owned())
                 .chain_err(|| "Error creating reduce tasks.")?;
 
             self.task_processor
@@ -157,10 +161,10 @@ impl MapReduceScheduler {
         Ok(())
     }
 
-    fn increment_map_tasks_completed(&mut self, map_reduce_id: String) -> Result<()> {
+    fn increment_map_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
         let all_maps_completed = {
             let map_reduce_job = self.map_reduce_job_queue
-                .get_work_by_id_mut(&map_reduce_id)
+                .get_work_by_id_mut(&map_reduce_id.to_owned())
                 .chain_err(|| "Error incrementing completed map tasks.")?;
 
             map_reduce_job.map_tasks_completed += 1;
@@ -178,13 +182,13 @@ impl MapReduceScheduler {
 
     pub fn process_map_task_response(
         &mut self,
-        map_task_id: String,
-        map_response: pb::MapResponse,
+        map_task_id: &str,
+        map_response: &pb::MapResponse,
     ) -> Result<()> {
         if map_response.get_status() == pb::OperationStatus::SUCCESS {
             let map_reduce_id = {
                 let map_task = self.map_reduce_task_queue
-                    .get_work_by_id_mut(&map_task_id)
+                    .get_work_by_id_mut(&map_task_id.to_owned())
                     .chain_err(|| "Error marking map task as completed.")?;
 
                 map_task.set_status(MapReduceTaskStatus::Complete);
@@ -196,7 +200,7 @@ impl MapReduceScheduler {
                 }
                 map_task.get_map_reduce_id().to_owned()
             };
-            self.increment_map_tasks_completed(map_reduce_id)
+            self.increment_map_tasks_completed(&map_reduce_id)
                 .chain_err(|| "Error marking map task as completed.")?;
         } else {
             self.unschedule_task(map_task_id).chain_err(
@@ -206,10 +210,10 @@ impl MapReduceScheduler {
         Ok(())
     }
 
-    fn increment_reduce_tasks_completed(&mut self, map_reduce_id: String) -> Result<()> {
+    fn increment_reduce_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
-                .get_work_by_id_mut(&map_reduce_id)
+                .get_work_by_id_mut(&map_reduce_id.to_owned())
                 .chain_err(|| "Mapreduce job not found in queue.")?;
 
             map_reduce_job.reduce_tasks_completed += 1;
@@ -234,13 +238,13 @@ impl MapReduceScheduler {
 
     pub fn process_reduce_task_response(
         &mut self,
-        reduce_task_id: String,
-        reduce_response: pb::ReduceResponse,
+        reduce_task_id: &str,
+        reduce_response: &pb::ReduceResponse,
     ) -> Result<()> {
         if reduce_response.get_status() == pb::OperationStatus::SUCCESS {
             let map_reduce_id = {
                 let reduce_task = self.map_reduce_task_queue
-                    .get_work_by_id_mut(&reduce_task_id)
+                    .get_work_by_id_mut(&reduce_task_id.to_owned())
                     .chain_err(|| "Error marking reduce task as completed.")?;
 
                 let perform_reduce_request = reduce_task.get_perform_reduce_request().chain_err(
@@ -253,7 +257,7 @@ impl MapReduceScheduler {
                 reduce_task.get_map_reduce_id().to_owned()
             };
 
-            self.increment_reduce_tasks_completed(map_reduce_id)
+            self.increment_reduce_tasks_completed(&map_reduce_id)
                 .chain_err(|| "Error marking reduce task as completed.")?;
         } else {
             self.unschedule_task(reduce_task_id).chain_err(
@@ -416,7 +420,7 @@ mod tests {
 
         // Process response for map task
         map_reduce_scheduler
-            .process_map_task_response(map_task1.get_task_id().to_owned(), map_response)
+            .process_map_task_response(map_task1.get_task_id(), &map_response)
             .unwrap();
 
         {
@@ -447,7 +451,7 @@ mod tests {
 
         // Process response for reduce task 1.
         map_reduce_scheduler
-            .process_reduce_task_response(reduce_task1.get_task_id().to_owned(), reduce_response1)
+            .process_reduce_task_response(reduce_task1.get_task_id(), &reduce_response1)
             .unwrap();
 
         {
@@ -467,7 +471,7 @@ mod tests {
         }
 
         map_reduce_scheduler
-            .process_reduce_task_response(reduce_task2.get_task_id().to_owned(), reduce_response2)
+            .process_reduce_task_response(reduce_task2.get_task_id(), &reduce_response2)
             .unwrap();
 
         let map_reduce_job = map_reduce_scheduler

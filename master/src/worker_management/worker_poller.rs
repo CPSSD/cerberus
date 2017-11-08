@@ -1,16 +1,18 @@
-use errors::*;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::{thread, time};
-use worker_management::{WorkerTaskType, WorkerManager};
-use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
+
 use cerberus_proto::worker::*;
+use errors::*;
 use scheduler::MapReduceScheduler;
 use util::output_error;
+use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
+use worker_management::{WorkerTaskType, WorkerManager};
 
 const WORKER_MANAGER_UNAVAILABLE: &str = "Worker manager unavailable";
 const WORKER_INTERFACE_UNAVAILABLE: &str = "Worker Interface unavailable";
 const SCHEDULER_UNAVAILABLE: &str = "Scheduler unavailable";
-const POLLING_LOOP_INTERVAL_MS: u64 = 100;
+
+const POLLING_LOOP_INTERVAL_MS: u64 = 2000;
 
 pub struct WorkerPoller {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
@@ -44,16 +46,46 @@ impl WorkerPoller {
         }
     }
 
+    pub fn poll(&self) -> Result<()> {
+        let worker_ids = match self.worker_manager.lock() {
+            Ok(worker_manager) => worker_manager.get_worker_ids(),
+            Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
+        };
+
+        let poll_results = match self.worker_interface.read() {
+            Ok(worker_interface) => self.step(worker_ids, &worker_interface),
+            Err(_) => return Err(WORKER_INTERFACE_UNAVAILABLE.into()),
+        };
+
+        match self.worker_manager.lock() {
+            Ok(mut worker_manager) => {
+                for poll_result in poll_results {
+                    match poll_result {
+                        Ok(poll) => {
+                            let result = self.update_worker(&poll, &mut worker_manager);
+                            if let Err(err) = result {
+                                output_error(&err.chain_err(|| "Unable to update worker."));
+                            }
+                        }
+                        Err(_) => return Err("Unable to get polling result.".into()),
+                    }
+                }
+            }
+            Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
+        }
+
+        self.poll_mapreduce_results()
+    }
+
     fn step(
         &self,
         worker_ids: Vec<String>,
-        interface: RwLockReadGuard<WorkerInterfaceImpl>,
+        interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Vec<Result<PollResult>> {
         let mut results = Vec::new();
         for worker_id in worker_ids {
             let status_response = interface.get_worker_status(worker_id.as_str());
             let result = match status_response {
-                Err(_) => Err("Unable to poll worker".into()),
                 Ok(status) => {
                     Ok(PollResult {
                         worker_id: worker_id.to_owned(),
@@ -61,6 +93,7 @@ impl WorkerPoller {
                         operation_status: status.operation_status,
                     })
                 }
+                Err(_) => Err("Unable to poll worker".into()),
             };
             results.push(result);
         }
@@ -69,39 +102,34 @@ impl WorkerPoller {
 
     fn handle_map_result(
         &self,
-        wi: WorkerInfo,
+        wi: &WorkerInfo,
         interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Result<()> {
-        let map_result = interface.get_map_result(wi.worker_id.as_str());
-        match map_result {
-            Err(_) => Err("Error retrieving MapResponse".into()),
-            Ok(map_result) => {
-                match self.scheduler.lock() {
-                    Err(_) => Err(SCHEDULER_UNAVAILABLE.into()),
-                    Ok(mut scheduler) => {
-                        scheduler.process_map_task_response(wi.task_id, map_result)
-                    }
-                }
-            }
+        let map_result = interface.get_map_result(wi.worker_id.as_str()).chain_err(
+            || "Unable to retrieve results of map.",
+        )?;
+        match self.scheduler.lock() {
+            Ok(mut scheduler) => scheduler.process_map_task_response(&wi.task_id, &map_result),
+            Err(_) => Err(SCHEDULER_UNAVAILABLE.into()),
         }
     }
 
     fn handle_reduce_result(
         &self,
-        wi: WorkerInfo,
+        wi: &WorkerInfo,
         interface: &RwLockReadGuard<WorkerInterfaceImpl>,
     ) -> Result<()> {
-        let reduce_result_response = interface.get_reduce_result(wi.worker_id.as_str());
-        match reduce_result_response {
-            Err(_) => Err("Error retrieving ReduceResponse".into()),
+        let reduce_result = interface.get_reduce_result(wi.worker_id.as_str());
+        match reduce_result {
             Ok(reduce_result) => {
                 match self.scheduler.lock() {
-                    Err(_) => Err(SCHEDULER_UNAVAILABLE.into()),
                     Ok(mut scheduler) => {
-                        scheduler.process_reduce_task_response(wi.task_id, reduce_result)
+                        scheduler.process_reduce_task_response(&wi.task_id, &reduce_result)
                     }
+                    Err(_) => Err(SCHEDULER_UNAVAILABLE.into()),
                 }
             }
+            Err(_) => Err("Error retrieving ReduceResponse".into()),
         }
     }
 
@@ -113,33 +141,33 @@ impl WorkerPoller {
         for wi in worker_info_list {
             let worker_id = wi.worker_id.clone();
             let result = match wi.task_type {
-                WorkerTaskType::Map => self.handle_map_result(wi, interface),
-                WorkerTaskType::Reduce => self.handle_reduce_result(wi, interface),
+                WorkerTaskType::Map => self.handle_map_result(&wi, interface),
+                WorkerTaskType::Reduce => self.handle_reduce_result(&wi, interface),
                 WorkerTaskType::Idle => Ok(()),
             };
 
             match result {
+                Ok(_) => {
+                    match self.worker_manager.lock() {
+                        Ok(mut worker_manager) => {
+                            let worker = worker_manager.get_worker(worker_id.as_str());
+                            match worker {
+                                Some(worker) => {
+                                    worker.set_completed_operation_flag(false);
+                                    worker.set_current_task_id("");
+                                }
+                                None => error!("No worker exists with the given ID: {}", worker_id),
+                            }
+                        }
+                        Err(_) => error!("{}", WORKER_MANAGER_UNAVAILABLE),
+                    };
+                }
                 Err(err) => output_error(&err.chain_err(|| {
                     format!(
                         "Error occured handling mapreduce results for worker '{}'",
                         worker_id
                     )
                 })),
-                Ok(_) => {
-                    match self.worker_manager.lock() {
-                        Err(_) => error!("{}", WORKER_MANAGER_UNAVAILABLE),
-                        Ok(mut worker_manager) => {
-                            let worker = worker_manager.get_worker(worker_id.as_str());
-                            match worker {
-                                None => error!("No worker exists with the given ID: {}", worker_id),
-                                Some(worker) => {
-                                    worker.set_completed_operation_flag(false);
-                                    worker.set_current_task_id("");
-                                }
-                            }
-                        }
-                    };
-                }
             }
         }
     }
@@ -158,37 +186,6 @@ impl WorkerPoller {
                 Ok(())
             }
         }
-    }
-
-    pub fn poll(&self) -> Result<()> {
-        let worker_ids = match self.worker_manager.lock() {
-            Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
-            Ok(worker_manager) => worker_manager.get_worker_ids(),
-        };
-
-        let poll_results = match self.worker_interface.read() {
-            Err(_) => return Err(WORKER_INTERFACE_UNAVAILABLE.into()),
-            Ok(worker_interface) => self.step(worker_ids, worker_interface),
-        };
-
-        match self.worker_manager.lock() {
-            Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
-            Ok(mut worker_manager) => {
-                for poll_result in poll_results {
-                    match poll_result {
-                        Err(_) => return Err("Unable to get polling result.".into()),
-                        Ok(poll) => {
-                            let result = self.update_worker(&poll, &mut worker_manager);
-                            if result.is_err() {
-                                error!("Unable to update worker");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        self.poll_mapreduce_results()
     }
 
     fn get_workers_with_completed_task(&self) -> Result<Vec<WorkerInfo>> {
@@ -235,7 +232,6 @@ impl WorkerPoller {
         }
     }
 }
-
 
 pub fn run_polling_loop(worker_poller: WorkerPoller) {
     thread::spawn(move || loop {
