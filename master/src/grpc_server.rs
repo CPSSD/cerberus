@@ -7,7 +7,6 @@ use worker_communication::WorkerRegistrationServiceImpl;
 use cerberus_proto::{mapreduce_grpc, worker_grpc};
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
-const GRPC_PORT: u16 = 8081;
 
 pub struct GRPCServer {
     server: Server,
@@ -15,11 +14,12 @@ pub struct GRPCServer {
 
 impl GRPCServer {
     pub fn new(
+        port: u16,
         mapreduce_service: MapReduceServiceImpl,
         worker_registration_service: WorkerRegistrationServiceImpl,
     ) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(GRPC_PORT);
+        server_builder.http.set_port(port);
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );
