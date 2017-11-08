@@ -32,14 +32,12 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         || "Invalid input path.",
     )?;
 
-    let output = match matches.value_of("output") {
-        Some(output) => {
-            verify_valid_path(output).chain_err(
-                || "Invalid output path.",
-            )?
-        }
-        None => String::new(),
-    };
+    let output = matches.value_of("output").unwrap_or("");
+    if !output.is_empty() {
+        verify_valid_path(output).chain_err(
+            || "Invalid output path",
+        )?;
+    }
 
     let mut binary = matches
         .value_of("binary")
