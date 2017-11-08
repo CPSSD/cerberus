@@ -487,7 +487,7 @@ impl OperationHandler {
         let operation_state_arc = Arc::clone(&self.operation_state);
 
         thread::spawn(move || {
-            let reduce_complete = false;
+            let mut reduce_complete = false;
             loop {
                 match reduce_queue.lock() {
                     Ok(mut reduce_queue) => {
