@@ -2,25 +2,19 @@
 
 **Version: 0.1.0**
 
-This API will use JSON objects for its input and output.
+This API will use BSON and JSON for the input and output.
+The map input will use BSON, everything else uses JSON.
 
 ## Map
 
 ### Input
 
+The map input is encoded using BSON.
+
 *Fields*
 
 * `key` - A *string* containing the key for the map operation.
 * `value` - A *string* containing the value for the map operation.
-
-*Example*
-
-```json
-{
-    "key": "foo",
-    "value": "bar"
-}
-```
 
 ### Output
 
@@ -28,7 +22,7 @@ This API will use JSON objects for its input and output.
 
 *Note*: Duplicate keys inside partitions are allowed, and expected.
 
-* `partitions` - A *map* of *int* partition numbers to array of objects. 
+* `partitions` - A *map* of *int* partition numbers to array of objects.
     Each object has the following fields:
     * `key` - A *string* containing the intermediate key from the map operation.
     * `value` - A *string* containing a value corresponding to the intermediate key.

@@ -1,5 +1,7 @@
 /// This is a set of integration tests which run against a dummy payload binary living in
 /// `libcerberus/src/bin/end-to-end.rs`.
+#[macro_use]
+extern crate bson;
 
 use std::collections::HashSet;
 use std::env;
@@ -34,7 +36,18 @@ fn run_sanity_check() {
 
 #[test]
 fn run_map_valid_input() {
-    let json_input = r#"{"key":"foo","value":"bar zar"}"#;
+    let bson_input = bson!({
+        "key": "foo",
+        "value":"bar zar"
+    });
+
+    let mut input_buf = Vec::new();
+    if let bson::Bson::Document(document) = bson_input {
+        bson::encode_document(&mut input_buf, &document).unwrap();
+    } else {
+        panic!("Could not convert input to bson::Document.")
+    }
+
     // The ordering of partitions is not guarenteed.
     let mut output_set = HashSet::new();
     let expected_output1 =
@@ -56,7 +69,7 @@ fn run_map_valid_input() {
         .stdin
         .as_mut()
         .unwrap()
-        .write_all(json_input.as_bytes())
+        .write_all(&input_buf[..])
         .unwrap();
 
     let output = child.wait_with_output().unwrap();

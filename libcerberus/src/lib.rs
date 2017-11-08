@@ -1,5 +1,6 @@
 #![recursion_limit = "1024"]
 
+extern crate bson;
 extern crate chrono;
 extern crate clap;
 #[macro_use]
