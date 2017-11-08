@@ -90,6 +90,7 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
                     report.mapreduce_id = job.map_reduce_id.clone();
                     report.status = job.status;
                     report.scheduled_timestamp = job.time_requested.timestamp();
+                    report.output_directory = job.output_directory.clone();
                     if let Some(time) = job.time_started {
                         report.started_timestamp = time.timestamp();
                     }
