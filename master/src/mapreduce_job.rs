@@ -1,10 +1,12 @@
+use errors::*;
 use std::path::PathBuf;
 
 use chrono::prelude::*;
+use serde_json;
 use uuid::Uuid;
 
 use cerberus_proto::mapreduce as mr_proto;
-use errors::*;
+use state_handler::StateHandling;
 use queued_work_store::QueuedWork;
 
 /// `MapReduceJobOptions` stores arguments used to construct a `MapReduceJob`.
@@ -60,6 +62,17 @@ pub struct MapReduceJob {
     pub cpu_time: u64,
 }
 
+#[derive(Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
+/// SerializableJobStatus is the Serializable counterpart to mapreduce_proto::Status.
+pub enum SerializableJobStatus {
+    DONE,
+    IN_PROGRESS,
+    IN_QUEUE,
+    FAILED,
+    UNKNOWN,
+}
+
 impl MapReduceJob {
     pub fn new(options: MapReduceJobOptions) -> Result<Self> {
         let map_reduce_id = Uuid::new_v4();
@@ -98,6 +111,130 @@ impl MapReduceJob {
 
             cpu_time: 0,
         })
+    }
+
+    fn mapreduce_status_from_state(&self, state: SerializableJobStatus) -> mr_proto::Status {
+        match state {
+            SerializableJobStatus::DONE => mr_proto::Status::DONE,
+            SerializableJobStatus::IN_PROGRESS => mr_proto::Status::IN_PROGRESS,
+            SerializableJobStatus::IN_QUEUE => mr_proto::Status::IN_QUEUE,
+            SerializableJobStatus::FAILED => mr_proto::Status::FAILED,
+            SerializableJobStatus::UNKNOWN => mr_proto::Status::UNKNOWN,
+        }
+    }
+
+    fn get_serializable_status(&self) -> SerializableJobStatus {
+        match self.status {
+            mr_proto::Status::DONE => SerializableJobStatus::DONE,
+            mr_proto::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
+            mr_proto::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
+            mr_proto::Status::FAILED => SerializableJobStatus::FAILED,
+            mr_proto::Status::UNKNOWN => SerializableJobStatus::UNKNOWN,
+        }
+    }
+}
+
+impl StateHandling for MapReduceJob {
+    fn new_from_json(data: serde_json::Value) -> Result<Self> {
+        let options = MapReduceJobOptions {
+            client_id: serde_json::from_value(data["client_id"].clone())
+                .chain_err(|| "Unable to convert client_id")?,
+            binary_path: serde_json::from_value(data["binary_path"].clone())
+                .chain_err(|| "Unable to convert binary_path")?,
+            input_directory: serde_json::from_value(data["input_directory"].clone())
+                .chain_err(|| "Unable to convert input_directory")?,
+            output_directory: serde_json::from_value(data["output_directory"].clone())
+                .chain_err(|| "Unable to convert output dir")?,
+        };
+
+        let mut map_reduce_job = MapReduceJob::new(options).chain_err(
+            || "Unable to create map reduce job",
+        )?;
+
+        map_reduce_job.load_state(data).chain_err(
+            || "Unable to load state",
+        )?;
+
+        Ok(map_reduce_job)
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let time_started = match self.time_started {
+            Some(timestamp) => timestamp.timestamp(),
+            None => -1,
+        };
+        let time_completed = match self.time_completed {
+            Some(timestamp) => timestamp.timestamp(),
+            None => -1,
+        };
+        Ok(json!({
+            "client_id": self.client_id,
+            "map_reduce_id": self.map_reduce_id,
+            "binary_path": self.binary_path,
+            "input_directory": self.input_directory,
+            "output_directory": self.output_directory,
+
+            "status": self.get_serializable_status(),
+
+            "map_tasks_completed": self.map_tasks_completed,
+            "map_tasks_total": self.map_tasks_total,
+
+            "reduce_tasks_completed": self.reduce_tasks_completed,
+            "reduce_tasks_total": self.reduce_tasks_total,
+
+            "time_requested": self.time_requested.timestamp(),
+            "time_started": time_started,
+            "time_completed": time_completed,
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        self.map_reduce_id = serde_json::from_value(data["map_reduce_id"].clone())
+            .chain_err(|| "Unable to convert map_reduce_id")?;
+
+        let mapreduce_status: SerializableJobStatus =
+            serde_json::from_value(data["status"].clone()).chain_err(
+                || "Unable to convert mapreduce status",
+            )?;
+        self.status = self.mapreduce_status_from_state(mapreduce_status);
+
+        self.map_tasks_completed = serde_json::from_value(data["map_tasks_completed"].clone())
+            .chain_err(|| "Unable to convert map_tasks_complete")?;
+        self.map_tasks_total = serde_json::from_value(data["map_tasks_total"].clone())
+            .chain_err(|| "Unable to convert map_tasks_total")?;
+
+        self.reduce_tasks_completed = serde_json::from_value(
+            data["reduce_tasks_completed"].clone(),
+        ).chain_err(|| "Unable to convert reduce_tasks_complete")?;
+        self.reduce_tasks_total = serde_json::from_value(data["reduce_tasks_total"].clone())
+            .chain_err(|| "Unable to convert reduce_tasks_total")?;
+
+        let time_requested: i64 = serde_json::from_value(data["time_requested"].clone())
+            .chain_err(|| "Unable to convert time_requested")?;
+        self.time_requested =
+            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(time_requested, 0), Utc);
+
+        let time_started: i64 = serde_json::from_value(data["time_started"].clone())
+            .chain_err(|| "Unable to convert time_started")?;
+        self.time_started = match time_started {
+            -1 => None,
+            _ => Some(DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(time_started, 0),
+                Utc,
+            )),
+        };
+
+        let time_completed: i64 = serde_json::from_value(data["time_completed"].clone())
+            .chain_err(|| "Unable to convert time_completed")?;
+        self.time_completed = match time_completed {
+            -1 => None,
+            _ => Some(DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(time_completed, 0),
+                Utc,
+            )),
+        };
+
+        Ok(())
     }
 }
 

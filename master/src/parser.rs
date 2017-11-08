@@ -17,5 +17,13 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("fresh")
+                .long("fresh")
+                .short("f")
+                .help("Skips state loading")
+                .takes_value(false)
+                .required(false),
+        )
         .get_matches()
 }

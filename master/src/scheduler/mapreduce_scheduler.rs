@@ -6,6 +6,8 @@ use errors::*;
 use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
 use queued_work_store::{QueuedWork, QueuedWorkStore};
+use serde_json;
+use state_handler;
 
 /// `MapReduceScheduler` holds the state related to scheduling and processes `MapReduceJob`s.
 /// It does not schedule `MapReduceTask`s on workers, but instead maintains a queue that is
@@ -308,6 +310,7 @@ impl MapReduceScheduler {
         reduce_task_id: &str,
         reduce_response: &pb::ReduceResult,
     ) -> Result<()> {
+
         if reduce_response.get_status() == pb::ResultStatus::SUCCESS {
             let map_reduce_id = {
                 let reduce_task = self.map_reduce_task_queue
@@ -331,6 +334,142 @@ impl MapReduceScheduler {
                 || "Error marking reduce task as complete.",
             )?;
         }
+        Ok(())
+    }
+}
+
+impl state_handler::StateHandling for MapReduceScheduler {
+    fn new_from_json(_: serde_json::Value) -> Result<Self> {
+        Err("Unable to create MapReduceScheduler from JSON.".into())
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        // Create a JSON list from the QueuedWorkStore for MapReduce Jobs.
+        let mut map_reduce_jobs_json: Vec<serde_json::Value> = Vec::new();
+        let mut queued_map_reduce_job_ids: Vec<serde_json::Value> = Vec::new();
+        let map_reduce_jobs = self.map_reduce_job_queue.get_all_store_items().chain_err(
+            || "Unable to retrieve map_reduce_job_queue store items",
+        )?;
+        for map_reduce_job in map_reduce_jobs {
+            let map_reduce_job_id = map_reduce_job.get_work_id();
+            if self.map_reduce_job_queue.task_in_queue(&map_reduce_job_id) {
+                queued_map_reduce_job_ids.push(json!(map_reduce_job_id));
+            }
+            map_reduce_jobs_json.push(map_reduce_job.dump_state().chain_err(
+                || "Unable to dump MapReduceJob state",
+            )?);
+        }
+
+        // Create a JSON list from the QueuedWorkStore for MapReduce Task.
+        let mut map_reduce_tasks_json: Vec<serde_json::Value> = Vec::new();
+        let mut queued_map_reduce_task_ids: Vec<serde_json::Value> = Vec::new();
+        let map_reduce_tasks = self.map_reduce_task_queue.get_all_store_items().chain_err(
+            || "Unable to retrieve all store items from map_reduce_task_queue",
+        )?;
+        for map_reduce_task in map_reduce_tasks {
+            let map_reduce_task_id = map_reduce_task.get_work_id();
+            if self.map_reduce_task_queue.task_in_queue(
+                &map_reduce_task_id,
+            )
+            {
+                queued_map_reduce_task_ids.push(json!(map_reduce_task_id));
+            }
+            map_reduce_tasks_json.push(map_reduce_task.dump_state().chain_err(
+                || "Unable to dump MapReduceTask state",
+            )?);
+        }
+
+        // Generate the JSON representation of this objects state.
+        Ok(json!({
+            "map_reduce_job_store_size": self.map_reduce_job_queue.store_size(),
+            "map_reduce_job_store": json!(map_reduce_jobs_json),
+            "queued_map_reduce_job_ids": json!(queued_map_reduce_job_ids),
+
+            "map_reduce_task_store_size": self.map_reduce_task_queue.store_size(),
+            "map_reduce_task_store": json!(map_reduce_tasks_json),
+            "queued_map_reduce_task_ids": json!(queued_map_reduce_task_ids),
+
+            "map_reduce_in_progress": self.map_reduce_in_progress,
+            "in_progress_map_reduce_id": self.in_progress_map_reduce_id,
+
+            "available_workers": self.available_workers,
+        }))
+
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+
+        // Handle map reduce job queue.
+        let job_store_size: usize = serde_json::from_value(
+            data["map_reduce_job_store_size"].clone(),
+        ).chain_err(|| "Unable to convert map_reduce_job_store_size")?;
+
+        self.map_reduce_in_progress = serde_json::from_value(
+            data["map_reduce_in_progress"].clone(),
+        ).chain_err(|| "Unable to convert map_reduce_in_progress")?;
+
+        self.in_progress_map_reduce_id =
+            serde_json::from_value(data["in_progress_map_reduce_id"].clone())
+                .chain_err(|| "Unable to convert in_progress_map_reduce_id")?;
+
+        for i in 0..job_store_size {
+            let job_data = data["map_reduce_job_store"][i].clone();
+
+            let map_reduce_job = MapReduceJob::new_from_json(job_data).chain_err(
+                || "Unable to create map reduce job from json",
+            )?;
+
+            self.map_reduce_job_queue
+                .add_only_to_store(map_reduce_job.into())
+                .chain_err(|| "Unable to add mapReduceJob to QueuedWorkStore")?;
+        }
+
+        // Add all queued jobs to the QueuedWorkStore queue.
+        if let serde_json::Value::Array(job_ids) = data["queued_map_reduce_job_ids"].clone() {
+            for serialized_job_id in job_ids {
+                let job_id: String = serde_json::from_value(serialized_job_id).chain_err(
+                    || "Unable to convert job_id",
+                )?;
+
+                self.map_reduce_job_queue
+                    .move_task_to_queue(job_id)
+                    .chain_err(|| "Unable to move task to queue")?;
+            }
+        }
+
+        // Handle map reduce task queue.
+        let task_queue_total: usize =
+            serde_json::from_value(data["map_reduce_task_store_size"].clone())
+                .chain_err(|| "Unable to convert map_reduce_task_store_size")?;
+
+        for i in 0..task_queue_total {
+            let task_data = data["map_reduce_task_store"][i].clone();
+
+            let map_reduce_task = MapReduceTask::new_from_json(task_data).chain_err(
+                || "Unable to create MapReduceTask",
+            )?;
+
+            self.map_reduce_task_queue
+                .add_only_to_store(map_reduce_task.into())
+                .chain_err(|| "Unable to add MapReduceTask to QueuedWorkStore")?;
+        }
+
+        // Add all queued tasks to the QueuedWorkStore queue.
+        if let serde_json::Value::Array(task_ids) = data["queued_map_reduce_task_ids"].clone() {
+            for serialized_task_id in task_ids {
+                let task_id: String = serde_json::from_value(serialized_task_id).chain_err(
+                    || "Unable to convert task_id",
+                )?;
+
+                self.map_reduce_task_queue
+                    .move_task_to_queue(task_id)
+                    .chain_err(|| "Unable to move task to queue")?;
+            }
+        }
+
+        self.available_workers = serde_json::from_value(data["available_workers"].clone())
+            .chain_err(|| "Unable to convert available_workers")?;
+
         Ok(())
     }
 }
