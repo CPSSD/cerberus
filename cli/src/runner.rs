@@ -94,8 +94,13 @@ pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) ->
         .chain_err(|| "Failed to get MapReduce Status")?
         .1;
 
-    for rep in res.get_reports() {
-        print_table(rep);
+    let reports = res.get_reports();
+    if reports.is_empty() {
+        println!("No jobs for this client on cluster.");
+    } else {
+        for rep in reports {
+            print_table(rep);
+        }
     }
 
     Ok(())
