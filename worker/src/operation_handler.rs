@@ -1,3 +1,4 @@
+use bson;
 use cerberus_proto::worker as pb;
 use std::collections::HashMap;
 use std::thread;
@@ -26,13 +27,20 @@ struct OperationState {
     pub reduce_result: Option<pb::ReduceResponse>,
 }
 
+/// The `MapInput` is a struct used for serialising input data for a map operation.
+#[derive(Default, Serialize)]
+pub struct MapInput {
+    pub key: String,
+    pub value: String,
+}
+
 /// `ReduceOperation` stores the input for a reduce operation for a single key.
 struct ReduceOperation {
     intermediate_key: String,
     input: String,
 }
 
-/// `ReduceOperationQueue` is a struct used for storing and executing a queue of ReduceOperations.
+/// `ReduceOperationQueue` is a struct used for storing and executing a queue of `ReduceOperations`.
 #[derive(Default)]
 pub struct ReduceOperationQueue {
     queue: Vec<ReduceOperation>,
@@ -146,13 +154,17 @@ fn log_reduce_operation_err(err: Error, operation_state_arc: &Arc<Mutex<Operatio
 }
 
 fn map_operation_thread_impl(
-    map_input_value: &str,
+    map_input_value: &bson::Document,
     output_dir: &str,
     mut child: Child,
     operation_state_arc: &Arc<Mutex<OperationState>>,
 ) -> Result<()> {
+    let mut input_buf = Vec::new();
+    bson::encode_document(&mut input_buf, map_input_value)
+        .chain_err(|| "Could not encode map_input as BSON.")?;
+
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(map_input_value.as_bytes()).chain_err(
+        stdin.write_all(&input_buf[..]).chain_err(
             || "Error writing to payload stdin.",
         )?;
     } else {
@@ -347,12 +359,21 @@ impl OperationHandler {
 
         let operation_state_arc = Arc::clone(&self.operation_state);
 
-        let map_input = json!({
-            "key": map_options.get_input_file_path(),
-            "value": map_input_value,
-        });
+        let map_input = MapInput {
+            key: map_options.get_input_file_path().to_string(),
+            value: map_input_value,
+        };
 
-        let map_input_str = map_input.to_string();
+        let serialized_map_input = bson::to_bson(&map_input).chain_err(
+            || "Could not serialize map input to bson.",
+        )?;
+
+        let map_input_document;
+        if let bson::Bson::Document(document) = serialized_map_input {
+            map_input_document = document;
+        } else {
+            return Err("Could not convert map input to bson::Document.".into());
+        }
 
         let mut output_path = PathBuf::new();
         output_path.push(WORKER_OUTPUT_DIRECTORY);
@@ -365,7 +386,7 @@ impl OperationHandler {
 
         thread::spawn(move || {
             let result = map_operation_thread_impl(
-                &map_input_str,
+                &map_input_document,
                 &*output_path.to_string_lossy(),
                 child,
                 &operation_state_arc,
@@ -453,7 +474,7 @@ impl OperationHandler {
         Ok(reduce_operations)
     }
 
-    pub fn perform_reduce(&mut self, reduce_request: pb::PerformReduceRequest) -> Result<()> {
+    pub fn perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
         if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
@@ -461,7 +482,7 @@ impl OperationHandler {
             || "Error performing reduce.",
         )?;
 
-        let reduce_operations = self.create_reduce_operations(&reduce_request).chain_err(
+        let reduce_operations = self.create_reduce_operations(reduce_request).chain_err(
             || "Error creating reduce operations from input.",
         )?;
 
