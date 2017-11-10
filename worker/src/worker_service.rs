@@ -17,15 +17,21 @@ impl WorkerServiceImpl {
 
     fn get_worker_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
         match self.operation_handler.lock() {
-            Err(_) => pb::WorkerStatusResponse_WorkerStatus::BUSY,
             Ok(handler) => handler.get_worker_status(),
+            Err(err) => {
+                error!("Error getting worker status: {}", err);
+                pb::WorkerStatusResponse_WorkerStatus::BUSY
+            }
         }
     }
 
     fn get_worker_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
         match self.operation_handler.lock() {
-            Err(_) => pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
             Ok(handler) => handler.get_worker_operation_status(),
+            Err(err) => {
+                error!("Error getting worker operation status: {}", err);
+                pb::WorkerStatusResponse_OperationStatus::UNKNOWN
+            }
         }
     }
 }
@@ -49,14 +55,17 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         map_options: pb::PerformMapRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
         match self.operation_handler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(mut handler) => {
                 let result = handler.perform_map(&map_options);
 
                 match result {
-                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                     Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                 }
+            }
+            Err(err) => {
+                error!("Error locking operation handler to perform map: {}", err);
+                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
             }
         }
     }
@@ -67,13 +76,16 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         _message: pb::EmptyMessage,
     ) -> SingleResponse<pb::MapResponse> {
         match self.operation_handler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
                 let result = handler.get_map_result();
                 match result {
-                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                     Ok(response) => SingleResponse::completed(response),
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                 }
+            }
+            Err(err) => {
+                error!("Error locking operation handler to get map result: {}", err);
+                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
             }
         }
     }
@@ -84,12 +96,15 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         reduce_options: pb::PerformReduceRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
         match self.operation_handler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
+            Err(err) => {
+                error!("Error locking operation handler to perform reduce: {}", err);
+                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
+            }
             Ok(mut handler) => {
                 let result = handler.perform_reduce(&reduce_options);
                 match result {
-                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                     Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                 }
             }
         }
@@ -101,13 +116,16 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         _message: pb::EmptyMessage,
     ) -> SingleResponse<pb::ReduceResponse> {
         match self.operation_handler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE)),
             Ok(handler) => {
                 let result = handler.get_reduce_result();
                 match result {
-                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                     Ok(response) => SingleResponse::completed(response),
+                    Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                 }
+            }
+            Err(err) => {
+                error!("Error locking operation handler for reduce result: {}", err);
+                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
             }
         }
     }

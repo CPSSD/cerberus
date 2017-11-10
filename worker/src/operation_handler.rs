@@ -307,14 +307,26 @@ impl OperationHandler {
     pub fn get_worker_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.worker_status,
-            Err(_) => pb::WorkerStatusResponse_WorkerStatus::BUSY,
+            Err(err) => {
+                error!(
+                    "Error locking operation_state to get worker_status: {}",
+                    err
+                );
+                pb::WorkerStatusResponse_WorkerStatus::BUSY
+            }
         }
     }
 
     pub fn get_worker_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.operation_status,
-            Err(_) => pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
+            Err(err) => {
+                error!(
+                    "Error locking operation_state to get operation_status: {}",
+                    err
+                );
+                pb::WorkerStatusResponse_OperationStatus::UNKNOWN
+            }
         }
     }
 
@@ -487,10 +499,10 @@ impl OperationHandler {
         )?;
 
         match self.reduce_operation_queue.lock() {
-            Err(_) => return Err("Error obtaining reduce operation queue".into()),
             Ok(mut reduce_queue) => {
                 reduce_queue.set_queue(reduce_operations);
             }
+            Err(_) => return Err("Error obtaining reduce operation queue".into()),
         }
 
         let reduce_options = ReduceOptions {
