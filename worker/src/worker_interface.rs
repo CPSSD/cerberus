@@ -4,7 +4,7 @@ use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::WorkerRegistrationService;
 use worker_service::WorkerServiceImpl;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
@@ -52,14 +52,6 @@ impl WorkerInterface {
             .chain_err(|| "Failed to register worker")?;
 
         Ok(())
-    }
-
-    pub fn get_ip(&self) -> IpAddr {
-        self.server.local_addr().ip()
-    }
-
-    pub fn get_port(&self) -> u16 {
-        self.server.local_addr().port()
     }
 
     pub fn get_server(&self) -> &Server {
