@@ -46,18 +46,21 @@ use operation_handler::OperationHandler;
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
+const DEFAULT_PORT: &str = "0"; // Setting the port to 0 means a random available port will be selected
 
 fn run() -> Result<()> {
     println!("Cerberus Worker!");
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();
-    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or("localhost:8081"))
+    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or("[::]:8081"))
         .chain_err(|| "Error parsing master address")?;
+    let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
+        .chain_err(|| "Error parsing port")?;
 
     let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
     let worker_service_impl = WorkerServiceImpl::new(operation_handler);
-    let worker_server_interface = WorkerInterface::new(worker_service_impl, master_addr)
+    let worker_server_interface = WorkerInterface::new(worker_service_impl, port, master_addr)
         .chain_err(|| "Error building worker interface.")?;
 
     let mut retries = WORKER_REGISTRATION_RETRIES;

@@ -13,5 +13,13 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("port")
+                .long("port")
+                .short("p")
+                .help("Set the worker port")
+                .takes_value(true)
+                .required(false),
+        )
         .get_matches()
 }
