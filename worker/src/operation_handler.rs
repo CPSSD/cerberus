@@ -548,18 +548,24 @@ impl OperationHandler {
                 let mut response = pb::ReduceResponse::new();
                 response.set_status(pb::OperationStatus::SUCCESS);
 
-                match operation_state_arc.lock() {
+                let response_set = match operation_state_arc.lock() {
                     Ok(mut operation_state) => {
                         operation_state.reduce_result = Some(response);
-                        let result = set_complete_status(&operation_state_arc);
-                        if let Err(err) = result {
-                            error!("Error setting reduce complete: {}", err);
-                        }
+                        true
                     }
                     Err(err) => {
-                        set_failed_status(&operation_state_arc);
                         error!("Error locking reduce queue: {}", err);
+                        false
                     }
+                };
+
+                if response_set {
+                    let result = set_complete_status(&operation_state_arc);
+                    if let Err(err) = result {
+                        error!("Error setting reduce complete: {}", err);
+                    }
+                } else {
+                    set_failed_status(&operation_state_arc);
                 }
             }
         });
