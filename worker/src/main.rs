@@ -28,9 +28,9 @@ mod errors {
     }
 }
 
-pub mod operation_handler;
-pub mod worker_interface;
-pub mod worker_service;
+mod operation_handler;
+mod worker_interface;
+mod worker_service;
 mod parser;
 
 use errors::*;
