@@ -111,9 +111,15 @@ impl MapReduceScheduler {
     }
 
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Result<Vec<&MapReduceJob>> {
-        self.map_reduce_job_queue.get_work_bucket_items(
+        if self.map_reduce_job_queue.has_work_bucket(
             &client_id.to_owned(),
         )
+        {
+            return self.map_reduce_job_queue.get_work_bucket_items(
+                &client_id.to_owned(),
+            );
+        }
+        Ok(Vec::new())
     }
 
     pub fn pop_queued_map_reduce_task(&mut self) -> Option<&mut MapReduceTask> {
