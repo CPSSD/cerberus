@@ -18,8 +18,13 @@ struct MapTaskFile {
     file_path: String,
 }
 
+/// `TaskProcessorTrait` describes an object that can be used to create map and reduce tasks.
 pub trait TaskProcessorTrait {
+    /// `create_map_tasks` creates a set of map tasks when given a `MapReduceJob`
     fn create_map_tasks(&self, map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>>;
+
+    /// `create_reduce_tasks` creates reduce tasks from a `MapReduceJob` and a list of it's
+    /// completed map tasks.
     fn create_reduce_tasks(
         &self,
         map_reduce_job: &MapReduceJob,
@@ -30,6 +35,7 @@ pub trait TaskProcessorTrait {
 pub struct TaskProcessor;
 
 impl TaskProcessor {
+    /// `create_new_task_file` creates a new file that will contain one chunk of the map input.
     fn create_new_task_file(
         &self,
         task_num: u32,
@@ -58,7 +64,7 @@ impl TaskProcessor {
         })
     }
 
-    // Reads a given input file and splits it into chunks.
+    /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     fn read_input_file(
         &self,
         map_reduce_job: &MapReduceJob,

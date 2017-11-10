@@ -38,6 +38,8 @@ struct TaskAssignment {
     worker_id: String,
 }
 
+/// `handle_assign_task_failure` reschedules a task and marks a worker as free in the case that a
+/// task assignment could not be completed. This normally happens when there is a networking error.
 fn handle_assign_task_failure<I>(
     scheduler_resources: &SchedulerResources<I>,
     task_assignment: &TaskAssignment,
@@ -76,6 +78,7 @@ fn handle_assign_task_failure<I>(
     }
 }
 
+/// `assign_worker_map_task` assigns a map task to a worker using the worker interface.
 fn assign_worker_map_task<I>(
     scheduler_resources: SchedulerResources<I>,
     task_assignment: TaskAssignment,
@@ -101,6 +104,7 @@ fn assign_worker_map_task<I>(
     });
 }
 
+/// `assign_worker_reduce_task` assigns a reduce task to a worker using the worker interface.
 fn assign_worker_reduce_task<I>(
     scheduler_resources: SchedulerResources<I>,
     task_assignment: TaskAssignment,
@@ -164,6 +168,7 @@ fn assign_worker_task<I>(
     }
 }
 
+/// `do_scheduling_loop_step` assigns `MapReduceTask`s to available workers.
 fn do_scheduling_loop_step<I>(
     scheduler_resources: &SchedulerResources<I>,
     mut scheduler: MutexGuard<MapReduceScheduler>,
@@ -214,6 +219,8 @@ fn do_scheduling_loop_step<I>(
     }
 }
 
+/// `run_scheduling_loop` is the main loop that performs all functionality related to assigning
+/// `MapReduceTask`s to workers.
 pub fn run_scheduling_loop<I>(
     worker_interface_arc: Arc<RwLock<I>>,
     scheduler_arc: Arc<Mutex<MapReduceScheduler>>,

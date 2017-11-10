@@ -21,6 +21,7 @@ pub enum TaskType {
 }
 
 /// The `MapReduceTask` is a struct that represents a map or reduce task.
+/// This is the unit of work that is processed by a worker.
 #[derive(Clone)]
 pub struct MapReduceTask {
     task_type: TaskType,
