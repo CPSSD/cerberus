@@ -7,7 +7,6 @@ use worker_service::WorkerServiceImpl;
 use std::net::{IpAddr, SocketAddr};
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
-const WORKER_PORT: u16 = 0; // Setting the port to 0 means a random available port will be selected
 
 pub struct WorkerInterface {
     server: Server,
@@ -18,9 +17,13 @@ pub struct WorkerInterface {
 /// from the master.
 /// This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new(worker_service_impl: WorkerServiceImpl, master_addr: SocketAddr) -> Result<Self> {
+    pub fn new(
+        worker_service_impl: WorkerServiceImpl,
+        port: u16,
+        master_addr: SocketAddr,
+    ) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(WORKER_PORT);
+        server_builder.http.set_port(port);
         server_builder.add_service(grpc_pb::WorkerServiceServer::new_service_def(
             worker_service_impl,
         ));
