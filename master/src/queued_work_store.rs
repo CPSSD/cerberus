@@ -95,6 +95,10 @@ where
         self.get_work_by_id_mut(&task_id)
     }
 
+    pub fn has_work_bucket(&self, client_id: &T::Key) -> bool {
+        self.work_buckets.contains_key(client_id)
+    }
+
     pub fn get_work_bucket_items(&self, client_id: &T::Key) -> Result<Vec<&T>> {
         let mut work = Vec::new();
         let keys_result = self.work_buckets.get(client_id);
