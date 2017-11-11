@@ -128,6 +128,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
                     worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::FAILED);
                 }
                 worker.set_status_last_updated(Utc::now());
+                worker.set_current_task_id("");
 
                 let response = pb::EmptyMessage::new();
                 SingleResponse::completed(response)
@@ -171,6 +172,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
                     worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::FAILED);
                 }
                 worker.set_status_last_updated(Utc::now());
+                worker.set_current_task_id("");
 
                 let response = pb::EmptyMessage::new();
                 SingleResponse::completed(response)
