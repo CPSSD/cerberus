@@ -42,10 +42,9 @@ use errors::*;
 use mapreduce_tasks::TaskProcessor;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use util::init_logger;
-use worker_communication::WorkerRegistrationServiceImpl;
+use worker_communication::WorkerServiceImpl;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
-use worker_management::{WorkerPoller, run_polling_loop};
 use grpc_server::GRPCServer;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
@@ -66,14 +65,15 @@ fn run() -> Result<()> {
     let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
     let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
 
-    let worker_registration_service = WorkerRegistrationServiceImpl::new(
+    let worker_service = WorkerServiceImpl::new(
         Arc::clone(&worker_manager),
         Arc::clone(&worker_interface),
+        Arc::clone(&map_reduce_scheduler),
     );
 
     // Cli to Master Communications
     let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
-    let grpc_server = GRPCServer::new(port, mapreduce_service, worker_registration_service)
+    let grpc_server = GRPCServer::new(port, mapreduce_service, worker_service)
         .chain_err(|| "Error building grpc server.")?;
 
     run_scheduling_loop(
@@ -81,13 +81,6 @@ fn run() -> Result<()> {
         Arc::clone(&map_reduce_scheduler),
         Arc::clone(&worker_manager),
     );
-
-    let worker_poller = WorkerPoller::new(
-        Arc::clone(&map_reduce_scheduler),
-        Arc::clone(&worker_manager),
-        Arc::clone(&worker_interface),
-    );
-    run_polling_loop(worker_poller);
 
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));

@@ -29,8 +29,9 @@ mod errors {
 }
 
 mod operation_handler;
+mod master_interface;
 mod worker_interface;
-mod worker_service;
+mod schedule_operation_service;
 mod parser;
 
 use errors::*;
@@ -40,13 +41,48 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use util::init_logger;
 use worker_interface::WorkerInterface;
-use worker_service::WorkerServiceImpl;
+use master_interface::MasterInterface;
 use operation_handler::OperationHandler;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
-const MAIN_LOOP_SLEEP_MS: u64 = 100;
+const MAIN_LOOP_SLEEP_MS: u64 = 3000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
-const DEFAULT_PORT: &str = "0"; // Setting the port to 0 means a random available port will be selected
+// Setting the port to 0 means a random available port will be selected
+const DEFAULT_PORT: &str = "0";
+
+fn register_worker(
+    master_interface: &Arc<Mutex<MasterInterface>>,
+    address: &SocketAddr,
+) -> Result<()> {
+    let mut retries = WORKER_REGISTRATION_RETRIES;
+    while retries > 0 {
+        match master_interface.lock() {
+            Ok(mut interface) => {
+                match interface.register_worker(address) {
+                    Err(err) => {
+                        if retries == 0 {
+                            return Err(err.chain_err(|| "Error registering worker with master"));
+                        }
+                    }
+                    Ok(_) => break,
+                }
+            }
+            Err(err) => {
+                error!(
+                    "Could not lock master_interface to register worker: {}",
+                    err
+                )
+            }
+        }
+
+        thread::sleep(time::Duration::from_millis(
+            WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS,
+        ));
+        retries -= 1;
+    }
+
+    Ok(())
+}
 
 fn run() -> Result<()> {
     println!("Cerberus Worker!");
@@ -58,33 +94,41 @@ fn run() -> Result<()> {
     let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
         .chain_err(|| "Error parsing port")?;
 
-    let operation_handler = Arc::new(Mutex::new(OperationHandler::new()));
-    let worker_service_impl = WorkerServiceImpl::new(operation_handler);
-    let worker_server_interface = WorkerInterface::new(worker_service_impl, port, master_addr)
+    let master_interface = Arc::new(Mutex::new(MasterInterface::new(master_addr).chain_err(
+        || "Error creating master interface.",
+    )?));
+    let operation_handler = Arc::new(Mutex::new(
+        OperationHandler::new(Arc::clone(&master_interface)),
+    ));
+    let worker_interface = WorkerInterface::new(Arc::clone(&operation_handler), port)
         .chain_err(|| "Error building worker interface.")?;
 
-    let mut retries = WORKER_REGISTRATION_RETRIES;
-    while retries > 0 {
-        match worker_server_interface.register_worker() {
-            Err(err) => {
-                if retries == 0 {
-                    return Err(err.chain_err(|| "Error registering worker with master"));
-                }
-            }
-            Ok(_) => break,
-        }
-
-        thread::sleep(time::Duration::from_millis(
-            WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS,
-        ));
-        retries -= 1;
-    }
+    // TODO: Replace this by machine's address rather than the listening server's address.
+    let local_addr = worker_interface.get_server().local_addr();
+    register_worker(&master_interface, local_addr).chain_err(
+        || "Failed to register worker.",
+    )?;
 
     info!("Successfully registered worker with Master.");
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        let server = worker_server_interface.get_server();
+        match operation_handler.lock() {
+            Ok(handler) => {
+                let result = handler.update_worker_status();
+                if let Err(err) = result {
+                    error!("Could not send updated worker status to master: {}", err);
+                }
+            }
+            Err(err) => {
+                error!(
+                    "Could not lock operation_handler to update worker status: {}",
+                    err
+                )
+            }
+        }
+
+        let server = worker_interface.get_server();
         if !server.is_alive() {
             return Err("Worker interface server has unexpectingly died.".into());
         }

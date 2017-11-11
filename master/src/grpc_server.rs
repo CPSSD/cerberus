@@ -2,7 +2,7 @@ use errors::*;
 use grpc::{ServerBuilder, Server};
 
 use client_communication::MapReduceServiceImpl;
-use worker_communication::WorkerRegistrationServiceImpl;
+use worker_communication::WorkerServiceImpl;
 
 use cerberus_proto::{mapreduce_grpc, worker_grpc};
 
@@ -16,7 +16,7 @@ impl GRPCServer {
     pub fn new(
         port: u16,
         mapreduce_service: MapReduceServiceImpl,
-        worker_registration_service: WorkerRegistrationServiceImpl,
+        worker_service: WorkerServiceImpl,
     ) -> Result<Self> {
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
         server_builder.http.set_port(port);
@@ -29,12 +29,10 @@ impl GRPCServer {
             mapreduce_service,
         ));
 
-        // Register the WorkerRegistartionServer
-        server_builder.add_service(
-            worker_grpc::WorkerRegistrationServiceServer::new_service_def(
-                worker_registration_service,
-            ),
-        );
+        // Register the WorkerServiceServer
+        server_builder.add_service(worker_grpc::WorkerServiceServer::new_service_def(
+            worker_service,
+        ));
 
         Ok(GRPCServer {
             server: server_builder.build().chain_err(

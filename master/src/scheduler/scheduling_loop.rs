@@ -1,3 +1,5 @@
+use chrono::prelude::*;
+use errors::*;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskType};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
@@ -6,10 +8,12 @@ use worker_communication::WorkerInterface;
 use worker_management::{Worker, WorkerManager};
 use util::output_error;
 
-use cerberus_proto::worker::WorkerStatusResponse_OperationStatus as OperationStatus;
+use cerberus_proto::worker::UpdateStatusRequest_OperationStatus as OperationStatus;
 use cerberus_proto::worker as pb;
 
 const SCHEDULING_LOOP_INTERVAL_MS: u64 = 100;
+const TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S: i64 = 60;
+const TIME_BEFORE_WORKER_TERMINATION_S: i64 = 120;
 
 struct SchedulerResources<I>
 where
@@ -219,6 +223,57 @@ fn do_scheduling_loop_step<I>(
     }
 }
 
+/// Remove a task from its worker and push it back onto the queue.
+fn reschedule_task(task_id: &str, scheduler: &mut MutexGuard<MapReduceScheduler>) -> Result<()> {
+    scheduler.unschedule_task(task_id).chain_err(|| {
+        format!("Unable to unschedule task with ID {:?}.", task_id)
+    })?;
+    Ok(())
+}
+
+/// Remove a worker from the list of available workers.
+fn remove_worker(
+    worker_id: &str,
+    worker_manager: &mut MutexGuard<WorkerManager>,
+    scheduler: &mut MutexGuard<MapReduceScheduler>,
+) {
+    worker_manager.remove_worker(worker_id);
+    let available_workers = scheduler.get_available_workers();
+    scheduler.set_available_workers(available_workers - 1);
+}
+
+/// `update_healthy_workers` checks which workers have likely failed and
+/// need to have their tasks restarted.
+// If a worker has not updated it's status for a long time it is removed from the list of workers.
+fn update_healthy_workers(
+    scheduler: &mut MutexGuard<MapReduceScheduler>,
+    worker_manager: &mut MutexGuard<WorkerManager>,
+) {
+    let mut workers_to_remove = Vec::new();
+    for worker in worker_manager.get_workers() {
+        let time_since_worker_updated = Utc::now().timestamp() -
+            worker.get_status_last_updated().timestamp();
+
+        if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S {
+            workers_to_remove.push(worker.get_worker_id().to_owned());
+        }
+
+        if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S {
+            let task_id = worker.get_current_task_id();
+            if !task_id.is_empty() {
+                let result = reschedule_task(task_id, scheduler);
+                if let Err(err) = result {
+                    error!("Error trying to reschedule task: {}", err);
+                }
+            }
+        }
+    }
+
+    for worker_id in workers_to_remove {
+        remove_worker(&worker_id, worker_manager, scheduler);
+    }
+}
+
 /// `run_scheduling_loop` is the main loop that performs all functionality related to assigning
 /// `MapReduceTask`s to workers.
 pub fn run_scheduling_loop<I>(
@@ -231,9 +286,9 @@ pub fn run_scheduling_loop<I>(
     thread::spawn(move || loop {
         thread::sleep(time::Duration::from_millis(SCHEDULING_LOOP_INTERVAL_MS));
 
-        let scheduler = {
+        let mut scheduler = {
             match scheduler_arc.lock() {
-                Ok(scheduler) => scheduler,
+                Ok(mut scheduler) => scheduler,
                 Err(e) => {
                     error!("Error obtaining scheduler: {}", e);
                     continue;
@@ -241,15 +296,17 @@ pub fn run_scheduling_loop<I>(
             }
         };
 
-        let worker_manager = {
+        let mut worker_manager = {
             match worker_manager_arc.lock() {
-                Ok(worker_manager) => worker_manager,
+                Ok(mut worker_manager) => worker_manager,
                 Err(e) => {
                     error!("Error obtaining worker manager: {}", e);
                     continue;
                 }
             }
         };
+
+        update_healthy_workers(&mut scheduler, &mut worker_manager);
 
         do_scheduling_loop_step(
             &SchedulerResources {
@@ -266,7 +323,6 @@ pub fn run_scheduling_loop<I>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use errors::*;
     use mapreduce_job::MapReduceJob;
     use mapreduce_job::MapReduceJobOptions;
     use mapreduce_tasks::TaskProcessorTrait;
@@ -281,9 +337,6 @@ mod tests {
         fn remove_client(&mut self, _worker_id: &str) -> Result<()> {
             Ok(())
         }
-        fn get_worker_status(&self, _worker_id: &str) -> Result<pb::WorkerStatusResponse> {
-            Ok(pb::WorkerStatusResponse::new())
-        }
         fn schedule_map(&self, _request: pb::PerformMapRequest, _worker_id: &str) -> Result<()> {
             Ok(())
         }
@@ -293,12 +346,6 @@ mod tests {
             _worker_id: &str,
         ) -> Result<()> {
             Ok(())
-        }
-        fn get_map_result(&self, _worker_id: &str) -> Result<pb::MapResponse> {
-            Ok(pb::MapResponse::new())
-        }
-        fn get_reduce_result(&self, _worker_id: &str) -> Result<pb::ReduceResponse> {
-            Ok(pb::ReduceResponse::new())
         }
     }
 

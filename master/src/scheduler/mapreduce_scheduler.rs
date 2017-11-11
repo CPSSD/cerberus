@@ -45,8 +45,8 @@ impl MapReduceScheduler {
         }
     }
 
-    /// `process_next_map_reduce` is used to make the next `MapReduceJob` in the queue the active job being
-    /// processed when the current job is completed.
+    /// `process_next_map_reduce` is used to make the next `MapReduceJob` in the queue the active
+    /// job being processed when the current job is completed.
     ///
     /// It creates the Map tasks for the `MapReduceJob` and adds them to the queue so that they can
     /// be assigned to workers.
@@ -229,9 +229,9 @@ impl MapReduceScheduler {
     pub fn process_map_task_response(
         &mut self,
         map_task_id: &str,
-        map_response: &pb::MapResponse,
+        map_response: &pb::MapResult,
     ) -> Result<()> {
-        if map_response.get_status() == pb::OperationStatus::SUCCESS {
+        if map_response.get_status() == pb::ResultStatus::SUCCESS {
             let map_reduce_id = {
                 let map_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&map_task_id.to_owned())
@@ -297,9 +297,9 @@ impl MapReduceScheduler {
     pub fn process_reduce_task_response(
         &mut self,
         reduce_task_id: &str,
-        reduce_response: &pb::ReduceResponse,
+        reduce_response: &pb::ReduceResult,
     ) -> Result<()> {
-        if reduce_response.get_status() == pb::OperationStatus::SUCCESS {
+        if reduce_response.get_status() == pb::ResultStatus::SUCCESS {
             let map_reduce_id = {
                 let reduce_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&reduce_task_id.to_owned())
@@ -417,8 +417,8 @@ mod tests {
             "input-1",
         );
 
-        let mut map_response = pb::MapResponse::new();
-        map_response.set_status(pb::OperationStatus::SUCCESS);
+        let mut map_response = pb::MapResult::new();
+        map_response.set_status(pb::ResultStatus::SUCCESS);
 
         map_response.mut_map_results().insert(
             0,
@@ -439,8 +439,8 @@ mod tests {
             "/tmp/output",
         );
 
-        let mut reduce_response1 = pb::ReduceResponse::new();
-        reduce_response1.set_status(pb::OperationStatus::SUCCESS);
+        let mut reduce_response1 = pb::ReduceResult::new();
+        reduce_response1.set_status(pb::ResultStatus::SUCCESS);
 
         let reduce_task2 = MapReduceTask::new_reduce_task(
             map_reduce_job.map_reduce_id.as_str(),
@@ -450,8 +450,8 @@ mod tests {
             "/tmp/output/",
         );
 
-        let mut reduce_response2 = pb::ReduceResponse::new();
-        reduce_response2.set_status(pb::OperationStatus::SUCCESS);
+        let mut reduce_response2 = pb::ReduceResult::new();
+        reduce_response2.set_status(pb::ResultStatus::SUCCESS);
 
         let mock_map_tasks = vec![map_task1.clone()];
         let mock_reduce_tasks = vec![reduce_task1.clone(), reduce_task2.clone()];

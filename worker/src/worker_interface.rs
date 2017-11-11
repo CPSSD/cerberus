@@ -1,60 +1,39 @@
-use grpc::{Server, RequestOptions, ServerBuilder};
+use std::sync::{Arc, Mutex};
+
 use errors::*;
-use cerberus_proto::worker as pb;
+use grpc::{Server, ServerBuilder};
+
 use cerberus_proto::worker_grpc as grpc_pb;
-use cerberus_proto::worker_grpc::WorkerRegistrationService;
-use worker_service::WorkerServiceImpl;
-use std::net::SocketAddr;
+use schedule_operation_service::ScheduleOperationServiceImpl;
+use operation_handler::OperationHandler;
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 
 pub struct WorkerInterface {
     server: Server,
-    client: grpc_pb::WorkerRegistrationServiceClient,
 }
 
 /// `WorkerInterface` is the implementation of the interface used by the worker to recieve commands
 /// from the master.
 /// This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new(
-        worker_service_impl: WorkerServiceImpl,
-        port: u16,
-        master_addr: SocketAddr,
-    ) -> Result<Self> {
+    pub fn new(operation_handler: Arc<Mutex<OperationHandler>>, serving_port: u16) -> Result<Self> {
+        let schedule_operation_service_impl = ScheduleOperationServiceImpl::new(operation_handler);
+
         let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(port);
-        server_builder.add_service(grpc_pb::WorkerServiceServer::new_service_def(
-            worker_service_impl,
+        server_builder.http.set_port(serving_port);
+        server_builder.add_service(grpc_pb::ScheduleOperationServiceServer::new_service_def(
+            schedule_operation_service_impl,
         ));
         server_builder.http.set_cpu_pool_threads(
             GRPC_THREAD_POOL_SIZE,
         );
 
-        let client = grpc_pb::WorkerRegistrationServiceClient::new_plain(
-            &master_addr.ip().to_string(),
-            master_addr.port(),
-            Default::default(),
-        ).chain_err(|| "Error building client")?;
-
         Ok(WorkerInterface {
-            server: server_builder.build().chain_err(|| "Error building server")?,
-            client: client,
+            server: server_builder.build().chain_err(
+                || "Error building ScheduleOperationService server.",
+            )?,
         })
-    }
-
-    pub fn register_worker(&self) -> Result<()> {
-        let worker_addr = self.server.local_addr().to_string();
-
-        let mut req = pb::RegisterWorkerRequest::new();
-        req.set_worker_address(worker_addr);
-
-        self.client
-            .register_worker(RequestOptions::new(), req)
-            .wait()
-            .chain_err(|| "Failed to register worker")?;
-
-        Ok(())
     }
 
     pub fn get_server(&self) -> &Server {

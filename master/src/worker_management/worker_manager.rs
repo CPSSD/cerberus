@@ -1,3 +1,4 @@
+use chrono::prelude::*;
 use errors::*;
 use uuid::Uuid;
 use std::net::SocketAddr;
@@ -17,14 +18,13 @@ pub enum WorkerTaskType {
 pub struct Worker {
     address: SocketAddr,
 
-    status: pb::WorkerStatusResponse_WorkerStatus,
-    operation_status: pb::WorkerStatusResponse_OperationStatus,
+    status: pb::UpdateStatusRequest_WorkerStatus,
+    operation_status: pb::UpdateStatusRequest_OperationStatus,
+    status_last_updated: DateTime<Utc>,
 
     current_task_id: String,
     current_task_type: WorkerTaskType,
     worker_id: String,
-
-    completed_operation_flag: bool,
 }
 
 impl Worker {
@@ -34,14 +34,13 @@ impl Worker {
                 || "Invalid address when creating worker",
             )?,
 
-            status: pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
-            operation_status: pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
+            status: pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
+            operation_status: pb::UpdateStatusRequest_OperationStatus::UNKNOWN,
+            status_last_updated: Utc::now(),
 
             current_task_id: String::new(),
             current_task_type: WorkerTaskType::Idle,
             worker_id: Uuid::new_v4().to_string(),
-
-            completed_operation_flag: false,
         })
     }
 
@@ -57,36 +56,37 @@ impl Worker {
         self.address
     }
 
-    pub fn get_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
-        self.operation_status
-    }
-
     pub fn get_current_task_id(&self) -> &str {
         &self.current_task_id
     }
 
-    pub fn set_status(&mut self, status: pb::WorkerStatusResponse_WorkerStatus) {
+    pub fn set_status(&mut self, status: pb::UpdateStatusRequest_WorkerStatus) {
         self.status = status;
-    }
-
-    pub fn get_current_task_type(&self) -> WorkerTaskType {
-        self.current_task_type.clone()
     }
 
     pub fn set_operation_status(
         &mut self,
-        operation_status: pb::WorkerStatusResponse_OperationStatus,
+        operation_status: pb::UpdateStatusRequest_OperationStatus,
     ) {
-        if self.operation_status != pb::WorkerStatusResponse_OperationStatus::COMPLETE &&
-            operation_status == pb::WorkerStatusResponse_OperationStatus::COMPLETE
-        {
-            self.completed_operation_flag = true;
-        }
         self.operation_status = operation_status;
+    }
+
+    pub fn get_status_last_updated(&self) -> DateTime<Utc> {
+        self.status_last_updated
+    }
+
+    pub fn set_status_last_updated(&mut self, time: DateTime<Utc>) {
+        self.status_last_updated = time
     }
 
     pub fn set_current_task_id<S: Into<String>>(&mut self, task_id: S) {
         self.current_task_id = task_id.into();
+    }
+
+    // Used in tests
+    #[allow(unused)]
+    pub fn get_current_task_type(&self) -> WorkerTaskType {
+        self.current_task_type.clone()
     }
 
     pub fn set_current_task_type(&mut self, task_type: Option<TaskType>) {
@@ -99,14 +99,6 @@ impl Worker {
                 }
             }
         }
-    }
-
-    pub fn set_completed_operation_flag(&mut self, val: bool) {
-        self.completed_operation_flag = val;
-    }
-
-    pub fn get_completed_operation_flag(&self) -> bool {
-        self.completed_operation_flag
     }
 }
 
@@ -122,14 +114,6 @@ impl WorkerManager {
 
     pub fn get_workers(&self) -> &Vec<Worker> {
         &self.workers
-    }
-
-    pub fn get_worker_ids(&self) -> Vec<String> {
-        let mut ids = Vec::new();
-        for worker in &self.workers {
-            ids.push(worker.get_worker_id().to_owned());
-        }
-        ids
     }
 
     pub fn get_total_workers(&self) -> u32 {
@@ -192,11 +176,11 @@ mod tests {
 
         assert_eq!(
             worker.status,
-            pb::WorkerStatusResponse_WorkerStatus::AVAILABLE
+            pb::UpdateStatusRequest_WorkerStatus::AVAILABLE
         );
         assert_eq!(
             worker.operation_status,
-            pb::WorkerStatusResponse_OperationStatus::UNKNOWN
+            pb::UpdateStatusRequest_OperationStatus::UNKNOWN
         );
     }
 
