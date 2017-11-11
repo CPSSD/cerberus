@@ -8,7 +8,6 @@ use util::output_error;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 
-const SCHEDULER_BUSY: &str = "Scheduler busy";
 const JOB_SCHEDULE_ERROR: &str = "Unable to schedule mapreduce job";
 const JOB_RETRIEVAL_ERROR: &str = "Unable to retrieve mapreduce jobs";
 const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
@@ -30,24 +29,20 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
         _: RequestOptions,
         req: pb::MapReduceRequest,
     ) -> SingleResponse<pb::MapReduceResponse> {
-        match self.scheduler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
-            Ok(mut scheduler) => {
-                let mut response = pb::MapReduceResponse::new();
-                let job = match MapReduceJob::new(MapReduceJobOptions::from(req)) {
-                    Ok(job) => job,
-                    Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
-                };
-                response.mapreduce_id = job.map_reduce_id.clone();
-                let result = scheduler.schedule_map_reduce(job);
-                match result {
-                    Err(err) => {
-                        output_error(&err.chain_err(|| "Error scheduling map reduce job."));
-                        SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
-                    }
-                    Ok(_) => SingleResponse::completed(response),
-                }
+        let mut scheduler = self.scheduler.lock().unwrap();
+
+        let mut response = pb::MapReduceResponse::new();
+        let job = match MapReduceJob::new(MapReduceJobOptions::from(req)) {
+            Ok(job) => job,
+            Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
+        };
+        response.mapreduce_id = job.map_reduce_id.clone();
+        match scheduler.schedule_map_reduce(job) {
+            Err(err) => {
+                output_error(&err.chain_err(|| "Error scheduling map reduce job."));
+                SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
             }
+            Ok(_) => SingleResponse::completed(response),
         }
     }
 
@@ -56,55 +51,48 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
         _: RequestOptions,
         req: pb::MapReduceStatusRequest,
     ) -> SingleResponse<pb::MapReduceStatusResponse> {
-        match self.scheduler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
-            Ok(scheduler) => {
-                let mut response = pb::MapReduceStatusResponse::new();
-                let jobs: Vec<&MapReduceJob>;
+        let scheduler = self.scheduler.lock().unwrap();
 
-                if !req.client_id.is_empty() {
-                    let client_result = scheduler.get_mapreduce_client_status(&req.client_id);
-                    jobs = match client_result {
-                        Err(err) => {
-                            output_error(&err.chain_err(
-                                || "Error getting map reduce status for client.",
-                            ));
-                            return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
-                        }
-                        Ok(js) => js,
-                    };
-                } else if !req.mapreduce_id.is_empty() {
-                    let result = scheduler.get_mapreduce_status(&req.mapreduce_id);
-                    jobs = match result {
-                        Err(err) => {
-                            output_error(&err.chain_err(|| "Error getting map reduce status."));
-                            return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
-                        }
-                        Ok(job) => vec![job],
-                    };
-                } else {
-                    return SingleResponse::err(Error::Other(MISSING_JOB_IDS));
+        let mut response = pb::MapReduceStatusResponse::new();
+        let jobs: Vec<&MapReduceJob>;
+
+        if !req.client_id.is_empty() {
+            match scheduler.get_mapreduce_client_status(&req.client_id) {
+                Err(err) => {
+                    output_error(&err.chain_err(|| "Error getting mapreduces for client."));
+                    return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
                 }
-
-                for job in jobs {
-                    let mut report = pb::MapReduceReport::new();
-                    report.mapreduce_id = job.map_reduce_id.clone();
-                    report.status = job.status;
-                    report.scheduled_timestamp = job.time_requested.timestamp();
-                    report.output_directory = job.output_directory.clone();
-                    if let Some(time) = job.time_started {
-                        report.started_timestamp = time.timestamp();
-                    }
-                    if let Some(time) = job.time_completed {
-                        report.done_timestamp = time.timestamp();
-                    }
-
-                    response.reports.push(report);
-                }
-
-                SingleResponse::completed(response)
+                Ok(jbs) => jobs = jbs,
             }
+        } else if !req.mapreduce_id.is_empty() {
+            match scheduler.get_mapreduce_status(&req.mapreduce_id) {
+                Err(err) => {
+                    output_error(&err.chain_err(|| "Error getting mapreduces status."));
+                    return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
+                }
+                Ok(job) => jobs = vec![job],
+            }
+        } else {
+            return SingleResponse::err(Error::Other(MISSING_JOB_IDS));
         }
+
+        for job in jobs {
+            let mut report = pb::MapReduceReport::new();
+            report.mapreduce_id = job.map_reduce_id.clone();
+            report.status = job.status;
+            report.scheduled_timestamp = job.time_requested.timestamp();
+            report.output_directory = job.output_directory.clone();
+            if let Some(time) = job.time_started {
+                report.started_timestamp = time.timestamp();
+            }
+            if let Some(time) = job.time_completed {
+                report.done_timestamp = time.timestamp();
+            }
+
+            response.reports.push(report);
+        }
+
+        SingleResponse::completed(response)
     }
 
     fn cluster_status(
@@ -112,16 +100,13 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
         _: RequestOptions,
         _: pb::EmptyMessage,
     ) -> SingleResponse<pb::ClusterStatusResponse> {
-        match self.scheduler.lock() {
-            Err(_) => SingleResponse::err(Error::Other(SCHEDULER_BUSY)),
-            Ok(scheduler) => {
-                let mut response = pb::ClusterStatusResponse::new();
-                response.workers = i64::from(scheduler.get_available_workers());
-                response.queue_size = scheduler.get_map_reduce_job_queue_size() as i64;
+        let scheduler = self.scheduler.lock().unwrap();
 
-                SingleResponse::completed(response)
-            }
-        }
+        let mut response = pb::ClusterStatusResponse::new();
+        response.workers = i64::from(scheduler.get_available_workers());
+        response.queue_size = scheduler.get_map_reduce_job_queue_size() as i64;
+
+        SingleResponse::completed(response)
     }
 }
 
