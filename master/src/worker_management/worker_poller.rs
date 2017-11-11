@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::{thread, time};
 
@@ -14,16 +16,22 @@ const SCHEDULER_UNAVAILABLE: &str = "Scheduler unavailable";
 
 const POLLING_LOOP_INTERVAL_MS: u64 = 2000;
 
-pub struct WorkerPoller {
-    scheduler: Arc<Mutex<MapReduceScheduler>>,
-    worker_manager: Arc<Mutex<WorkerManager>>,
-    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
+// After a worker poll has failed this number of times, reschedule the task for that worker.
+const FAILED_POLLS_BEFORE_TASK_RESTART: u64 = 5;
+// After a worker poll has failed this number of times, remove the worker from the list of active
+// workers.
+const FAILED_POLLS_BEFORE_WORKER_TERMINATION: u64 = 10;
+
+enum PollStatus {
+    Okay,
+    Failure,
 }
 
 struct PollResult {
+    operation_status: Option<WorkerStatusResponse_OperationStatus>,
+    poll_status: PollStatus,
     worker_id: String,
-    worker_status: WorkerStatusResponse_WorkerStatus,
-    operation_status: WorkerStatusResponse_OperationStatus,
+    worker_status: Option<WorkerStatusResponse_WorkerStatus>,
 }
 
 #[derive(Clone)]
@@ -31,6 +39,13 @@ struct WorkerInfo {
     worker_id: String,
     task_id: String,
     task_type: WorkerTaskType,
+}
+
+pub struct WorkerPoller {
+    scheduler: Arc<Mutex<MapReduceScheduler>>,
+    worker_manager: Arc<Mutex<WorkerManager>>,
+    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
+    failed_polls: RefCell<HashMap<String, u64>>,
 }
 
 impl WorkerPoller {
@@ -43,6 +58,7 @@ impl WorkerPoller {
             scheduler: scheduler,
             worker_manager: worker_manager,
             worker_interface: worker_interface,
+            failed_polls: RefCell::new(HashMap::new()),
         }
     }
 
@@ -57,23 +73,33 @@ impl WorkerPoller {
             Err(_) => return Err(WORKER_INTERFACE_UNAVAILABLE.into()),
         };
 
+        let mut failed_this_round = Vec::new();
+
         match self.worker_manager.lock() {
             Ok(mut worker_manager) => {
-                for poll_result in poll_results {
-                    match poll_result {
-                        Ok(poll) => {
+                for poll in poll_results {
+                    match poll.poll_status {
+                        PollStatus::Okay => {
                             let result = self.update_worker(&poll, &mut worker_manager);
                             if let Err(err) = result {
                                 output_error(&err.chain_err(|| "Unable to update worker."));
                             }
                         }
-                        Err(_) => return Err("Unable to get polling result.".into()),
+                        PollStatus::Failure => {
+                            failed_this_round.push(poll);
+                        }
                     }
                 }
             }
             Err(_) => return Err(WORKER_MANAGER_UNAVAILABLE.into()),
         }
 
+        for poll in &failed_this_round {
+            let result = self.handle_failed_worker_poll(poll);
+            if let Err(err) = result {
+                output_error(&err.chain_err(|| "Unable to handle failed worker poll."));
+            }
+        }
         self.poll_mapreduce_results()
     }
 
@@ -81,19 +107,27 @@ impl WorkerPoller {
         &self,
         worker_ids: Vec<String>,
         interface: &RwLockReadGuard<WorkerInterfaceImpl>,
-    ) -> Vec<Result<PollResult>> {
+    ) -> Vec<PollResult> {
         let mut results = Vec::new();
         for worker_id in worker_ids {
             let status_response = interface.get_worker_status(worker_id.as_str());
             let result = match status_response {
                 Ok(status) => {
-                    Ok(PollResult {
+                    PollResult {
+                        operation_status: Some(status.operation_status),
+                        poll_status: PollStatus::Okay,
                         worker_id: worker_id.to_owned(),
-                        worker_status: status.worker_status,
-                        operation_status: status.operation_status,
-                    })
+                        worker_status: Some(status.worker_status),
+                    }
                 }
-                Err(_) => Err("Unable to poll worker".into()),
+                Err(_) => {
+                    PollResult {
+                        operation_status: None,
+                        poll_status: PollStatus::Failure,
+                        worker_id: worker_id.to_owned(),
+                        worker_status: None,
+                    }
+                }
             };
             results.push(result);
         }
@@ -181,11 +215,86 @@ impl WorkerPoller {
         match worker_result {
             None => Err("Unable to get worker".into()),
             Some(worker) => {
-                worker.set_status(poll.worker_status);
-                worker.set_operation_status(poll.operation_status);
+                worker.set_status(poll.worker_status.unwrap());
+                worker.set_operation_status(poll.operation_status.unwrap());
                 Ok(())
             }
         }
+    }
+
+    /// If the master fails to poll a worker, increment the counter of failed polls and decide what
+    /// to do next.
+    fn handle_failed_worker_poll(&self, poll_result: &PollResult) -> Result<()> {
+        warn!(
+            "Worker {} failed to respond to poll.",
+            poll_result.worker_id
+        );
+        let num_failed_polls = {
+            let mut failed_polls_mut = self.failed_polls.borrow_mut();
+            let num_failed_polls_mut = failed_polls_mut
+                .entry(poll_result.worker_id.clone())
+                .or_insert(0);
+            *num_failed_polls_mut += 1;
+            warn!(
+                "Worker {} has failed {} times.",
+                poll_result.worker_id,
+                *num_failed_polls_mut
+            );
+            *num_failed_polls_mut
+        };
+
+        let mut worker_manager = self.worker_manager.lock().map_err(
+            |_| "Failed to obtain lock on worker manager.",
+        )?;
+        let mut scheduler = self.scheduler.lock().map_err(
+            |_| "Failed to obtain lock on scheduler.",
+        )?;
+        let task_id = worker_manager
+            .get_worker(&poll_result.worker_id)
+            .chain_err(|| "Failed to get worker from worker manager.")?
+            .get_current_task_id()
+            .to_owned();
+        if num_failed_polls >= FAILED_POLLS_BEFORE_WORKER_TERMINATION {
+            self.remove_worker(
+                &poll_result.worker_id,
+                &mut worker_manager,
+                &mut scheduler,
+            )?;
+        }
+        if num_failed_polls >= FAILED_POLLS_BEFORE_TASK_RESTART {
+            if task_id.is_empty() {
+                info!("No task assigned to worker.");
+            } else {
+                self.reschedule_task(&task_id, &mut scheduler)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove a task from its worker and push it back onto the queue.
+    fn reschedule_task(
+        &self,
+        task_id: &str,
+        scheduler: &mut MutexGuard<MapReduceScheduler>,
+    ) -> Result<()> {
+        scheduler.unschedule_task(task_id).chain_err(|| {
+            format!("Unable to unschedule task with ID {:?}.", task_id)
+        })?;
+        Ok(())
+    }
+
+    /// Remove a worker from the list of available workers.
+    fn remove_worker(
+        &self,
+        worker_id: &str,
+        worker_manager: &mut MutexGuard<WorkerManager>,
+        scheduler: &mut MutexGuard<MapReduceScheduler>,
+    ) -> Result<()> {
+        worker_manager.remove_worker(worker_id);
+        let available_workers = scheduler.get_available_workers();
+        scheduler.set_available_workers(available_workers - 1);
+
+        Ok(())
     }
 
     fn get_workers_with_completed_task(&self) -> Result<Vec<WorkerInfo>> {

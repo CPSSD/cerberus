@@ -165,6 +165,14 @@ impl WorkerManager {
         }
         None
     }
+
+    pub fn remove_worker(&mut self, worker_id: &str) {
+        self.workers
+            .iter()
+            .position(|w| w.get_worker_id() == worker_id)
+            .map(|index| self.workers.remove(index));
+        info!("Removed {} from list of active workers.", worker_id);
+    }
 }
 
 #[cfg(test)]
