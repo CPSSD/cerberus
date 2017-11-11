@@ -15,16 +15,15 @@ use serde_json::Value::Array;
 use uuid::Uuid;
 use errors::*;
 use util::output_error;
+use master_interface::MasterInterface;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 
 /// `OperationState` is a data only struct for holding the current state for the `OperationHandler`
 #[derive(Default)]
 struct OperationState {
-    pub worker_status: pb::WorkerStatusResponse_WorkerStatus,
-    pub operation_status: pb::WorkerStatusResponse_OperationStatus,
-    pub map_result: Option<pb::MapResponse>,
-    pub reduce_result: Option<pb::ReduceResponse>,
+    pub worker_status: pb::UpdateStatusRequest_WorkerStatus,
+    pub operation_status: pb::UpdateStatusRequest_OperationStatus,
 }
 
 /// The `MapInput` is a struct used for serialising input data for a map operation.
@@ -47,9 +46,9 @@ pub struct ReduceOperationQueue {
 }
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
-#[derive(Default)]
 pub struct OperationHandler {
     operation_state: Arc<Mutex<OperationState>>,
+    master_interface: Arc<Mutex<MasterInterface>>,
 
     reduce_operation_queue: Arc<Mutex<ReduceOperationQueue>>,
     output_dir_uuid: String,
@@ -58,18 +57,16 @@ pub struct OperationHandler {
 impl OperationState {
     pub fn new() -> Self {
         OperationState {
-            worker_status: pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
-            operation_status: pb::WorkerStatusResponse_OperationStatus::UNKNOWN,
-            map_result: None,
-            reduce_result: None,
+            worker_status: pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
+            operation_status: pb::UpdateStatusRequest_OperationStatus::UNKNOWN,
         }
     }
 }
 
 fn set_operation_handler_status(
     operation_state_arc: &Arc<Mutex<OperationState>>,
-    worker_status: pb::WorkerStatusResponse_WorkerStatus,
-    operation_status: pb::WorkerStatusResponse_OperationStatus,
+    worker_status: pb::UpdateStatusRequest_WorkerStatus,
+    operation_status: pb::UpdateStatusRequest_OperationStatus,
 ) -> Result<()> {
     match operation_state_arc.lock() {
         Ok(mut operation_state) => {
@@ -91,20 +88,57 @@ fn set_operation_handler_status(
 fn set_complete_status(operation_state_arc: &Arc<Mutex<OperationState>>) -> Result<()> {
     set_operation_handler_status(
         operation_state_arc,
-        pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
-        pb::WorkerStatusResponse_OperationStatus::COMPLETE,
+        pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
+        pb::UpdateStatusRequest_OperationStatus::COMPLETE,
     ).chain_err(|| "Could not set operation completed status.")
 }
 
 fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     let result = set_operation_handler_status(
         operation_state_arc,
-        pb::WorkerStatusResponse_WorkerStatus::AVAILABLE,
-        pb::WorkerStatusResponse_OperationStatus::FAILED,
+        pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
+        pb::UpdateStatusRequest_OperationStatus::FAILED,
     );
 
     if let Err(err) = result {
         output_error(&err.chain_err(|| "Could not set operation failed status."));
+    }
+}
+
+fn send_reduce_result(
+    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    status: pb::ResultStatus,
+) -> Result<()> {
+    let mut response = pb::ReduceResult::new();
+    response.set_status(status);
+
+    match master_interface_arc.lock() {
+        Ok(master_interface) => {
+            master_interface.return_reduce_result(response).chain_err(
+                || "Error sending reduce result to master.",
+            )?;
+            Ok(())
+        }
+        Err(_) => {
+            Err(
+                "Error locking master_interface to return reduce result".into(),
+            )
+        }
+    }
+}
+
+fn send_map_result(
+    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    map_result: pb::MapResult,
+) -> Result<()> {
+    match master_interface_arc.lock() {
+        Ok(master_interface) => {
+            master_interface.return_map_result(map_result).chain_err(
+                || "Error sending map result to master.",
+            )?;
+            Ok(())
+        }
+        Err(_) => Err("Error locking master_interface to return map result".into()),
     }
 }
 
@@ -157,8 +191,7 @@ fn map_operation_thread_impl(
     map_input_value: &bson::Document,
     output_dir: &str,
     mut child: Child,
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-) -> Result<()> {
+) -> Result<pb::MapResult> {
     let mut input_buf = Vec::new();
     bson::encode_document(&mut input_buf, map_input_value)
         .chain_err(|| "Could not encode map_input as BSON.")?;
@@ -183,17 +216,11 @@ fn map_operation_thread_impl(
         || "Error parsing map results.",
     )?;
 
-    let mut response = pb::MapResponse::new();
-    response.set_status(pb::OperationStatus::SUCCESS);
+    let mut response = pb::MapResult::new();
+    response.set_status(pb::ResultStatus::SUCCESS);
     response.set_map_results(map_results);
 
-    match operation_state_arc.lock() {
-        Ok(mut operation_state) => {
-            operation_state.map_result = Some(response);
-            Ok(())
-        }
-        Err(_) => Err("Could not lock operation_state to write map result.".into()),
-    }
+    Ok(response)
 }
 
 impl ReduceOperationQueue {
@@ -295,16 +322,17 @@ struct ReduceOptions {
 }
 
 impl OperationHandler {
-    pub fn new() -> Self {
+    pub fn new(master_interface: Arc<Mutex<MasterInterface>>) -> Self {
         OperationHandler {
             operation_state: Arc::new(Mutex::new(OperationState::new())),
             reduce_operation_queue: Arc::new(Mutex::new(ReduceOperationQueue::new())),
 
+            master_interface: master_interface,
             output_dir_uuid: Uuid::new_v4().to_string(),
         }
     }
 
-    pub fn get_worker_status(&self) -> pb::WorkerStatusResponse_WorkerStatus {
+    pub fn get_worker_status(&self) -> pb::UpdateStatusRequest_WorkerStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.worker_status,
             Err(err) => {
@@ -312,12 +340,12 @@ impl OperationHandler {
                     "Error locking operation_state to get worker_status: {}",
                     err
                 );
-                pb::WorkerStatusResponse_WorkerStatus::BUSY
+                pb::UpdateStatusRequest_WorkerStatus::BUSY
             }
         }
     }
 
-    pub fn get_worker_operation_status(&self) -> pb::WorkerStatusResponse_OperationStatus {
+    pub fn get_worker_operation_status(&self) -> pb::UpdateStatusRequest_OperationStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.operation_status,
             Err(err) => {
@@ -325,7 +353,7 @@ impl OperationHandler {
                     "Error locking operation_state to get operation_status: {}",
                     err
                 );
-                pb::WorkerStatusResponse_OperationStatus::UNKNOWN
+                pb::UpdateStatusRequest_OperationStatus::UNKNOWN
             }
         }
     }
@@ -333,9 +361,9 @@ impl OperationHandler {
     pub fn set_operation_handler_busy(&self) -> Result<()> {
         match self.operation_state.lock() {
             Ok(mut operation_state) => {
-                operation_state.worker_status = pb::WorkerStatusResponse_WorkerStatus::BUSY;
+                operation_state.worker_status = pb::UpdateStatusRequest_WorkerStatus::BUSY;
                 operation_state.operation_status =
-                    pb::WorkerStatusResponse_OperationStatus::IN_PROGRESS;
+                    pb::UpdateStatusRequest_OperationStatus::IN_PROGRESS;
 
                 Ok(())
             }
@@ -350,7 +378,7 @@ impl OperationHandler {
             map_options.input_file_path
         );
 
-        if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
+        if self.get_worker_status() == pb::UpdateStatusRequest_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
         self.set_operation_handler_busy().chain_err(
@@ -376,6 +404,7 @@ impl OperationHandler {
             .chain_err(|| "Failed to start map operation process.")?;
 
         let operation_state_arc = Arc::clone(&self.operation_state);
+        let master_interface_arc = Arc::clone(&self.master_interface);
 
         let map_input = MapInput {
             key: map_options.get_input_file_path().to_string(),
@@ -407,36 +436,33 @@ impl OperationHandler {
                 &map_input_document,
                 &*output_path.to_string_lossy(),
                 child,
-                &operation_state_arc,
             );
 
             match result {
-                Ok(_) => {
-                    let result = set_complete_status(&operation_state_arc);
-                    if let Err(err) = result {
+                Ok(map_result) => {
+                    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                         log_map_operation_err(err, &operation_state_arc)
                     } else {
                         info!("Map operation completed sucessfully.");
+                        let result = set_complete_status(&operation_state_arc);
+                        if let Err(err) = result {
+                            log_map_operation_err(err, &operation_state_arc)
+                        }
                     }
                 }
-                Err(err) => log_map_operation_err(err, &operation_state_arc),
+                Err(err) => {
+                    let mut map_result = pb::MapResult::new();
+                    map_result.set_status(pb::ResultStatus::FAILED);
+
+                    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+                        error!("Could not send map operation failed: {}", err);
+                    }
+                    log_map_operation_err(err, &operation_state_arc);
+                }
             }
         });
 
         Ok(())
-    }
-
-    pub fn get_map_result(&self) -> Result<pb::MapResponse> {
-        match self.operation_state.lock() {
-            Ok(operation_state) => {
-                if let Some(ref map_response) = operation_state.map_result {
-                    Ok(map_response.clone())
-                } else {
-                    Err("No map result found.".into())
-                }
-            }
-            Err(_) => Err("Could not lock operation_state.".into()),
-        }
     }
 
     fn create_reduce_operations(
@@ -500,7 +526,7 @@ impl OperationHandler {
             reduce_request.reducer_file_path
         );
 
-        if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
+        if self.get_worker_status() == pb::UpdateStatusRequest_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
         self.set_operation_handler_busy().chain_err(
@@ -531,6 +557,7 @@ impl OperationHandler {
     fn run_reduce_queue(&self, reduce_options: ReduceOptions) {
         let reduce_queue = Arc::clone(&self.reduce_operation_queue);
         let operation_state_arc = Arc::clone(&self.operation_state);
+        let master_interface_arc = Arc::clone(&self.master_interface);
 
         thread::spawn(move || {
             let mut reduce_complete = false;
@@ -558,44 +585,38 @@ impl OperationHandler {
             }
 
             if reduce_complete {
-                let mut response = pb::ReduceResponse::new();
-                response.set_status(pb::OperationStatus::SUCCESS);
+                let result = send_reduce_result(&master_interface_arc, pb::ResultStatus::SUCCESS);
 
-                let response_set = match operation_state_arc.lock() {
-                    Ok(mut operation_state) => {
-                        operation_state.reduce_result = Some(response);
-                        true
+                match result {
+                    Ok(_) => {
+                        let result = set_complete_status(&operation_state_arc);
+                        if let Err(err) = result {
+                            error!("Error setting reduce complete: {}", err);
+                        } else {
+                            info!("Reduce operation completed sucessfully.");
+                        }
                     }
                     Err(err) => {
-                        error!("Error locking reduce queue: {}", err);
-                        false
+                        error!("Error sending reduce result: {}", err);
+                        set_failed_status(&operation_state_arc);
                     }
-                };
-
-                if response_set {
-                    let result = set_complete_status(&operation_state_arc);
-                    if let Err(err) = result {
-                        error!("Error setting reduce complete: {}", err);
-                    } else {
-                        info!("Reduce operation completed sucessfully.");
-                    }
-                } else {
-                    set_failed_status(&operation_state_arc);
+                }
+            } else {
+                let result = send_reduce_result(&master_interface_arc, pb::ResultStatus::FAILED);
+                if let Err(err) = result {
+                    error!("Error sending reduce failed: {}", err);
                 }
             }
         });
     }
 
-    pub fn get_reduce_result(&self) -> Result<pb::ReduceResponse> {
-        match self.operation_state.lock() {
-            Ok(operation_state) => {
-                if let Some(ref reduce_response) = operation_state.reduce_result {
-                    Ok(reduce_response.clone())
-                } else {
-                    Err("No reduce result found.".into())
-                }
-            }
-            Err(_) => Err("Could not lock operation_state.".into()),
+    pub fn update_worker_status(&self) -> Result<()> {
+        let worker_status = self.get_worker_status();
+        let operation_status = self.get_worker_operation_status();
+
+        match self.master_interface.lock() {
+            Ok(interface) => interface.update_worker_status(worker_status, operation_status),
+            Err(_) => Err("Could not lock master interface to update status.".into()),
         }
     }
 }

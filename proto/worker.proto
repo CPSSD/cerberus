@@ -2,10 +2,20 @@ syntax = "proto3";
 
 package worker;
 
-// The WorkerRegistrationService is implemented by the Master to allow workers to register with the Cluster.
-service WorkerRegistrationService {
+// The WorkerService is implemented by the Master to allow workers to register with the Cluster and update the master.
+service WorkerService {
     // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
     rpc RegisterWorker (RegisterWorkerRequest) returns (EmptyMessage);
+
+    // Used by the worker to update it's status on the master.
+    // This request will be used regularly so the master knows that the worker is still alive.
+    rpc UpdateWorkerStatus (UpdateStatusRequest) returns (EmptyMessage);
+
+    // Used by the worker to return the result of a Map operation.
+    rpc ReturnMapResult (MapResult) returns (EmptyMessage);
+
+    // Used by the worker to return the result of a Reduce operation.
+    rpc ReturnReduceResult (ReduceResult) returns (EmptyMessage);
 }
 
 // This message is used when the request or response does not send any data.
@@ -16,61 +26,55 @@ message RegisterWorkerRequest {
     string worker_address = 1;
 }
 
-// TODO(conor): Consider ways to change this API to support workers handling multiple map and reduce operations at once
-//              in the future.
-service WorkerService {
-    // Returns the status of a worker, is an operation in progress or if the worker is available.
-    rpc WorkerStatus (EmptyMessage) returns (WorkerStatusResponse);
-
-    // Tells a worker to start a map operation with a certain set of data.
-    // An error will be returned if the operation is not valid or the worker is busy.
-    rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
-
-    // Returns the result of the completed map operation.
-    // Throws an error if an operation is in progress or the last operation was not a map operation.
-    rpc GetMapResult (EmptyMessage) returns (MapResponse);
-
-    // Tells a worker to start a reduce operation for a certain key.
-    // An error will be returned if the operation is not valid or the worker is busy.
-    rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
-
-    // Returns the result of the completed reduce operation.
-    // Throws an error if an operation is in progress or the last operation was not a reduce operation.
-    rpc GetReduceResult (EmptyMessage) returns (ReduceResponse);
-}
-
-message WorkerStatusResponse {
+message UpdateStatusRequest {
     enum WorkerStatus {
         AVAILABLE = 0;
         BUSY = 1;
     };
+
     enum OperationStatus {
         UNKNOWN = 0;
         IN_PROGRESS = 1;
         COMPLETE = 2;
         FAILED = 3;
     };
+
     WorkerStatus worker_status = 1;
     // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
     OperationStatus operation_status = 2;
 }
 
-enum OperationStatus {
+enum ResultStatus {
     SUCCESS = 0;
     FAILED = 1;
 };
+
+message MapResult {
+    ResultStatus status  = 1;
+    // The mapping of result partitions to output files if the operation is a success.
+    map<uint64, string> map_results = 2;
+}
+
+message ReduceResult {
+    ResultStatus status  = 1;
+}
+
+// ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
+service ScheduleOperationService {
+    // Tells a worker to start a map operation with a certain set of data.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
+
+    // Tells a worker to start a reduce operation for a certain key.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
+}
 
 message PerformMapRequest {
     // The path of the input file.
     string input_file_path = 1;
     // The path to the binary that performs the map operation.
     string mapper_file_path = 2;
-}
-
-message MapResponse {
-    OperationStatus status  = 1;
-    // The mapping of result partitions to output files if the operation is a success.
-    map<uint64, string> map_results = 2;
 }
 
 message PerformReduceRequest {
@@ -82,8 +86,4 @@ message PerformReduceRequest {
     string reducer_file_path = 3;
     // The path to the output directory.
     string output_directory = 4;
-}
-
-message ReduceResponse {
-    OperationStatus status  = 1;
 }
