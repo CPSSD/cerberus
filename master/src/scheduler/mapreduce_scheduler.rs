@@ -223,6 +223,12 @@ impl MapReduceScheduler {
                     .get_work_by_id_mut(&map_task_id.to_owned())
                     .chain_err(|| "Error marking map task as completed.")?;
 
+                // TODO(conor): When we add retrying for map tasks after reduce tasks have already
+                // been completed, add some logic here to update the input of those reduce jobs.
+                if map_task.get_status() == MapReduceTaskStatus::Complete {
+                    return Ok(());
+                }
+
                 map_task.set_status(MapReduceTaskStatus::Complete);
                 for (partition, output_file) in map_response.get_map_results() {
                     map_task.insert_map_output_file(*partition, output_file.to_owned());
@@ -280,6 +286,12 @@ impl MapReduceScheduler {
                 let reduce_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&reduce_task_id.to_owned())
                     .chain_err(|| "Error marking reduce task as completed.")?;
+
+                // If a result for a reduce task has already been returned, make sure we don't
+                // increment completed reduce tasks again.
+                if reduce_task.get_status() == MapReduceTaskStatus::Complete {
+                    return Ok(());
+                }
 
                 reduce_task.set_status(MapReduceTaskStatus::Complete);
                 reduce_task.get_map_reduce_id().to_owned()
