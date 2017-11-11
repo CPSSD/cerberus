@@ -50,35 +50,20 @@ fn handle_assign_task_failure<I>(
 ) where
     I: WorkerInterface + Send + Sync,
 {
-    match scheduler_resources.worker_manager_arc.lock() {
-        Ok(mut worker_manager) => {
-            let worker_option = worker_manager.get_worker(&task_assignment.worker_id);
-            match worker_option {
-                Some(worker) => {
-                    worker.set_current_task_id(String::new());
-                    worker.set_current_task_type(None);
-                    worker.set_operation_status(OperationStatus::UNKNOWN);
-                }
-                None => {
-                    error!("Error reverting worker state on task failure: Worker not found");
-                }
-            }
+    let mut worker_manager = scheduler_resources.worker_manager_arc.lock().unwrap();
+    match worker_manager.get_worker(&task_assignment.worker_id) {
+        Some(worker) => {
+            worker.set_current_task_id(String::new());
+            worker.set_current_task_type(None);
+            worker.set_operation_status(OperationStatus::UNKNOWN);
         }
-        Err(err) => {
-            error!("Error reverting worker state on task failure: {}", err);
-        }
+        None => error!("Error reverting worker state on task failure: Worker not found"),
     }
 
-    match scheduler_resources.scheduler_arc.lock() {
-        Ok(mut scheduler) => {
-            let result = scheduler.unschedule_task(&task_assignment.task_id);
-            if let Err(err) = result {
-                error!("Error reverting task state on task failure: {}", err);
-            }
-        }
-        Err(err) => {
-            error!("Error reverting worker state on task failure: {}", err);
-        }
+    let mut scheduler = scheduler_resources.scheduler_arc.lock().unwrap();
+    let result = scheduler.unschedule_task(&task_assignment.task_id);
+    if let Err(err) = result {
+        error!("Error reverting task state on task failure: {}", err);
     }
 }
 
@@ -286,25 +271,8 @@ pub fn run_scheduling_loop<I>(
     thread::spawn(move || loop {
         thread::sleep(time::Duration::from_millis(SCHEDULING_LOOP_INTERVAL_MS));
 
-        let mut scheduler = {
-            match scheduler_arc.lock() {
-                Ok(mut scheduler) => scheduler,
-                Err(e) => {
-                    error!("Error obtaining scheduler: {}", e);
-                    continue;
-                }
-            }
-        };
-
-        let mut worker_manager = {
-            match worker_manager_arc.lock() {
-                Ok(mut worker_manager) => worker_manager,
-                Err(e) => {
-                    error!("Error obtaining worker manager: {}", e);
-                    continue;
-                }
-            }
-        };
+        let mut scheduler = scheduler_arc.lock().unwrap();
+        let mut worker_manager = worker_manager_arc.lock().unwrap();
 
         update_healthy_workers(&mut scheduler, &mut worker_manager);
 
