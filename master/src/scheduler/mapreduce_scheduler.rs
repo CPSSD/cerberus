@@ -53,6 +53,8 @@ impl MapReduceScheduler {
     fn process_next_map_reduce(&mut self) -> Result<()> {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
+                info!("Starting Map Reduce Job ({})", map_reduce_job.map_reduce_id);
+
                 map_reduce_job.status = MapReduceJobStatus::IN_PROGRESS;
                 map_reduce_job.time_started = Some(Utc::now());
                 self.map_reduce_in_progress = true;
@@ -99,6 +101,13 @@ impl MapReduceScheduler {
     /// `schedule_map_reduce` is used to add a `MapReduceJob` to the queue. If there is no
     /// current in progress job, this job will be made active.
     pub fn schedule_map_reduce(&mut self, map_reduce_job: MapReduceJob) -> Result<()> {
+        info!(
+            "Adding Map Reduce Job ({}) to queue. input={} output={}",
+            map_reduce_job.map_reduce_id,
+            map_reduce_job.input_directory,
+            map_reduce_job.output_directory
+        );
+
         self.map_reduce_job_queue
             .add_to_store(Box::new(map_reduce_job))
             .chain_err(|| "Error adding map reduce job to queue.")?;
@@ -163,6 +172,11 @@ impl MapReduceScheduler {
     }
 
     fn create_reduce_tasks(&mut self, map_reduce_id: &str) -> Result<()> {
+        info!(
+            "Completed Map Tasks for job ({}), creating reduce tasks.",
+            map_reduce_id
+        );
+
         let map_reduce_job = self.map_reduce_job_queue
             .get_work_by_id_mut(&map_reduce_id.to_owned())
             .chain_err(|| "Error creating reduce tasks.")?;
@@ -260,10 +274,14 @@ impl MapReduceScheduler {
             map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };
 
-        if completed_map_reduce && self.map_reduce_job_queue.queue_size() > 0 {
-            self.process_next_map_reduce().chain_err(
-                || "Error incrementing completed reduce tasks.",
-            )?;
+        if completed_map_reduce {
+            info!("Completed Map Reduce Job ({}).", map_reduce_id);
+
+            if self.map_reduce_job_queue.queue_size() > 0 {
+                self.process_next_map_reduce().chain_err(
+                    || "Error incrementing completed reduce tasks.",
+                )?;
+            }
         }
         Ok(())
     }
