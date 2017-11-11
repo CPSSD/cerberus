@@ -44,16 +44,16 @@ impl grpc_pb::ScheduleOperationService for ScheduleOperationServiceImpl {
         reduce_options: pb::PerformReduceRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
         match self.operation_handler.lock() {
-            Err(err) => {
-                error!("Error locking operation handler to perform reduce: {}", err);
-                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
-            }
             Ok(mut handler) => {
                 let result = handler.perform_reduce(&reduce_options);
                 match result {
                     Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
                     Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
                 }
+            }
+            Err(err) => {
+                error!("Error locking operation handler to perform reduce: {}", err);
+                SingleResponse::err(Error::Other(OPERATION_HANDLER_UNAVAILABLE))
             }
         }
     }

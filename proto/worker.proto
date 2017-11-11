@@ -2,10 +2,11 @@ syntax = "proto3";
 
 package worker;
 
-// The WorkerService is implemented by the Master to allow workers to register with the Cluster and update the master.
+// The WorkerService is implemented by the Master to allow workers to register
+// with the Cluster and update the status of completed map and reduce tasks.
 service WorkerService {
     // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
-    rpc RegisterWorker (RegisterWorkerRequest) returns (EmptyMessage);
+    rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerResponse);
 
     // Used by the worker to update it's status on the master.
     // This request will be used regularly so the master knows that the worker is still alive.
@@ -26,6 +27,11 @@ message RegisterWorkerRequest {
     string worker_address = 1;
 }
 
+message RegisterWorkerResponse {
+  // The id for this worker to be used in future requests.
+  string worker_id = 1;
+}
+
 message UpdateStatusRequest {
     enum WorkerStatus {
         AVAILABLE = 0;
@@ -42,6 +48,8 @@ message UpdateStatusRequest {
     WorkerStatus worker_status = 1;
     // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
     OperationStatus operation_status = 2;
+
+    string worker_id = 3;
 }
 
 enum ResultStatus {
@@ -50,13 +58,17 @@ enum ResultStatus {
 };
 
 message MapResult {
-    ResultStatus status  = 1;
+    ResultStatus status = 1;
     // The mapping of result partitions to output files if the operation is a success.
     map<uint64, string> map_results = 2;
+
+    string worker_id = 3;
 }
 
 message ReduceResult {
-    ResultStatus status  = 1;
+    ResultStatus status = 1;
+
+    string worker_id = 2;
 }
 
 // ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
@@ -65,7 +77,7 @@ service ScheduleOperationService {
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
 
-    // Tells a worker to start a reduce operation for a certain key.
+    // Tells a worker to start a reduce operation for a certain partition of the map output.
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
 }

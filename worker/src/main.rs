@@ -57,7 +57,7 @@ fn register_worker(
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
         match master_interface.lock() {
-            Ok(interface) => {
+            Ok(mut interface) => {
                 match interface.register_worker(address) {
                     Err(err) => {
                         if retries == 0 {
@@ -103,6 +103,7 @@ fn run() -> Result<()> {
     let worker_interface = WorkerInterface::new(Arc::clone(&operation_handler), port)
         .chain_err(|| "Error building worker interface.")?;
 
+    // TODO: Replace this by machine's address rather than the listening server's address.
     let local_addr = worker_interface.get_server().local_addr();
     register_worker(&master_interface, local_addr).chain_err(
         || "Failed to register worker.",

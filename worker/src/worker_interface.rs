@@ -1,9 +1,11 @@
-use grpc::{Server, ServerBuilder};
+use std::sync::{Arc, Mutex};
+
 use errors::*;
+use grpc::{Server, ServerBuilder};
+
 use cerberus_proto::worker_grpc as grpc_pb;
 use schedule_operation_service::ScheduleOperationServiceImpl;
 use operation_handler::OperationHandler;
-use std::sync::{Arc, Mutex};
 
 const GRPC_THREAD_POOL_SIZE: usize = 1;
 

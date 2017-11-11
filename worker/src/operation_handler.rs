@@ -107,14 +107,11 @@ fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
 
 fn send_reduce_result(
     master_interface_arc: &Arc<Mutex<MasterInterface>>,
-    status: pb::ResultStatus,
+    result: pb::ReduceResult,
 ) -> Result<()> {
-    let mut response = pb::ReduceResult::new();
-    response.set_status(status);
-
     match master_interface_arc.lock() {
         Ok(master_interface) => {
-            master_interface.return_reduce_result(response).chain_err(
+            master_interface.return_reduce_result(result).chain_err(
                 || "Error sending reduce result to master.",
             )?;
             Ok(())
@@ -585,7 +582,9 @@ impl OperationHandler {
             }
 
             if reduce_complete {
-                let result = send_reduce_result(&master_interface_arc, pb::ResultStatus::SUCCESS);
+                let mut response = pb::ReduceResult::new();
+                response.set_status(pb::ResultStatus::SUCCESS);
+                let result = send_reduce_result(&master_interface_arc, response);
 
                 match result {
                     Ok(_) => {
@@ -602,7 +601,10 @@ impl OperationHandler {
                     }
                 }
             } else {
-                let result = send_reduce_result(&master_interface_arc, pb::ResultStatus::FAILED);
+                let mut response = pb::ReduceResult::new();
+                response.set_status(pb::ResultStatus::FAILED);
+
+                let result = send_reduce_result(&master_interface_arc, response);
                 if let Err(err) = result {
                     error!("Error sending reduce failed: {}", err);
                 }
