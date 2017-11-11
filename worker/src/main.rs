@@ -80,6 +80,7 @@ fn run() -> Result<()> {
         retries -= 1;
     }
 
+    info!("Successfully registered worker with Master.");
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
