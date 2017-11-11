@@ -13,6 +13,7 @@ const JOB_SCHEDULE_ERROR: &str = "Unable to schedule mapreduce job";
 const JOB_RETRIEVAL_ERROR: &str = "Unable to retrieve mapreduce jobs";
 const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 
+/// `MapReduceServiceImpl` recieves communication from a client.
 pub struct MapReduceServiceImpl {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
 }

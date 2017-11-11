@@ -7,8 +7,19 @@ use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
 use queued_work_store::{QueuedWork, QueuedWorkStore};
 
+/// `MapReduceScheduler` holds the state related to scheduling and processes `MapReduceJob`s.
+/// It does not schedule `MapReduceTask`s on workers, but instead maintains a queue that is
+/// processed by the `scheduling_loop`.
+///
+/// Only one `MapReduceJob` is `IN_PROGRESS` at a time.
 pub struct MapReduceScheduler {
+    // map_reduce_job_queue stores `MapReduceJob`s submitted by clients. Even when jobs are not
+    // currently queued map_reduce_job_queue still maintains ownership of the job.
     map_reduce_job_queue: QueuedWorkStore<MapReduceJob>,
+
+    // map_reduce_task_queue stores `MapReduceTask`s for the currently in progress `MapReduceJob`.
+    // Even when tasks are not currently queued map_reduce_task_queue still maintains ownership of
+    // the task.
     map_reduce_task_queue: QueuedWorkStore<MapReduceTask>,
 
     map_reduce_in_progress: bool,
@@ -34,6 +45,11 @@ impl MapReduceScheduler {
         }
     }
 
+    /// `process_next_map_reduce` is used to make the next `MapReduceJob` in the queue the active job being
+    /// processed when the current job is completed.
+    ///
+    /// It creates the Map tasks for the `MapReduceJob` and adds them to the queue so that they can
+    /// be assigned to workers.
     fn process_next_map_reduce(&mut self) -> Result<()> {
         match self.map_reduce_job_queue.pop_queue_top() {
             Some(map_reduce_job) => {
@@ -80,6 +96,8 @@ impl MapReduceScheduler {
         self.map_reduce_task_queue.queue_size()
     }
 
+    /// `schedule_map_reduce` is used to add a `MapReduceJob` to the queue. If there is no
+    /// current in progress job, this job will be made active.
     pub fn schedule_map_reduce(&mut self, map_reduce_job: MapReduceJob) -> Result<()> {
         self.map_reduce_job_queue
             .add_to_store(Box::new(map_reduce_job))
@@ -110,6 +128,7 @@ impl MapReduceScheduler {
         }
     }
 
+    /// `get_mapreduce_client_status` returns a vector of `MapReduceJob`s for a given client.
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Result<Vec<&MapReduceJob>> {
         if self.map_reduce_job_queue.has_work_bucket(
             &client_id.to_owned(),
@@ -126,6 +145,8 @@ impl MapReduceScheduler {
         self.map_reduce_task_queue.pop_queue_top()
     }
 
+    /// `unschedule_task` moves a task that was previously assigned to a worker back into the queue
+    /// to be reassigned.
     pub fn unschedule_task(&mut self, task_id: &str) -> Result<()> {
         self.map_reduce_task_queue
             .move_task_to_queue(task_id.to_owned())
@@ -167,6 +188,9 @@ impl MapReduceScheduler {
         Ok(())
     }
 
+    /// `increment_map_tasks_completed` increments the number of completed map tasks for a given
+    /// job.
+    /// If all the map tasks have been completed it will create and add reduce tasks to the queue.
     fn increment_map_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
         let all_maps_completed = {
             let map_reduce_job = self.map_reduce_job_queue
@@ -186,6 +210,8 @@ impl MapReduceScheduler {
         Ok(())
     }
 
+    /// `process_map_task_response` processes the map task response returned by a worker.
+    /// If the task failed it will be moved back into the queue to be assigned to another worker.
     pub fn process_map_task_response(
         &mut self,
         map_task_id: &str,
@@ -213,6 +239,9 @@ impl MapReduceScheduler {
         Ok(())
     }
 
+    /// `increment_reduce_tasks_completed` increments the completed reduce tasks for a given job.
+    /// If all the reduce tasks have been completed it will make the next `MapReduceJob` in the
+    /// queue active, if one exists.
     fn increment_reduce_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
@@ -239,6 +268,8 @@ impl MapReduceScheduler {
         Ok(())
     }
 
+    /// `process_reduce_task_response` processes the reduce task response returned by a worker.
+    /// If the task failed it will be moved back into the queue to be assigned to another worker.
     pub fn process_reduce_task_response(
         &mut self,
         reduce_task_id: &str,
