@@ -344,6 +344,12 @@ impl OperationHandler {
     }
 
     pub fn perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
+        info!(
+            "Performing map operation. mapper={} input={}",
+            map_options.mapper_file_path,
+            map_options.input_file_path
+        );
+
         if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
@@ -409,6 +415,8 @@ impl OperationHandler {
                     let result = set_complete_status(&operation_state_arc);
                     if let Err(err) = result {
                         log_map_operation_err(err, &operation_state_arc)
+                    } else {
+                        info!("Map operation completed sucessfully.");
                     }
                 }
                 Err(err) => log_map_operation_err(err, &operation_state_arc),
@@ -487,6 +495,11 @@ impl OperationHandler {
     }
 
     pub fn perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
+        info!(
+            "Performing reduce operation. reducer={}",
+            reduce_request.reducer_file_path
+        );
+
         if self.get_worker_status() == pb::WorkerStatusResponse_WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
@@ -563,6 +576,8 @@ impl OperationHandler {
                     let result = set_complete_status(&operation_state_arc);
                     if let Err(err) = result {
                         error!("Error setting reduce complete: {}", err);
+                    } else {
+                        info!("Reduce operation completed sucessfully.");
                     }
                 } else {
                     set_failed_status(&operation_state_arc);
