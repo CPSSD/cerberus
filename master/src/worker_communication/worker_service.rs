@@ -101,7 +101,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         match self.worker_manager.lock() {
             Ok(mut manager) => {
                 let worker = match manager.get_worker(request.get_worker_id()) {
-                    Some(mut worker) => worker,
+                    Some(worker) => worker,
                     None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
                 };
 
@@ -145,7 +145,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         match self.worker_manager.lock() {
             Ok(mut manager) => {
                 let worker = match manager.get_worker(request.get_worker_id()) {
-                    Some(mut worker) => worker,
+                    Some(worker) => worker,
                     None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
                 };
 
