@@ -9,7 +9,7 @@ use errors::*;
 
 // This makes the default logging level info for everything but the grpc modules which will use
 // error. This is because grpc modules output an unnecessary level of logging for info.
-const DEFAULT_LOG_CONFIG: &str = "info,grpc=error";
+const DEFAULT_LOG_CONFIG: &str = "info,httpbis=error,grpc=error";
 
 pub fn init_logger() -> Result<()> {
     let format = |record: &LogRecord| {

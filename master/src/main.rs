@@ -52,6 +52,7 @@ const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const DEFAULT_PORT: &str = "8081";
 
 fn run() -> Result<()> {
+    println!("Cerberus Master!");
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();

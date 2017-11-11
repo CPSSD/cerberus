@@ -148,6 +148,12 @@ impl WorkerManager {
     }
 
     pub fn add_worker(&mut self, worker: Worker) {
+        info!(
+            "New Worker ({}) connected from {}",
+            worker.worker_id,
+            worker.address
+        );
+
         self.workers.push(worker);
     }
 
