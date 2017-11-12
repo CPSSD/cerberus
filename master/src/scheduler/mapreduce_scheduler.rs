@@ -297,6 +297,9 @@ impl MapReduceScheduler {
             info!("Completed Map Reduce Job ({}).", map_reduce_id);
             info!("Total CPU time used: {}", total_cpu_time);
 
+            self.map_reduce_in_progress = false;
+            self.in_progress_map_reduce_id = None;
+
             if self.map_reduce_job_queue.queue_size() > 0 {
                 self.process_next_map_reduce().chain_err(
                     || "Error incrementing completed reduce tasks.",
