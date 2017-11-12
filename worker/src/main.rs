@@ -58,22 +58,13 @@ fn register_worker(
 ) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
-        match master_interface.lock() {
-            Ok(mut interface) => {
-                match interface.register_worker(address) {
-                    Err(err) => {
-                        if retries == 0 {
-                            return Err(err.chain_err(|| "Error registering worker with master"));
-                        }
-                    }
-                    Ok(_) => break,
-                }
-            }
+        let mut interface = master_interface.lock().unwrap();
+        match interface.register_worker(address) {
+            Ok(_) => break,
             Err(err) => {
-                error!(
-                    "Could not lock master_interface to register worker: {}",
-                    err
-                )
+                if retries == 0 {
+                    return Err(err.chain_err(|| "Error registering worker with master"));
+                }
             }
         }
 
@@ -115,19 +106,10 @@ fn run() -> Result<()> {
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        match operation_handler.lock() {
-            Ok(handler) => {
-                let result = handler.update_worker_status();
-                if let Err(err) = result {
-                    error!("Could not send updated worker status to master: {}", err);
-                }
-            }
-            Err(err) => {
-                error!(
-                    "Could not lock operation_handler to update worker status: {}",
-                    err
-                )
-            }
+        let handler = operation_handler.lock().unwrap();
+
+        if let Err(err) = handler.update_worker_status() {
+            error!("Could not send updated worker status to master: {}", err);
         }
 
         let server = worker_interface.get_server();
