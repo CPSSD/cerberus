@@ -5,8 +5,8 @@ use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
-use cerberus_proto::mapreduce as mr_proto;
 use state_handler::StateHandling;
+use cerberus_proto::mapreduce as pb;
 use queued_work_store::QueuedWork;
 
 /// `MapReduceJobOptions` stores arguments used to construct a `MapReduceJob`.
@@ -22,8 +22,8 @@ pub struct MapReduceJobOptions {
     pub output_directory: Option<String>,
 }
 
-impl From<mr_proto::MapReduceRequest> for MapReduceJobOptions {
-    fn from(other: mr_proto::MapReduceRequest) -> Self {
+impl From<pb::MapReduceRequest> for MapReduceJobOptions {
+    fn from(other: pb::MapReduceRequest) -> Self {
         MapReduceJobOptions {
             client_id: other.client_id,
             binary_path: other.binary_path,
@@ -46,7 +46,7 @@ pub struct MapReduceJob {
     pub input_directory: String,
     pub output_directory: String,
 
-    pub status: mr_proto::Status,
+    pub status: pb::Status,
 
     pub map_tasks_completed: u32,
     pub map_tasks_total: u32,
@@ -97,7 +97,7 @@ impl MapReduceJob {
             input_directory: input_directory,
             output_directory: output_directory,
 
-            status: mr_proto::Status::IN_QUEUE,
+            status: pb::Status::IN_QUEUE,
 
             map_tasks_completed: 0,
             map_tasks_total: 0,
@@ -113,23 +113,23 @@ impl MapReduceJob {
         })
     }
 
-    fn mapreduce_status_from_state(&self, state: SerializableJobStatus) -> mr_proto::Status {
+    fn mapreduce_status_from_state(&self, state: SerializableJobStatus) -> pb::Status {
         match state {
-            SerializableJobStatus::DONE => mr_proto::Status::DONE,
-            SerializableJobStatus::IN_PROGRESS => mr_proto::Status::IN_PROGRESS,
-            SerializableJobStatus::IN_QUEUE => mr_proto::Status::IN_QUEUE,
-            SerializableJobStatus::FAILED => mr_proto::Status::FAILED,
-            SerializableJobStatus::UNKNOWN => mr_proto::Status::UNKNOWN,
+            SerializableJobStatus::DONE => pb::Status::DONE,
+            SerializableJobStatus::IN_PROGRESS => pb::Status::IN_PROGRESS,
+            SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
+            SerializableJobStatus::FAILED => pb::Status::FAILED,
+            SerializableJobStatus::UNKNOWN => pb::Status::UNKNOWN,
         }
     }
 
     fn get_serializable_status(&self) -> SerializableJobStatus {
         match self.status {
-            mr_proto::Status::DONE => SerializableJobStatus::DONE,
-            mr_proto::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
-            mr_proto::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
-            mr_proto::Status::FAILED => SerializableJobStatus::FAILED,
-            mr_proto::Status::UNKNOWN => SerializableJobStatus::UNKNOWN,
+            pb::Status::DONE => SerializableJobStatus::DONE,
+            pb::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
+            pb::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
+            pb::Status::FAILED => SerializableJobStatus::FAILED,
+            pb::Status::UNKNOWN => SerializableJobStatus::UNKNOWN,
         }
     }
 }
@@ -267,7 +267,7 @@ mod tests {
     fn test_defaults() {
         let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
         // Assert that the default status for a map reduce job is Queued.
-        assert_eq!(mr_proto::Status::IN_QUEUE, map_reduce_job.status);
+        assert_eq!(pb::Status::IN_QUEUE, map_reduce_job.status);
         // Assert that completed tasks starts at 0.
         assert_eq!(0, map_reduce_job.map_tasks_completed);
         assert_eq!(0, map_reduce_job.reduce_tasks_completed);
