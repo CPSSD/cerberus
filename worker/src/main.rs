@@ -5,8 +5,10 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 extern crate grpc;
+extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate procinfo;
 extern crate protobuf;
 extern crate serde;
 #[macro_use]
