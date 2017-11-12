@@ -523,8 +523,10 @@ impl OperationHandler {
             || "Error creating reduce operations from input.",
         )?;
 
-        let mut reduce_queue = self.reduce_operation_queue.lock().unwrap();
-        reduce_queue.set_queue(reduce_operations);
+        {
+            let mut reduce_queue = self.reduce_operation_queue.lock().unwrap();
+            reduce_queue.set_queue(reduce_operations);
+        }
 
         let reduce_options = ReduceOptions {
             reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
