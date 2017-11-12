@@ -41,6 +41,9 @@ pub struct MapReduceTask {
 
     assigned_worker_id: String,
     status: MapReduceTaskStatus,
+
+    // Number of times this task has failed in the past.
+    failure_count: u16,
 }
 
 impl MapReduceTask {
@@ -62,6 +65,8 @@ impl MapReduceTask {
 
             assigned_worker_id: String::new(),
             status: MapReduceTaskStatus::Queued,
+
+            failure_count: 0,
         }
     }
 
@@ -113,6 +118,8 @@ impl MapReduceTask {
 
             assigned_worker_id: String::new(),
             status: MapReduceTaskStatus::Queued,
+
+            failure_count: 0,
         }
     }
 
@@ -198,6 +205,14 @@ impl MapReduceTask {
 
     pub fn set_status(&mut self, new_status: MapReduceTaskStatus) {
         self.status = new_status;
+    }
+
+    pub fn failure_count(&self) -> u16 {
+        self.failure_count
+    }
+
+    pub fn failure_count_mut(&mut self) -> &mut u16 {
+        &mut self.failure_count
     }
 }
 

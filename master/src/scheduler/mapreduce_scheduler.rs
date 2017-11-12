@@ -9,6 +9,8 @@ use queued_work_store::{QueuedWork, QueuedWorkStore};
 use serde_json;
 use state_handler;
 
+const TASK_FAILURE_THRESHOLD: u16 = 10;
+
 /// `MapReduceScheduler` holds the state related to scheduling and processes `MapReduceJob`s.
 /// It does not schedule `MapReduceTask`s on workers, but instead maintains a queue that is
 /// processed by the `scheduling_loop`.
@@ -258,6 +260,7 @@ impl MapReduceScheduler {
             self.unschedule_task(map_task_id).chain_err(
                 || "Error marking map task as complete.",
             )?;
+            self.handle_task_failure(map_task_id)?;
         }
         Ok(())
     }
@@ -332,6 +335,56 @@ impl MapReduceScheduler {
         } else {
             self.unschedule_task(reduce_task_id).chain_err(
                 || "Error marking reduce task as complete.",
+            )?;
+            self.handle_task_failure(reduce_task_id)?;
+        }
+        Ok(())
+    }
+
+    fn task_exceeds_failure_threshold(&self, task: &MapReduceTask) -> bool {
+        task.failure_count() >= TASK_FAILURE_THRESHOLD
+    }
+
+    fn fail_current_job(&mut self) -> Result<()> {
+        let job_id = self.get_in_progress_map_reduce_id().chain_err(
+            || "Unable to get ID of in-progress job.",
+        )?;
+        {
+            let job = self.map_reduce_job_queue
+                .get_work_by_id_mut(&job_id.to_owned())
+                .chain_err(|| format!("Unable to get job with ID {}.", job_id))?;
+            self.map_reduce_task_queue
+                .remove_work_bucket(&job.get_work_id())
+                .chain_err(|| "Error removing failed job from the queue.")?;
+            job.status = MapReduceJobStatus::FAILED;
+        }
+        if !self.map_reduce_job_queue.queue_empty() {
+            self.process_next_map_reduce().chain_err(
+                || "Error scheduling next map reduce.",
+            )?;
+        }
+        Ok(())
+    }
+
+    fn handle_task_failure(&mut self, task_id: &str) -> Result<()> {
+        {
+            let task_mut = self.map_reduce_task_queue
+                .get_work_by_id_mut(&task_id.to_owned())
+                .chain_err(|| "Error fetching map task.")?;
+            *task_mut.failure_count_mut() += 1;
+        }
+        let task = self.map_reduce_task_queue
+            .get_work_by_id(&task_id.to_owned())
+            .chain_err(|| "Error fetching map task.")?
+            .clone();
+        if self.task_exceeds_failure_threshold(&task) {
+            warn!(
+                "Task with ID {} has failed over {} times. Marking current job as failed.",
+                task_id,
+                TASK_FAILURE_THRESHOLD
+            );
+            self.fail_current_job().chain_err(
+                || "Error marking current job as failed.",
             )?;
         }
         Ok(())
