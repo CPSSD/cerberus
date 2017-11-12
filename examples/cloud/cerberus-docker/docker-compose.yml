@@ -9,7 +9,7 @@ networks:
 
 services:
   master:
-    image: voytechnology/cerberus-master
+    image: cpssd/cerberus-master
     networks:
       cerberus:
         ipv4_address: 172.30.0.2
@@ -31,7 +31,7 @@ services:
       restart_policy:
         condition: any
   worker:
-    image: voytechnology/cerberus-worker
+    image: cpssd/cerberus-worker
     networks:
       - cerberus
     expose:

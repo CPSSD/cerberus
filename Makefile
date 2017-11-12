@@ -4,17 +4,17 @@ release:
 	cargo build --all --release
 
 docker: release
-	docker build -t voytechnology/cerberus-master -f Dockerfile.master .
-	docker build -t voytechnology/cerberus-worker -f Dockerfile.worker .
+	docker build -t cpssd/cerberus-master -f master/Dockerfile .
+	docker build -t cpssd/cerberus-worker -f worker/Dockerfile .
 
 .PHONY: docker release clean-docker
 
 compose: clean-docker docker
-	docker-compose -f examples/cloud/cerberus-docker/docker-compose.yml -p cerberus up -d --force-recreate
+	docker-compose -f examples/cloud/cerberus-docker/docker-compose.yml -p cerberus up -d --scale worker=5 --force-recreate
 
 clean-docker:
-	docker rmi voytechnology/cerberus-master -f
-	docker rmi voytechnology/cerberus-worker -f
+	docker rmi cpssd/cerberus-master -f
+	docker rmi cpssd/cerberus-worker -f
 
 compose-down:
 	docker-compose -f examples/cloud/cerberus-docker/docker-compose.yml -p cerberus down
