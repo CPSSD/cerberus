@@ -5,6 +5,7 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 extern crate grpc;
+extern crate local_ip;
 extern crate libc;
 #[macro_use]
 extern crate log;
@@ -96,13 +97,20 @@ fn run() -> Result<()> {
     let worker_interface = WorkerInterface::new(Arc::clone(&operation_handler), port)
         .chain_err(|| "Error building worker interface.")?;
 
-    // TODO: Replace this by machine's address rather than the listening server's address.
-    let local_addr = worker_interface.get_server().local_addr();
-    register_worker(&master_interface, local_addr).chain_err(
+    let local_addr = SocketAddr::from_str(&format!(
+        "{}:{}",
+        local_ip::get().expect("Could not get IP"),
+        worker_interface.get_server().local_addr().port()
+    )).chain_err(|| "Not a valid address of the worker")?;
+    register_worker(&master_interface, &local_addr).chain_err(
         || "Failed to register worker.",
     )?;
 
-    info!("Successfully registered worker with Master.");
+    info!(
+        "Successfully registered worker ({}) with master on {}",
+        local_addr.to_string(),
+        master_addr.to_string(),
+    );
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
