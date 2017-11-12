@@ -54,7 +54,6 @@ fn handle_assign_task_failure<I>(
     match worker_manager.get_worker(&task_assignment.worker_id) {
         Some(worker) => {
             worker.set_current_task_id(String::new());
-            worker.set_current_task_type(None);
             worker.set_operation_status(OperationStatus::UNKNOWN);
         }
         None => error!("Error reverting worker state on task failure: Worker not found"),
@@ -193,7 +192,6 @@ fn do_scheduling_loop_step<I>(
         };
 
         worker.set_current_task_id(task.get_task_id());
-        worker.set_current_task_type(Some(task.get_task_type()));
         worker.set_operation_status(OperationStatus::IN_PROGRESS);
 
         task.set_assigned_worker_id(worker.get_worker_id());
@@ -294,7 +292,6 @@ mod tests {
     use mapreduce_job::MapReduceJob;
     use mapreduce_job::MapReduceJobOptions;
     use mapreduce_tasks::TaskProcessorTrait;
-    use worker_management::WorkerTaskType;
 
     struct WorkerInterfaceStub;
 
@@ -394,10 +391,6 @@ mod tests {
         assert!(!worker_manager.get_workers()[0]
             .get_current_task_id()
             .is_empty());
-        assert_eq!(
-            WorkerTaskType::Map,
-            worker_manager.get_workers()[0].get_current_task_type()
-        );
     }
 
     #[test]
@@ -439,10 +432,6 @@ mod tests {
             worker_manager.get_workers()[0]
                 .get_current_task_id()
                 .is_empty()
-        );
-        assert_eq!(
-            WorkerTaskType::Idle,
-            worker_manager.get_workers()[0].get_current_task_type()
         );
     }
 }

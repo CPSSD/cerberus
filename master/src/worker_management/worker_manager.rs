@@ -3,16 +3,8 @@ use errors::*;
 use uuid::Uuid;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use mapreduce_tasks::TaskType;
 
 use cerberus_proto::worker as pb;
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum WorkerTaskType {
-    Map,
-    Reduce,
-    Idle,
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Worker {
@@ -23,7 +15,6 @@ pub struct Worker {
     status_last_updated: DateTime<Utc>,
 
     current_task_id: String,
-    current_task_type: WorkerTaskType,
     worker_id: String,
 }
 
@@ -39,7 +30,6 @@ impl Worker {
             status_last_updated: Utc::now(),
 
             current_task_id: String::new(),
-            current_task_type: WorkerTaskType::Idle,
             worker_id: Uuid::new_v4().to_string(),
         })
     }
@@ -81,24 +71,6 @@ impl Worker {
 
     pub fn set_current_task_id<S: Into<String>>(&mut self, task_id: S) {
         self.current_task_id = task_id.into();
-    }
-
-    // Used in tests
-    #[allow(unused)]
-    pub fn get_current_task_type(&self) -> WorkerTaskType {
-        self.current_task_type.clone()
-    }
-
-    pub fn set_current_task_type(&mut self, task_type: Option<TaskType>) {
-        self.current_task_type = match task_type {
-            None => WorkerTaskType::Idle,
-            Some(task_type) => {
-                match task_type {
-                    TaskType::Map => WorkerTaskType::Map,
-                    TaskType::Reduce => WorkerTaskType::Reduce,
-                }
-            }
-        }
     }
 }
 
