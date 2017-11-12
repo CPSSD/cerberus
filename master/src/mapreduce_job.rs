@@ -47,6 +47,7 @@ pub struct MapReduceJob {
     pub output_directory: String,
 
     pub status: pb::Status,
+    pub status_details: Option<String>,
 
     pub map_tasks_completed: u32,
     pub map_tasks_total: u32,
@@ -98,6 +99,7 @@ impl MapReduceJob {
             output_directory: output_directory,
 
             status: pb::Status::IN_QUEUE,
+            status_details: None,
 
             map_tasks_completed: 0,
             map_tasks_total: 0,
@@ -175,6 +177,7 @@ impl StateHandling for MapReduceJob {
             "output_directory": self.output_directory,
 
             "status": self.get_serializable_status(),
+            "status_details": self.status_details,
 
             "map_tasks_completed": self.map_tasks_completed,
             "map_tasks_total": self.map_tasks_total,
@@ -197,6 +200,8 @@ impl StateHandling for MapReduceJob {
                 || "Unable to convert mapreduce status",
             )?;
         self.status = self.mapreduce_status_from_state(&mapreduce_status);
+        self.status_details = serde_json::from_value(data["status_details"].clone())
+            .chain_err(|| "Unable to convert status_details.")?;
 
         self.map_tasks_completed = serde_json::from_value(data["map_tasks_completed"].clone())
             .chain_err(|| "Unable to convert map_tasks_complete")?;

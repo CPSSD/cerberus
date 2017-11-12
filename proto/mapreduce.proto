@@ -83,6 +83,8 @@ message MapReduceReport {
     int64 done_timestamp = 6;
     // Location of the output directory
     string output_directory = 7;
+    // Details accompanying a failed job.
+    string failure_details = 8;
 }
 
 message ClusterStatusResponse {

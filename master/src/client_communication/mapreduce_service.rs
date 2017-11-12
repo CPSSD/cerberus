@@ -80,6 +80,11 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
             let mut report = pb::MapReduceReport::new();
             report.mapreduce_id = job.map_reduce_id.clone();
             report.status = job.status;
+            if job.status == pb::Status::FAILED {
+                report.failure_details = job.status_details.clone().unwrap_or_else(
+                    || "Unknown.".to_owned(),
+                );
+            }
             report.scheduled_timestamp = job.time_requested.timestamp();
             report.output_directory = job.output_directory.clone();
             if let Some(time) = job.time_started {
