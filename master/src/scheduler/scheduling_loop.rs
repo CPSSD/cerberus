@@ -371,7 +371,7 @@ mod tests {
     }
 
     fn create_worker_manager(worker: Worker) -> WorkerManager {
-        let mut worker_manager = WorkerManager::new();
+        let mut worker_manager = WorkerManager::new(None, None);
         worker_manager.add_worker(worker.clone());
 
         worker_manager
