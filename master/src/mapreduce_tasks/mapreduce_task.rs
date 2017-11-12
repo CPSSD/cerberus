@@ -5,7 +5,7 @@ use queued_work_store::QueuedWork;
 use serde_json;
 
 use cerberus_proto::worker as pb;
-use state_handler::StateHandling;
+use state_management::StateHandling;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MapReduceTaskStatus {

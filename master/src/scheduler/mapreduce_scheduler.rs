@@ -7,7 +7,7 @@ use mapreduce_job::MapReduceJob;
 use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
 use queued_work_store::{QueuedWork, QueuedWorkStore};
 use serde_json;
-use state_handler;
+use state_management;
 
 const TASK_FAILURE_THRESHOLD: u16 = 10;
 
@@ -391,7 +391,7 @@ impl MapReduceScheduler {
     }
 }
 
-impl state_handler::StateHandling for MapReduceScheduler {
+impl state_management::StateHandling for MapReduceScheduler {
     fn new_from_json(_: serde_json::Value) -> Result<Self> {
         Err("Unable to create MapReduceScheduler from JSON.".into())
     }
