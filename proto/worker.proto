@@ -63,12 +63,16 @@ message MapResult {
     map<uint64, string> map_results = 2;
 
     string worker_id = 3;
+    // Total CPU time used for running the map operation
+    uint64 cpu_time = 4;
 }
 
 message ReduceResult {
     ResultStatus status = 1;
 
     string worker_id = 2;
+    // Total time spend on the running the reduce operation
+    uint64 cpu_time = 3;
 }
 
 // ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
