@@ -186,14 +186,14 @@ pub struct WorkerManager {
     workers: Vec<Worker>,
 
     // This is required for reloading workers from state.
-    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-    scheduler: Arc<Mutex<MapReduceScheduler>>,
+    worker_interface: Option<Arc<RwLock<WorkerInterfaceImpl>>>,
+    scheduler: Option<Arc<Mutex<MapReduceScheduler>>>,
 }
 
 impl WorkerManager {
     pub fn new(
-        worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-        scheduler: Arc<Mutex<MapReduceScheduler>>,
+        worker_interface: Option<Arc<RwLock<WorkerInterfaceImpl>>>,
+        scheduler: Option<Arc<Mutex<MapReduceScheduler>>>,
     ) -> Self {
         WorkerManager {
             workers: Vec::new(),
@@ -254,18 +254,29 @@ impl WorkerManager {
         )?;
 
         // Add client for worker to worker interface.
-        match self.worker_interface.write() {
-            Err(_) => return Err("WORKER_INTERFACE_UNAVAILABLE".into()),
-            Ok(mut interface) => {
-                interface.add_client(&worker).chain_err(
-                    || "Unable to add client for worker",
-                )?;
+        match self.worker_interface {
+            Some(ref worker_interface) => {
+                match worker_interface.write() {
+                    Err(_) => return Err("WORKER_INTERFACE_UNAVAILABLE".into()),
+                    Ok(mut interface) => {
+                        interface.add_client(&worker).chain_err(
+                            || "Unable to add client for worker",
+                        )?;
+                    }
+                }
             }
-        }
+            None => return Err("WorkerManager has no valid WorkerInterface Arc".into()),
+        };
 
         if worker.operation_status == pb::OperationStatus::FAILED {
             info!("Requeueing task: {}", worker.get_current_task_id());
-            self.scheduler
+
+            let scheduler = match self.scheduler {
+                Some(ref scheduler) => scheduler,
+                None => return Err("WorkerManager has no valid MapReduceScheduler Arc".into()),
+            };
+
+            scheduler
                 .lock()
                 .unwrap()
                 .unschedule_task(&worker.get_current_task_id())
@@ -345,7 +356,7 @@ mod tests {
     fn test_add_worker() {
         let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
 
-        let mut worker_manager = WorkerManager::new();
+        let mut worker_manager = WorkerManager::new(None, None);
         worker_manager.add_worker(worker.clone());
 
         assert_eq!(worker_manager.get_workers().len(), 1);

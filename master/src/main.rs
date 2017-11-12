@@ -75,8 +75,8 @@ fn run() -> Result<()> {
     ));
     let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
     let worker_manager = Arc::new(Mutex::new(WorkerManager::new(
-        Arc::clone(&worker_interface),
-        Arc::clone(&map_reduce_scheduler),
+        Some(Arc::clone(&worker_interface)),
+        Some(Arc::clone(&map_reduce_scheduler)),
     )));
 
     let worker_service = WorkerServiceImpl::new(

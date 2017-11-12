@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_register_worker() {
-        let worker_manager = Arc::new(Mutex::new(WorkerManager::new()));
+        let worker_manager = Arc::new(Mutex::new(WorkerManager::new(None, None)));
         let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
         let task_processor = TaskProcessor;
         let scheduler = Arc::new(Mutex::new(
