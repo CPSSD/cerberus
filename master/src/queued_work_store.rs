@@ -53,6 +53,24 @@ where
         Ok(())
     }
 
+    // add_only_to_store is similar to add_to_store but it skips adding the task to the Queue.
+    pub fn add_only_to_store(&mut self, task: Box<T>) -> Result<()> {
+        if self.work_map.contains_key(&task.get_work_id()) {
+            return Err("Given task is already in the store".into());
+        }
+        // Add task to the work_bucket vector.
+        let work_bucket: T::Key = task.get_work_bucket();
+        let bucket: &mut Vec<T::Key> = self.work_buckets.entry(work_bucket).or_insert_with(
+            Vec::new,
+        );
+        bucket.push(task.get_work_id());
+
+        // Add task to work map.
+        self.work_map.insert(task.get_work_id(), task);
+
+        Ok(())
+    }
+
     //TODO(conor): Remove this when remove_task is used.
     #[allow(dead_code)]
     pub fn remove_task(&mut self, task_id: &T::Key) -> Result<()> {
@@ -79,6 +97,10 @@ where
 
     pub fn queue_size(&self) -> usize {
         self.work_queue.len()
+    }
+
+    pub fn store_size(&self) -> usize {
+        self.work_map.len()
     }
 
     //TODO(conor): Remove this when queue_empty is used.
@@ -121,6 +143,19 @@ where
         }
     }
 
+    pub fn get_all_store_items(&self) -> Result<Vec<&T>> {
+        let mut work = Vec::new();
+
+        for key in self.work_buckets.keys() {
+            let work_bucket_items = self.get_work_bucket_items(key).chain_err(
+                || "Unable to retrieve work bucket items",
+            )?;
+            work.extend(work_bucket_items);
+        }
+
+        Ok(work)
+    }
+
     //TODO(conor): Remove this when get_work_bucket is used.
     #[allow(dead_code)]
     pub fn get_work_bucket(&self, work_bucket: &T::Key) -> Option<&Vec<T::Key>> {
@@ -152,6 +187,10 @@ where
     #[allow(dead_code)]
     pub fn has_task(&self, task_id: &T::Key) -> bool {
         self.work_map.contains_key(task_id)
+    }
+
+    pub fn task_in_queue(&self, task_id: &T::Key) -> bool {
+        self.work_queue.contains(task_id)
     }
 
     pub fn move_task_to_queue(&mut self, task_id: T::Key) -> Result<()> {

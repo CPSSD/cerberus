@@ -2,9 +2,32 @@ use chrono::prelude::*;
 use errors::*;
 use uuid::Uuid;
 use std::net::SocketAddr;
+use std::sync::{Arc, RwLock, Mutex};
 use std::str::FromStr;
 
+use serde_json;
+
+use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
+use scheduler::MapReduceScheduler;
+use state_handler::StateHandling;
 use cerberus_proto::worker as pb;
+
+#[derive(Serialize, Deserialize)]
+/// WorkerStatus is the serializable counterpart to pb::WorkerStatus.
+pub enum WorkerStatus {
+    AVAILABLE,
+    BUSY,
+}
+
+#[derive(Eq, PartialEq, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
+/// OperationStatus is the serializable counterpart to pb::OperationStatus.
+pub enum OperationStatus {
+    IN_PROGRESS,
+    COMPLETE,
+    FAILED,
+    UNKNOWN,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Worker {
@@ -20,8 +43,10 @@ pub struct Worker {
 
 impl Worker {
     pub fn new<S: Into<String>>(address: S) -> Result<Self> {
+        let address: String = address.into();
+
         Ok(Worker {
-            address: SocketAddr::from_str(&address.into()).chain_err(
+            address: SocketAddr::from_str(&address).chain_err(
                 || "Invalid address when creating worker",
             )?,
 
@@ -69,16 +94,112 @@ impl Worker {
     pub fn set_current_task_id<S: Into<String>>(&mut self, task_id: S) {
         self.current_task_id = task_id.into();
     }
+
+    fn operation_status_from_state(&self, state: OperationStatus) -> pb::OperationStatus {
+        match state {
+            OperationStatus::IN_PROGRESS => pb::OperationStatus::IN_PROGRESS,
+            OperationStatus::COMPLETE => pb::OperationStatus::COMPLETE,
+            OperationStatus::FAILED => pb::OperationStatus::FAILED,
+            OperationStatus::UNKNOWN => pb::OperationStatus::UNKNOWN,
+        }
+    }
+
+    fn get_serializable_operation_status(&self) -> OperationStatus {
+        match self.operation_status {
+            pb::OperationStatus::IN_PROGRESS => OperationStatus::IN_PROGRESS,
+            pb::OperationStatus::COMPLETE => OperationStatus::COMPLETE,
+            pb::OperationStatus::FAILED => OperationStatus::FAILED,
+            pb::OperationStatus::UNKNOWN => OperationStatus::UNKNOWN,
+        }
+    }
+
+    fn worker_status_from_state(&self, state: WorkerStatus) -> pb::WorkerStatus {
+        match state {
+            WorkerStatus::AVAILABLE => pb::WorkerStatus::AVAILABLE,
+            WorkerStatus::BUSY => pb::WorkerStatus::BUSY,
+        }
+    }
+
+    fn get_serializable_worker_status(&self) -> WorkerStatus {
+        match self.status {
+            pb::WorkerStatus::AVAILABLE => WorkerStatus::AVAILABLE,
+            pb::WorkerStatus::BUSY => WorkerStatus::BUSY,
+        }
+    }
 }
 
-#[derive(Default)]
+impl StateHandling for Worker {
+    fn new_from_json(data: serde_json::Value) -> Result<Self> {
+        // Convert address from a serde_json::Value to a String.
+        let address: String = serde_json::from_value(data["address"].clone()).chain_err(
+            || "Unable to create String from serde_json::Value",
+        )?;
+
+        // Create the worker with the above address.
+        let worker_result = Worker::new(address);
+        let mut worker = match worker_result {
+            Ok(worker) => worker,
+            Err(worker_error) => return Err(worker_error),
+        };
+
+        // Update worker state to match the given state.
+        worker.load_state(data).chain_err(
+            || "Unable to recreate worker from previous state",
+        )?;
+
+        Ok(worker)
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        Ok(json!({
+            "address": self.address.to_string(),
+            "status": self.get_serializable_worker_status(),
+            "operation_status": self.get_serializable_operation_status(),
+            "current_task_id": self.current_task_id,
+            "worker_id": self.worker_id,
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        // Sets the worker status.
+        let worker_status: WorkerStatus = serde_json::from_value(data["status"].clone())
+            .chain_err(|| "Unable to convert status")?;
+        self.status = self.worker_status_from_state(worker_status);
+
+        // Sets the operation status.
+        let operation_status: OperationStatus =
+            serde_json::from_value(data["operation_status"].clone())
+                .chain_err(|| "Unable to convert operation status")?;
+        self.operation_status = self.operation_status_from_state(operation_status);
+
+        // Set values of types that derive Deserialize.
+        self.current_task_id = serde_json::from_value(data["current_task_id"].clone())
+            .chain_err(|| "Unable to convert current_task_id")?;
+        self.worker_id = serde_json::from_value(data["worker_id"].clone())
+            .chain_err(|| "Unable to convert worker_id")?;
+
+        Ok(())
+    }
+}
+
 pub struct WorkerManager {
     workers: Vec<Worker>,
+
+    // This is required for reloading workers from state.
+    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
+    scheduler: Arc<Mutex<MapReduceScheduler>>,
 }
 
 impl WorkerManager {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(
+        worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
+        scheduler: Arc<Mutex<MapReduceScheduler>>,
+    ) -> Self {
+        WorkerManager {
+            workers: Vec::new(),
+            worker_interface: worker_interface,
+            scheduler: scheduler,
+        }
     }
 
     pub fn get_workers(&self) -> &Vec<Worker> {
@@ -125,6 +246,73 @@ impl WorkerManager {
             .position(|w| w.get_worker_id() == worker_id)
             .map(|index| self.workers.remove(index));
         info!("Removed {} from list of active workers.", worker_id);
+    }
+
+    pub fn recreate_worker_from_state(&mut self, data: serde_json::Value) -> Result<()> {
+        let mut worker = Worker::new_from_json(data).chain_err(
+            || "Unable to recreate worker",
+        )?;
+
+        // Add client for worker to worker interface.
+        match self.worker_interface.write() {
+            Err(_) => return Err("WORKER_INTERFACE_UNAVAILABLE".into()),
+            Ok(mut interface) => {
+                interface.add_client(&worker).chain_err(
+                    || "Unable to add client for worker",
+                )?;
+            }
+        }
+
+        if worker.operation_status == pb::OperationStatus::FAILED {
+            info!("Requeueing task: {}", worker.get_current_task_id());
+            self.scheduler
+                .lock()
+                .unwrap()
+                .unschedule_task(&worker.get_current_task_id())
+                .chain_err(|| "Unable to move task back to queue")?;
+            worker.set_current_task_id(String::new());
+        }
+
+        // Add worker to worker manager.
+        self.add_worker(worker);
+
+        Ok(())
+    }
+}
+
+impl StateHandling for WorkerManager {
+    fn new_from_json(_: serde_json::Value) -> Result<Self> {
+        Err("Unable to create WorkerManager from JSON.".into())
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let mut worker_list_json: Vec<serde_json::Value> = Vec::new();
+        for worker in &self.workers {
+            worker_list_json.push(worker.dump_state().chain_err(
+                || "Unable to dump Worker state",
+            )?);
+        }
+        Ok(json!({
+            "total_workers": self.get_total_workers(),
+            "workers": worker_list_json,
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        let worker_count: usize = serde_json::from_value(data["total_workers"].clone())
+            .chain_err(|| "Unable to convert worker_count")?;
+
+        for i in 0..worker_count {
+            let worker_data = data["workers"][i].clone();
+
+            // Re-establish connection with the worker.
+            let worker_creation_result = self.recreate_worker_from_state(worker_data);
+            if let Err(err) = worker_creation_result {
+                warn!("Unable to re-establish connection with a worker: {}", err);
+            }
+
+        }
+        Ok(())
     }
 }
 
