@@ -10,8 +10,8 @@ use cerberus_proto::worker as pb;
 pub struct Worker {
     address: SocketAddr,
 
-    status: pb::UpdateStatusRequest_WorkerStatus,
-    operation_status: pb::UpdateStatusRequest_OperationStatus,
+    status: pb::WorkerStatus,
+    operation_status: pb::OperationStatus,
     status_last_updated: DateTime<Utc>,
 
     current_task_id: String,
@@ -25,8 +25,8 @@ impl Worker {
                 || "Invalid address when creating worker",
             )?,
 
-            status: pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
-            operation_status: pb::UpdateStatusRequest_OperationStatus::UNKNOWN,
+            status: pb::WorkerStatus::AVAILABLE,
+            operation_status: pb::OperationStatus::UNKNOWN,
             status_last_updated: Utc::now(),
 
             current_task_id: String::new(),
@@ -50,14 +50,11 @@ impl Worker {
         &self.current_task_id
     }
 
-    pub fn set_status(&mut self, status: pb::UpdateStatusRequest_WorkerStatus) {
+    pub fn set_status(&mut self, status: pb::WorkerStatus) {
         self.status = status;
     }
 
-    pub fn set_operation_status(
-        &mut self,
-        operation_status: pb::UpdateStatusRequest_OperationStatus,
-    ) {
+    pub fn set_operation_status(&mut self, operation_status: pb::OperationStatus) {
         self.operation_status = operation_status;
     }
 
@@ -146,14 +143,8 @@ mod tests {
             SocketAddr::from_str("127.0.0.1:8080").unwrap()
         );
 
-        assert_eq!(
-            worker.status,
-            pb::UpdateStatusRequest_WorkerStatus::AVAILABLE
-        );
-        assert_eq!(
-            worker.operation_status,
-            pb::UpdateStatusRequest_OperationStatus::UNKNOWN
-        );
+        assert_eq!(worker.status, pb::WorkerStatus::AVAILABLE);
+        assert_eq!(worker.operation_status, pb::OperationStatus::UNKNOWN);
     }
 
     #[test]

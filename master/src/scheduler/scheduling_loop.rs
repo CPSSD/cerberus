@@ -8,7 +8,6 @@ use worker_communication::WorkerInterface;
 use worker_management::{Worker, WorkerManager};
 use util::output_error;
 
-use cerberus_proto::worker::UpdateStatusRequest_OperationStatus as OperationStatus;
 use cerberus_proto::worker as pb;
 
 const SCHEDULING_LOOP_INTERVAL_MS: u64 = 100;
@@ -54,7 +53,7 @@ fn handle_assign_task_failure<I>(
     match worker_manager.get_worker(&task_assignment.worker_id) {
         Some(worker) => {
             worker.set_current_task_id(String::new());
-            worker.set_operation_status(OperationStatus::UNKNOWN);
+            worker.set_operation_status(pb::OperationStatus::UNKNOWN);
         }
         None => error!("Error reverting worker state on task failure: Worker not found"),
     }
@@ -192,7 +191,7 @@ fn do_scheduling_loop_step<I>(
         };
 
         worker.set_current_task_id(task.get_task_id());
-        worker.set_operation_status(OperationStatus::IN_PROGRESS);
+        worker.set_operation_status(pb::OperationStatus::IN_PROGRESS);
 
         task.set_assigned_worker_id(worker.get_worker_id());
         task.set_status(MapReduceTaskStatus::InProgress);

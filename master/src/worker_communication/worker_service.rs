@@ -121,11 +121,11 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
                     Err(_) => return SingleResponse::err(Error::Other(SCHEDULER_UNAVAILABLE)),
                 }
 
-                worker.set_status(pb::UpdateStatusRequest_WorkerStatus::AVAILABLE);
+                worker.set_status(pb::WorkerStatus::AVAILABLE);
                 if request.get_status() == pb::ResultStatus::SUCCESS {
-                    worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::COMPLETE);
+                    worker.set_operation_status(pb::OperationStatus::COMPLETE);
                 } else {
-                    worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::FAILED);
+                    worker.set_operation_status(pb::OperationStatus::FAILED);
                 }
                 worker.set_status_last_updated(Utc::now());
                 worker.set_current_task_id("");
@@ -165,11 +165,11 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
                     Err(_) => return SingleResponse::err(Error::Other(SCHEDULER_UNAVAILABLE)),
                 }
 
-                worker.set_status(pb::UpdateStatusRequest_WorkerStatus::AVAILABLE);
+                worker.set_status(pb::WorkerStatus::AVAILABLE);
                 if request.get_status() == pb::ResultStatus::SUCCESS {
-                    worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::COMPLETE);
+                    worker.set_operation_status(pb::OperationStatus::COMPLETE);
                 } else {
-                    worker.set_operation_status(pb::UpdateStatusRequest_OperationStatus::FAILED);
+                    worker.set_operation_status(pb::OperationStatus::FAILED);
                 }
                 worker.set_status_last_updated(Utc::now());
                 worker.set_current_task_id("");

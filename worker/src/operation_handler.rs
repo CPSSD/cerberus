@@ -24,8 +24,8 @@ const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 /// `OperationState` is a data only struct for holding the current state for the `OperationHandler`
 #[derive(Default)]
 struct OperationState {
-    pub worker_status: pb::UpdateStatusRequest_WorkerStatus,
-    pub operation_status: pb::UpdateStatusRequest_OperationStatus,
+    pub worker_status: pb::WorkerStatus,
+    pub operation_status: pb::OperationStatus,
 }
 
 /// The `MapInput` is a struct used for serialising input data for a map operation.
@@ -63,16 +63,16 @@ pub struct OperationHandler {
 impl OperationState {
     pub fn new() -> Self {
         OperationState {
-            worker_status: pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
-            operation_status: pb::UpdateStatusRequest_OperationStatus::UNKNOWN,
+            worker_status: pb::WorkerStatus::AVAILABLE,
+            operation_status: pb::OperationStatus::UNKNOWN,
         }
     }
 }
 
 fn set_operation_handler_status(
     operation_state_arc: &Arc<Mutex<OperationState>>,
-    worker_status: pb::UpdateStatusRequest_WorkerStatus,
-    operation_status: pb::UpdateStatusRequest_OperationStatus,
+    worker_status: pb::WorkerStatus,
+    operation_status: pb::OperationStatus,
 ) -> Result<()> {
     match operation_state_arc.lock() {
         Ok(mut operation_state) => {
@@ -94,16 +94,16 @@ fn set_operation_handler_status(
 fn set_complete_status(operation_state_arc: &Arc<Mutex<OperationState>>) -> Result<()> {
     set_operation_handler_status(
         operation_state_arc,
-        pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
-        pb::UpdateStatusRequest_OperationStatus::COMPLETE,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::COMPLETE,
     ).chain_err(|| "Could not set operation completed status.")
 }
 
 fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     let result = set_operation_handler_status(
         operation_state_arc,
-        pb::UpdateStatusRequest_WorkerStatus::AVAILABLE,
-        pb::UpdateStatusRequest_OperationStatus::FAILED,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::FAILED,
     );
 
     if let Err(err) = result {
@@ -344,7 +344,7 @@ impl OperationHandler {
         }
     }
 
-    pub fn get_worker_status(&self) -> pb::UpdateStatusRequest_WorkerStatus {
+    pub fn get_worker_status(&self) -> pb::WorkerStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.worker_status,
             Err(err) => {
@@ -352,12 +352,12 @@ impl OperationHandler {
                     "Error locking operation_state to get worker_status: {}",
                     err
                 );
-                pb::UpdateStatusRequest_WorkerStatus::BUSY
+                pb::WorkerStatus::BUSY
             }
         }
     }
 
-    pub fn get_worker_operation_status(&self) -> pb::UpdateStatusRequest_OperationStatus {
+    pub fn get_worker_operation_status(&self) -> pb::OperationStatus {
         match self.operation_state.lock() {
             Ok(operation_state) => operation_state.operation_status,
             Err(err) => {
@@ -365,7 +365,7 @@ impl OperationHandler {
                     "Error locking operation_state to get operation_status: {}",
                     err
                 );
-                pb::UpdateStatusRequest_OperationStatus::UNKNOWN
+                pb::OperationStatus::UNKNOWN
             }
         }
     }
@@ -373,9 +373,8 @@ impl OperationHandler {
     pub fn set_operation_handler_busy(&self) -> Result<()> {
         match self.operation_state.lock() {
             Ok(mut operation_state) => {
-                operation_state.worker_status = pb::UpdateStatusRequest_WorkerStatus::BUSY;
-                operation_state.operation_status =
-                    pb::UpdateStatusRequest_OperationStatus::IN_PROGRESS;
+                operation_state.worker_status = pb::WorkerStatus::BUSY;
+                operation_state.operation_status = pb::OperationStatus::IN_PROGRESS;
 
                 Ok(())
             }
@@ -394,7 +393,7 @@ impl OperationHandler {
             map_options.input_file_path
         );
 
-        if self.get_worker_status() == pb::UpdateStatusRequest_WorkerStatus::BUSY {
+        if self.get_worker_status() == pb::WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
         self.set_operation_handler_busy().chain_err(
@@ -471,7 +470,7 @@ impl OperationHandler {
                 }
                 Err(err) => {
                     let mut map_result = pb::MapResult::new();
-                    map_result.set_status(pb::ResultStatus::FAILED);
+                    map_result.set_status(pb::ResultStatus::FAILURE);
                     map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
 
                     if let Err(err) = send_map_result(&master_interface_arc, map_result) {
@@ -550,7 +549,7 @@ impl OperationHandler {
             reduce_request.reducer_file_path
         );
 
-        if self.get_worker_status() == pb::UpdateStatusRequest_WorkerStatus::BUSY {
+        if self.get_worker_status() == pb::WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
         self.set_operation_handler_busy().chain_err(
@@ -632,7 +631,7 @@ impl OperationHandler {
                 }
             } else {
                 let mut response = pb::ReduceResult::new();
-                response.set_status(pb::ResultStatus::FAILED);
+                response.set_status(pb::ResultStatus::FAILURE);
 
                 let result = send_reduce_result(&master_interface_arc, response);
                 if let Err(err) = result {
