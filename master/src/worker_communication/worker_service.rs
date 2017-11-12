@@ -8,8 +8,6 @@ use scheduler::MapReduceScheduler;
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 
-const WORKER_MANAGER_UNAVAILABLE: &str = "Worker manager not available.";
-const SCHEDULER_UNAVAILABLE: &str = "Scheduler not available.";
 const INVALID_TASK_ID: &str = "No valid Task ID for this worker.";
 const INVALID_WORKER_ID: &str = "No worker found for provided id.";
 
@@ -52,17 +50,13 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         }
 
         // Add worker to worker manager.
-        match self.worker_manager.lock() {
-            Ok(mut manager) => {
-                let worker_id = worker.get_worker_id().to_owned();
-                manager.add_worker(worker);
+        let mut manager = self.worker_manager.lock().unwrap();
+        let worker_id = worker.get_worker_id().to_owned();
+        manager.add_worker(worker);
 
-                let mut response = pb::RegisterWorkerResponse::new();
-                response.set_worker_id(worker_id);
-                SingleResponse::completed(response)
-            }
-            Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
-        }
+        let mut response = pb::RegisterWorkerResponse::new();
+        response.set_worker_id(worker_id);
+        SingleResponse::completed(response)
     }
 
     fn update_worker_status(
@@ -102,43 +96,39 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         _o: RequestOptions,
         request: pb::MapResult,
     ) -> SingleResponse<pb::EmptyMessage> {
-        match self.worker_manager.lock() {
-            Ok(mut manager) => {
-                let worker = match manager.get_worker(request.get_worker_id()) {
-                    Some(worker) => worker,
-                    None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
-                };
+        let mut manager = self.worker_manager.lock().unwrap();
 
-                let task_id = worker.get_current_task_id().to_owned();
-                if task_id.is_empty() {
-                    return SingleResponse::err(Error::Other(INVALID_TASK_ID));
-                }
+        let worker = match manager.get_worker(request.get_worker_id()) {
+            Some(worker) => worker,
+            None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
+        };
 
-                match self.scheduler.lock() {
-                    Ok(mut scheduler) => {
-                        let result = scheduler.process_map_task_response(&task_id, &request);
-                        if let Err(err) = result {
-                            error!("Could not process map response: {}", err);
-                            return SingleResponse::err(Error::Panic(err.to_string()));
-                        }
-                    }
-                    Err(_) => return SingleResponse::err(Error::Other(SCHEDULER_UNAVAILABLE)),
-                }
-
-                worker.set_status(pb::WorkerStatus::AVAILABLE);
-                if request.get_status() == pb::ResultStatus::SUCCESS {
-                    worker.set_operation_status(pb::OperationStatus::COMPLETE);
-                } else {
-                    worker.set_operation_status(pb::OperationStatus::FAILED);
-                }
-                worker.set_status_last_updated(Utc::now());
-                worker.set_current_task_id("");
-
-                let response = pb::EmptyMessage::new();
-                SingleResponse::completed(response)
-            }
-            Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
+        let task_id = worker.get_current_task_id().to_owned();
+        if task_id.is_empty() {
+            return SingleResponse::err(Error::Other(INVALID_TASK_ID));
         }
+
+        // Scope for scheduler lock
+        {
+            let mut scheduler = self.scheduler.lock().unwrap();
+            let result = scheduler.process_map_task_response(&task_id, &request);
+            if let Err(err) = result {
+                error!("Could not process map response: {}", err);
+                return SingleResponse::err(Error::Panic(err.to_string()));
+            }
+        }
+
+        worker.set_status(pb::WorkerStatus::AVAILABLE);
+        if request.get_status() == pb::ResultStatus::SUCCESS {
+            worker.set_operation_status(pb::OperationStatus::COMPLETE);
+        } else {
+            worker.set_operation_status(pb::OperationStatus::FAILED);
+        }
+        worker.set_status_last_updated(Utc::now());
+        worker.set_current_task_id("");
+
+        let response = pb::EmptyMessage::new();
+        SingleResponse::completed(response)
     }
 
     fn return_reduce_result(
@@ -146,43 +136,38 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         _o: RequestOptions,
         request: pb::ReduceResult,
     ) -> SingleResponse<pb::EmptyMessage> {
-        match self.worker_manager.lock() {
-            Ok(mut manager) => {
-                let worker = match manager.get_worker(request.get_worker_id()) {
-                    Some(worker) => worker,
-                    None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
-                };
+        let mut manager = self.worker_manager.lock().unwrap();
+        let worker = match manager.get_worker(request.get_worker_id()) {
+            Some(worker) => worker,
+            None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
+        };
 
-                let task_id = worker.get_current_task_id().to_owned();
-                if task_id.is_empty() {
-                    return SingleResponse::err(Error::Other(INVALID_TASK_ID));
-                }
-
-                match self.scheduler.lock() {
-                    Ok(mut scheduler) => {
-                        let result = scheduler.process_reduce_task_response(&task_id, &request);
-                        if let Err(err) = result {
-                            error!("Could not process reduce response: {}", err);
-                            return SingleResponse::err(Error::Panic(err.to_string()));
-                        }
-                    }
-                    Err(_) => return SingleResponse::err(Error::Other(SCHEDULER_UNAVAILABLE)),
-                }
-
-                worker.set_status(pb::WorkerStatus::AVAILABLE);
-                if request.get_status() == pb::ResultStatus::SUCCESS {
-                    worker.set_operation_status(pb::OperationStatus::COMPLETE);
-                } else {
-                    worker.set_operation_status(pb::OperationStatus::FAILED);
-                }
-                worker.set_status_last_updated(Utc::now());
-                worker.set_current_task_id("");
-
-                let response = pb::EmptyMessage::new();
-                SingleResponse::completed(response)
-            }
-            Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
+        let task_id = worker.get_current_task_id().to_owned();
+        if task_id.is_empty() {
+            return SingleResponse::err(Error::Other(INVALID_TASK_ID));
         }
+
+        // Scope for scheduler lock
+        {
+            let mut scheduler = self.scheduler.lock().unwrap();
+            let result = scheduler.process_reduce_task_response(&task_id, &request);
+            if let Err(err) = result {
+                error!("Could not process reduce response: {}", err);
+                return SingleResponse::err(Error::Panic(err.to_string()));
+            }
+        }
+
+        worker.set_status(pb::WorkerStatus::AVAILABLE);
+        if request.get_status() == pb::ResultStatus::SUCCESS {
+            worker.set_operation_status(pb::OperationStatus::COMPLETE);
+        } else {
+            worker.set_operation_status(pb::OperationStatus::FAILED);
+        }
+        worker.set_status_last_updated(Utc::now());
+        worker.set_current_task_id("");
+
+        let response = pb::EmptyMessage::new();
+        SingleResponse::completed(response)
     }
 }
 
