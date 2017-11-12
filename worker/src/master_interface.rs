@@ -47,8 +47,8 @@ impl MasterInterface {
 
     pub fn update_worker_status(
         &self,
-        worker_status: pb::UpdateStatusRequest_WorkerStatus,
-        operation_status: pb::UpdateStatusRequest_OperationStatus,
+        worker_status: pb::WorkerStatus,
+        operation_status: pb::OperationStatus,
     ) -> Result<()> {
         let mut req = pb::UpdateStatusRequest::new();
         req.set_worker_status(worker_status);

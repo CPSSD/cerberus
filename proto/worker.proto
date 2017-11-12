@@ -32,19 +32,19 @@ message RegisterWorkerResponse {
   string worker_id = 1;
 }
 
+enum WorkerStatus {
+    AVAILABLE = 0;
+    BUSY = 1;
+};
+
+enum OperationStatus {
+    UNKNOWN = 0;
+    IN_PROGRESS = 1;
+    COMPLETE = 2;
+    FAILED = 3;
+};
+
 message UpdateStatusRequest {
-    enum WorkerStatus {
-        AVAILABLE = 0;
-        BUSY = 1;
-    };
-
-    enum OperationStatus {
-        UNKNOWN = 0;
-        IN_PROGRESS = 1;
-        COMPLETE = 2;
-        FAILED = 3;
-    };
-
     WorkerStatus worker_status = 1;
     // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
     OperationStatus operation_status = 2;
@@ -54,7 +54,7 @@ message UpdateStatusRequest {
 
 enum ResultStatus {
     SUCCESS = 0;
-    FAILED = 1;
+    FAILURE = 1;
 };
 
 message MapResult {
