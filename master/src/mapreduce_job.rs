@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
-use state_handler::StateHandling;
+use state_management::StateHandling;
 use cerberus_proto::mapreduce as pb;
 use queued_work_store::QueuedWork;
 
@@ -64,7 +64,7 @@ pub struct MapReduceJob {
 
 #[derive(Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
-/// SerializableJobStatus is the Serializable counterpart to mapreduce_proto::Status.
+/// `SerializableJobStatus` is the Serializable counterpart to `mapreduce_proto::Status`.
 pub enum SerializableJobStatus {
     DONE,
     IN_PROGRESS,
@@ -113,8 +113,8 @@ impl MapReduceJob {
         })
     }
 
-    fn mapreduce_status_from_state(&self, state: SerializableJobStatus) -> pb::Status {
-        match state {
+    fn mapreduce_status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
+        match *state {
             SerializableJobStatus::DONE => pb::Status::DONE,
             SerializableJobStatus::IN_PROGRESS => pb::Status::IN_PROGRESS,
             SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
@@ -196,7 +196,7 @@ impl StateHandling for MapReduceJob {
             serde_json::from_value(data["status"].clone()).chain_err(
                 || "Unable to convert mapreduce status",
             )?;
-        self.status = self.mapreduce_status_from_state(mapreduce_status);
+        self.status = self.mapreduce_status_from_state(&mapreduce_status);
 
         self.map_tasks_completed = serde_json::from_value(data["map_tasks_completed"].clone())
             .chain_err(|| "Unable to convert map_tasks_complete")?;

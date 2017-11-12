@@ -37,7 +37,7 @@ mod worker_communication;
 mod worker_management;
 mod grpc_server;
 mod parser;
-mod state_handler;
+mod state_management;
 
 use std::sync::{Arc, Mutex, RwLock};
 use std::{thread, time};
@@ -53,7 +53,7 @@ use worker_communication::WorkerServiceImpl;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
 use grpc_server::GRPCServer;
-use state_handler::StateHandler;
+use state_management::StateHandler;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const DUMP_LOOP_MS: u64 = 5000;

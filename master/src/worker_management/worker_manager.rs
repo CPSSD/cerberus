@@ -9,11 +9,11 @@ use serde_json;
 
 use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 use scheduler::MapReduceScheduler;
-use state_handler::StateHandling;
+use state_management::StateHandling;
 use cerberus_proto::worker as pb;
 
 #[derive(Serialize, Deserialize)]
-/// WorkerStatus is the serializable counterpart to pb::WorkerStatus.
+/// `WorkerStatus` is the serializable counterpart to `pb::WorkerStatus`.
 pub enum WorkerStatus {
     AVAILABLE,
     BUSY,
@@ -21,7 +21,7 @@ pub enum WorkerStatus {
 
 #[derive(Eq, PartialEq, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
-/// OperationStatus is the serializable counterpart to pb::OperationStatus.
+/// `OperationStatus` is the serializable counterpart to `pb::OperationStatus`.
 pub enum OperationStatus {
     IN_PROGRESS,
     COMPLETE,
@@ -95,8 +95,8 @@ impl Worker {
         self.current_task_id = task_id.into();
     }
 
-    fn operation_status_from_state(&self, state: OperationStatus) -> pb::OperationStatus {
-        match state {
+    fn operation_status_from_state(&self, state: &OperationStatus) -> pb::OperationStatus {
+        match *state {
             OperationStatus::IN_PROGRESS => pb::OperationStatus::IN_PROGRESS,
             OperationStatus::COMPLETE => pb::OperationStatus::COMPLETE,
             OperationStatus::FAILED => pb::OperationStatus::FAILED,
@@ -113,8 +113,8 @@ impl Worker {
         }
     }
 
-    fn worker_status_from_state(&self, state: WorkerStatus) -> pb::WorkerStatus {
-        match state {
+    fn worker_status_from_state(&self, state: &WorkerStatus) -> pb::WorkerStatus {
+        match *state {
             WorkerStatus::AVAILABLE => pb::WorkerStatus::AVAILABLE,
             WorkerStatus::BUSY => pb::WorkerStatus::BUSY,
         }
@@ -164,13 +164,13 @@ impl StateHandling for Worker {
         // Sets the worker status.
         let worker_status: WorkerStatus = serde_json::from_value(data["status"].clone())
             .chain_err(|| "Unable to convert status")?;
-        self.status = self.worker_status_from_state(worker_status);
+        self.status = self.worker_status_from_state(&worker_status);
 
         // Sets the operation status.
         let operation_status: OperationStatus =
             serde_json::from_value(data["operation_status"].clone())
                 .chain_err(|| "Unable to convert operation status")?;
-        self.operation_status = self.operation_status_from_state(operation_status);
+        self.operation_status = self.operation_status_from_state(&operation_status);
 
         // Set values of types that derive Deserialize.
         self.current_task_id = serde_json::from_value(data["current_task_id"].clone())
@@ -279,7 +279,7 @@ impl WorkerManager {
             scheduler
                 .lock()
                 .unwrap()
-                .unschedule_task(&worker.get_current_task_id())
+                .unschedule_task(worker.get_current_task_id())
                 .chain_err(|| "Unable to move task back to queue")?;
             worker.set_current_task_id(String::new());
         }
