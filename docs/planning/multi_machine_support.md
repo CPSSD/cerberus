@@ -5,24 +5,6 @@ Multiple Machine Support
 This document outlines the requirements for making the project support multiple
 machines.
 
-
-## Current Problems:
-After testing using docker-compose, it appears that the biggest issue that how
-the workers are communicating with the master.
-  - The worker tells the master that its IP is [::]:PORT, which is not a network
-    accessible address. There are 2 ways of overcoming this:
-      1. Try to get the network IP from the worker itself, and report that to
-         master
-      2. Allow the master to use the address that the machine communicated from.
-
-    There are however disadvantages to both approach.
-
-      1. A machine might be having multiple addresses, some of them might only
-         be available on specific subnets not accessible to the entire cluster.
-      2. The worker might wish to have all its communication on a different IP
-         than the one it contacted the master on, say contacted using IPv4 and
-         wishes to have the communications over IPv6
-
 ## Problems fixed:
 After intitial testing using docker-compose, the biggest issue was how the
 workers communicate with the master.
