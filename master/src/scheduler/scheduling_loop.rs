@@ -234,7 +234,9 @@ fn update_healthy_workers(
     scheduler: &mut MutexGuard<MapReduceScheduler>,
     worker_manager: &mut MutexGuard<WorkerManager>,
 ) {
+    let mut workers_to_reassign = Vec::new();
     let mut workers_to_remove = Vec::new();
+
     for worker in worker_manager.get_workers() {
         let time_since_worker_updated = Utc::now().timestamp() -
             worker.get_status_last_updated().timestamp();
@@ -243,14 +245,25 @@ fn update_healthy_workers(
             workers_to_remove.push(worker.get_worker_id().to_owned());
         }
 
-        if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S {
-            let task_id = worker.get_current_task_id();
-            if !task_id.is_empty() {
-                let result = reschedule_task(task_id, scheduler);
-                if let Err(err) = result {
-                    error!("Error trying to reschedule task: {}", err);
-                }
+        if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S &&
+            !worker.get_current_task_id().is_empty()
+        {
+            workers_to_reassign.push(worker.get_worker_id().to_owned());
+        }
+    }
+
+    for worker_id in workers_to_reassign {
+        let worker = match worker_manager.get_worker(&worker_id) {
+            Some(mut worker) => worker,
+            None => {
+                error!("Error rescheduling task for worker, id: {}", worker_id);
+                continue;
             }
+        };
+
+        match reschedule_task(worker.get_current_task_id(), scheduler) {
+            Ok(_) => worker.set_current_task_id(""),
+            Err(err) => error!("Error trying to reschedule task: {}", err),
         }
     }
 
