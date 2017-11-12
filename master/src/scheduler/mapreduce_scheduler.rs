@@ -268,7 +268,7 @@ impl MapReduceScheduler {
         map_reduce_id: &str,
         cpu_time: u64,
     ) -> Result<()> {
-        let total_cpu_time: u64 = 0
+        let mut total_cpu_time: u64 = 0;
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id.to_owned())
@@ -283,7 +283,7 @@ impl MapReduceScheduler {
                 map_reduce_job.status = MapReduceJobStatus::DONE;
                 map_reduce_job.time_completed = Some(Utc::now());
                 map_reduce_job.cpu_time += cpu_time;
-                total_time = map_reduce_job.cpu_time;
+                total_cpu_time = map_reduce_job.cpu_time;
             }
             map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };
