@@ -75,21 +75,30 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         _o: RequestOptions,
         request: pb::UpdateStatusRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
-        match self.worker_manager.lock() {
-            Ok(mut manager) => {
-                match manager.get_worker(request.get_worker_id()) {
-                    Some(ref mut worker) => {
-                        worker.set_status(request.get_worker_status());
-                        worker.set_operation_status(request.get_operation_status());
-                        worker.set_status_last_updated(Utc::now());
+        let mut manager = self.worker_manager.lock().unwrap();
+        match manager.get_worker(request.get_worker_id()) {
+            Some(ref mut worker) => {
+                worker.set_status(request.get_worker_status());
+                worker.set_operation_status(request.get_operation_status());
+                worker.set_status_last_updated(Utc::now());
 
-                        let response = pb::EmptyMessage::new();
-                        SingleResponse::completed(response)
+                if !worker.get_current_task_id().is_empty() &&
+                    (request.get_operation_status() == pb::OperationStatus::FAILED ||
+                         request.get_operation_status() == pb::OperationStatus::COMPLETE)
+                {
+                    // No result has been received for this operation
+                    // We need to reschedule it
+                    let mut scheduler = self.scheduler.lock().unwrap();
+                    match scheduler.unschedule_task(worker.get_current_task_id()) {
+                        Ok(_) => worker.set_current_task_id(""),
+                        Err(err) => error!("Could not unschedule task for worker, error: {}", err),
                     }
-                    None => SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
                 }
+
+                let response = pb::EmptyMessage::new();
+                SingleResponse::completed(response)
             }
-            Err(_) => SingleResponse::err(Error::Other(WORKER_MANAGER_UNAVAILABLE)),
+            None => SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
         }
     }
 
