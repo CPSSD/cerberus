@@ -68,6 +68,7 @@ fn run() -> Result<()> {
         .chain_err(|| "Error parsing port")?;
 
     let fresh = matches.is_present("fresh");
+    let create_dump_dir = !matches.is_present("nodump");
 
     let task_processor = TaskProcessor;
     let map_reduce_scheduler = Arc::new(Mutex::new(
@@ -94,6 +95,7 @@ fn run() -> Result<()> {
         port,
         Arc::clone(&map_reduce_scheduler),
         Arc::clone(&worker_manager),
+        create_dump_dir,
     ).chain_err(|| "Unable to create StateHandler")?;
 
     // If our state dump file exists and we aren't running a fresh copy of master we
@@ -119,12 +121,14 @@ fn run() -> Result<()> {
             return Err("GRPC server unexpectedly died".into());
         }
 
-        count += 1;
-        if count * MAIN_LOOP_SLEEP_MS >= DUMP_LOOP_MS {
-            state_handler.dump_state().chain_err(
-                || "Unable to dump state",
-            )?;
-            count = 0
+        if create_dump_dir {
+            count += 1;
+            if count * MAIN_LOOP_SLEEP_MS >= DUMP_LOOP_MS {
+                state_handler.dump_state().chain_err(
+                    || "Unable to dump state",
+                )?;
+                count = 0
+            }
         }
     }
 }

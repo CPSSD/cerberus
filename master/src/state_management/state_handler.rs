@@ -35,10 +35,13 @@ impl StateHandler {
         port: u16,
         scheduler: Arc<Mutex<MapReduceScheduler>>,
         worker_manager: Arc<Mutex<WorkerManager>>,
+        create_dir: bool,
     ) -> Result<Self> {
-        fs::create_dir_all("/var/lib/cerberus").chain_err(
-            || "Unable to create dir: /var/lib/cerberus",
-        )?;
+        if create_dir {
+            fs::create_dir_all("/var/lib/cerberus").chain_err(
+                || "Unable to create dir: /var/lib/cerberus",
+            )?;
+        }
 
         Ok(StateHandler {
             port: port,
