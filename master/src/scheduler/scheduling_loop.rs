@@ -74,19 +74,11 @@ fn assign_worker_map_task<I>(
     I: WorkerInterface + Send + Sync + 'static,
 {
     thread::spawn(move || {
-        let read_guard = scheduler_resources.worker_interface_arc.read();
-        match read_guard {
-            Ok(worker_interface) => {
-                let result = worker_interface.schedule_map(map_task, &task_assignment.worker_id);
-                if let Err(err) = result {
-                    output_error(&err.chain_err(|| "Error assigning worker task."));
-                    handle_assign_task_failure(&scheduler_resources, &task_assignment);
-                }
-            }
-            Err(err) => {
-                error!("Error assigning worker task: {}", err);
-                handle_assign_task_failure(&scheduler_resources, &task_assignment);
-            }
+        let worker_interface = scheduler_resources.worker_interface_arc.read().unwrap();
+        let result = worker_interface.schedule_map(map_task, &task_assignment.worker_id);
+        if let Err(err) = result {
+            output_error(&err.chain_err(|| "Error assigning worker task."));
+            handle_assign_task_failure(&scheduler_resources, &task_assignment);
         }
     });
 }
@@ -100,20 +92,11 @@ fn assign_worker_reduce_task<I>(
     I: WorkerInterface + Send + Sync + 'static,
 {
     thread::spawn(move || {
-        let read_guard = scheduler_resources.worker_interface_arc.read();
-        match read_guard {
-            Ok(worker_interface) => {
-                let result =
-                    worker_interface.schedule_reduce(reduce_task, &task_assignment.worker_id);
-                if let Err(err) = result {
-                    output_error(&err.chain_err(|| "Error assigning worker task."));
-                    handle_assign_task_failure(&scheduler_resources, &task_assignment);
-                }
-            }
-            Err(err) => {
-                error!("Error assigning worker task: {}", err);
-                handle_assign_task_failure(&scheduler_resources, &task_assignment);
-            }
+        let worker_interface = scheduler_resources.worker_interface_arc.read().unwrap();
+        let result = worker_interface.schedule_reduce(reduce_task, &task_assignment.worker_id);
+        if let Err(err) = result {
+            output_error(&err.chain_err(|| "Error assigning worker task."));
+            handle_assign_task_failure(&scheduler_resources, &task_assignment);
         }
     });
 }

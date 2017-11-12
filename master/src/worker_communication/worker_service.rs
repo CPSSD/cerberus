@@ -8,7 +8,6 @@ use scheduler::MapReduceScheduler;
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 
-const WORKER_INTERFACE_UNAVAILABLE: &str = "Worker interface not available.";
 const WORKER_MANAGER_UNAVAILABLE: &str = "Worker manager not available.";
 const SCHEDULER_UNAVAILABLE: &str = "Scheduler not available.";
 const INVALID_TASK_ID: &str = "No valid Task ID for this worker.";
@@ -46,14 +45,10 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
         };
 
         // Add client for worker to worker interface.
-        match self.worker_interface.write() {
-            Ok(mut interface) => {
-                let result = interface.add_client(&worker);
-                if let Err(err) = result {
-                    return SingleResponse::err(Error::Panic(err.to_string()));
-                }
-            }
-            Err(_) => return SingleResponse::err(Error::Other(WORKER_INTERFACE_UNAVAILABLE)),
+        let mut interface = self.worker_interface.write().unwrap();
+        let result = interface.add_client(&worker);
+        if let Err(err) = result {
+            return SingleResponse::err(Error::Panic(err.to_string()));
         }
 
         // Add worker to worker manager.
