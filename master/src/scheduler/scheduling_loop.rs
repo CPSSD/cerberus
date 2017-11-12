@@ -253,7 +253,7 @@ fn update_healthy_workers(
 
     for worker_id in workers_to_reassign {
         let worker = match worker_manager.get_worker(&worker_id) {
-            Some(mut worker) => worker,
+            Some(worker) => worker,
             None => {
                 error!("Error rescheduling task for worker, id: {}", worker_id);
                 continue;
