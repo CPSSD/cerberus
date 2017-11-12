@@ -49,19 +49,13 @@ impl StateHandler {
 
     pub fn dump_state(&self) -> Result<()> {
         // Get Scheduler state as JSON.
-        let scheduler = match self.scheduler.lock() {
-            Err(_) => return Err("Unable to get scheduler lock".into()),
-            Ok(sched) => sched,
-        };
+        let scheduler = self.scheduler.lock().unwrap();
         let scheduler_json = scheduler.dump_state().chain_err(
             || "Unable to dump Scheduler state",
         )?;
 
         // Get WorkerManager state as JSON.
-        let worker_manager = match self.worker_manager.lock() {
-            Err(_) => return Err("Unable to get worker manager lock".into()),
-            Ok(manager) => manager,
-        };
+        let worker_manager = self.worker_manager.lock().unwrap();
         let worker_manager_json = worker_manager.dump_state().chain_err(
             || "Unable to dump WorkerManager state",
         )?;
@@ -106,10 +100,7 @@ impl StateHandler {
         if scheduler_json == json::Null {
             return Err("Unable to retrieve Scheduler state from JSON".into());
         }
-        let mut scheduler = match self.scheduler.lock() {
-            Ok(scheduler) => scheduler,
-            Err(_) => return Err("Unable to get scheduler lock".into()),
-        };
+        let mut scheduler = self.scheduler.lock().unwrap();
         scheduler.load_state(scheduler_json).chain_err(
             || "Error reloading scheduler state",
         )?;
@@ -119,10 +110,7 @@ impl StateHandler {
         if worker_manager_json == json::Null {
             return Err("Unable to retrieve WorkerManager state from JSON".into());
         }
-        let mut worker_manager = match self.worker_manager.lock() {
-            Ok(manager) => manager,
-            Err(_) => return Err("Unable to get scheduler lock".into()),
-        };
+        let mut worker_manager = self.worker_manager.lock().unwrap();
         worker_manager.load_state(worker_manager_json).chain_err(
             || "Error reloading worker_manager state",
         )?;
