@@ -264,6 +264,7 @@ impl StateHandling for MapReduceTask {
             "map_output_files": self.map_output_files,
             "assigned_worker_id": self.assigned_worker_id,
             "status": self.status,
+            "failure_count": self.failure_count,
         }))
     }
 
@@ -276,8 +277,10 @@ impl StateHandling for MapReduceTask {
         self.assigned_worker_id = serde_json::from_value(data["assigned_worker_id"].clone())
             .chain_err(|| "Unable to convert assigned_worker_id")?;
         self.status = serde_json::from_value(data["status"].clone()).chain_err(
-            || "Unable to status",
+            || "Unable to convert status",
         )?;
+        self.failure_count = serde_json::from_value(data["failure_count"].clone())
+            .chain_err(|| "Unable to convert failure_count")?;
 
         Ok(())
     }
