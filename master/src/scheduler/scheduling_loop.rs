@@ -241,7 +241,9 @@ fn update_healthy_workers(
         let time_since_worker_updated = Utc::now().timestamp() -
             worker.get_status_last_updated().timestamp();
 
-        if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S {
+        if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S &&
+            worker.get_current_task_id().is_empty()
+        {
             workers_to_remove.push(worker.get_worker_id().to_owned());
         }
 
