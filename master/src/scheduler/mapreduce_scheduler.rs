@@ -205,13 +205,14 @@ impl MapReduceScheduler {
     /// `increment_map_tasks_completed` increments the number of completed map tasks for a given
     /// job.
     /// If all the map tasks have been completed it will create and add reduce tasks to the queue.
-    fn increment_map_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
-        let all_maps_completed = {
+    fn increment_map_tasks_completed(&mut self, map_reduce_id: &str, cpu_time: u64) -> Result<()> {
+        let all_maps_completed: bool = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id.to_owned())
                 .chain_err(|| "Error incrementing completed map tasks.")?;
 
             map_reduce_job.map_tasks_completed += 1;
+            map_reduce_job.cpu_time += cpu_time;
             map_reduce_job.map_tasks_completed == map_reduce_job.map_tasks_total
         };
 
@@ -249,7 +250,7 @@ impl MapReduceScheduler {
                 }
                 map_task.get_map_reduce_id().to_owned()
             };
-            self.increment_map_tasks_completed(&map_reduce_id)
+            self.increment_map_tasks_completed(&map_reduce_id, map_response.get_cpu_time())
                 .chain_err(|| "Error marking map task as completed.")?;
         } else {
             self.unschedule_task(map_task_id).chain_err(
@@ -262,7 +263,12 @@ impl MapReduceScheduler {
     /// `increment_reduce_tasks_completed` increments the completed reduce tasks for a given job.
     /// If all the reduce tasks have been completed it will make the next `MapReduceJob` in the
     /// queue active, if one exists.
-    fn increment_reduce_tasks_completed(&mut self, map_reduce_id: &str) -> Result<()> {
+    fn increment_reduce_tasks_completed(
+        &mut self,
+        map_reduce_id: &str,
+        cpu_time: u64,
+    ) -> Result<()> {
+        let total_cpu_time: u64 = 0
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id.to_owned())
@@ -276,12 +282,15 @@ impl MapReduceScheduler {
                     .chain_err(|| "Error marking map reduce job as complete.")?;
                 map_reduce_job.status = MapReduceJobStatus::DONE;
                 map_reduce_job.time_completed = Some(Utc::now());
+                map_reduce_job.cpu_time += cpu_time;
+                total_time = map_reduce_job.cpu_time;
             }
             map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };
 
         if completed_map_reduce {
             info!("Completed Map Reduce Job ({}).", map_reduce_id);
+            info!("Total CPU time used: {}", total_cpu_time);
 
             if self.map_reduce_job_queue.queue_size() > 0 {
                 self.process_next_map_reduce().chain_err(
@@ -315,7 +324,7 @@ impl MapReduceScheduler {
                 reduce_task.get_map_reduce_id().to_owned()
             };
 
-            self.increment_reduce_tasks_completed(&map_reduce_id)
+            self.increment_reduce_tasks_completed(&map_reduce_id, reduce_response.get_cpu_time())
                 .chain_err(|| "Error marking reduce task as completed.")?;
         } else {
             self.unschedule_task(reduce_task_id).chain_err(

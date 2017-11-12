@@ -55,6 +55,9 @@ pub struct MapReduceJob {
     pub time_requested: DateTime<Utc>,
     pub time_started: Option<DateTime<Utc>>,
     pub time_completed: Option<DateTime<Utc>>,
+
+    /// Total CPU time used by the job.
+    pub cpu_time: u64,
 }
 
 impl MapReduceJob {
@@ -92,6 +95,8 @@ impl MapReduceJob {
             time_requested: Utc::now(),
             time_started: None,
             time_completed: None,
+
+            cpu_time: 0,
         })
     }
 }
