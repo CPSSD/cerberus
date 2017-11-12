@@ -9,6 +9,8 @@ use std::fs::File;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use libc::_SC_CLK_TCK;
+use procinfo::pid::stat_self;
 use serde_json;
 use serde_json::Value;
 use serde_json::Value::Array;
@@ -52,6 +54,10 @@ pub struct OperationHandler {
 
     reduce_operation_queue: Arc<Mutex<ReduceOperationQueue>>,
     output_dir_uuid: String,
+
+    // Initial CPU time of the operation. This is used to calculate the total cpu time used for an
+    // operation
+    initial_cpu_time: Mutex<u64>,
 }
 
 impl OperationState {
@@ -220,6 +226,13 @@ fn map_operation_thread_impl(
     Ok(response)
 }
 
+fn get_cpu_time() -> u64 {
+    // We can panic in this case. This is beyond our control and would mostly be caused by a very
+    // critical error.
+    let stat = stat_self().unwrap();
+    (stat.utime + stat.stime + stat.cstime + stat.cutime) as u64 / (_SC_CLK_TCK as u64)
+}
+
 impl ReduceOperationQueue {
     fn new() -> Self {
         Default::default()
@@ -326,6 +339,8 @@ impl OperationHandler {
 
             master_interface: master_interface,
             output_dir_uuid: Uuid::new_v4().to_string(),
+
+            initial_cpu_time: Mutex::new(0),
         }
     }
 
@@ -369,6 +384,10 @@ impl OperationHandler {
     }
 
     pub fn perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
+        {
+            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
+        }
+
         info!(
             "Performing map operation. mapper={} input={}",
             map_options.mapper_file_path,
@@ -428,6 +447,8 @@ impl OperationHandler {
             || "Failed to create output directory",
         )?;
 
+        let initial_cpu_time = *self.initial_cpu_time.lock().unwrap();
+
         thread::spawn(move || {
             let result = map_operation_thread_impl(
                 &map_input_document,
@@ -436,7 +457,8 @@ impl OperationHandler {
             );
 
             match result {
-                Ok(map_result) => {
+                Ok(mut map_result) => {
+                    map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
                     if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                         log_map_operation_err(err, &operation_state_arc)
                     } else {
@@ -450,6 +472,7 @@ impl OperationHandler {
                 Err(err) => {
                     let mut map_result = pb::MapResult::new();
                     map_result.set_status(pb::ResultStatus::FAILED);
+                    map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
 
                     if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                         error!("Could not send map operation failed: {}", err);
@@ -518,6 +541,10 @@ impl OperationHandler {
     }
 
     pub fn perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
+        {
+            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
+        }
+
         info!(
             "Performing reduce operation. reducer={}",
             reduce_request.reducer_file_path
@@ -556,6 +583,8 @@ impl OperationHandler {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
 
+        let initial_cpu_time = *self.initial_cpu_time.lock().unwrap();
+
         thread::spawn(move || {
             let mut reduce_complete = false;
             loop {
@@ -584,6 +613,7 @@ impl OperationHandler {
             if reduce_complete {
                 let mut response = pb::ReduceResult::new();
                 response.set_status(pb::ResultStatus::SUCCESS);
+                response.set_cpu_time(get_cpu_time() - initial_cpu_time);
                 let result = send_reduce_result(&master_interface_arc, response);
 
                 match result {
