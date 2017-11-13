@@ -360,6 +360,9 @@ impl MapReduceScheduler {
                 .remove_work_bucket(&job.get_work_id())
                 .chain_err(|| "Error removing failed job from the queue.")?;
             job.status = MapReduceJobStatus::FAILED;
+            job.status_details = Some(
+                "Task belonging to this job failed too many times.".to_owned(),
+            );
         }
         if !self.map_reduce_job_queue.queue_empty() {
             self.process_next_map_reduce().chain_err(
