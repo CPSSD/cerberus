@@ -25,5 +25,13 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(false)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("nodump")
+                .long("nodump")
+                .short("n")
+                .help("Skips state dumping")
+                .takes_value(false)
+                .required(false),
+        )
         .get_matches()
 }
