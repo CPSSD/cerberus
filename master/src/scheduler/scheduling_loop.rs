@@ -148,6 +148,15 @@ fn do_scheduling_loop_step<I>(
 {
     scheduler.set_available_workers(worker_manager.get_total_workers());
     let mut available_workers: Vec<&mut Worker> = worker_manager.get_available_workers();
+
+    // Sort workers by most recent health checks, to avoid repeatedly trying to assign work to a
+    // worker which is not responding.
+    available_workers.sort_by(|a, b| {
+        a.get_status_last_updated()
+            .cmp(&b.get_status_last_updated())
+            .reverse()
+    });
+
     while scheduler.get_map_reduce_task_queue_size() > 0 {
         if available_workers.is_empty() {
             break;
