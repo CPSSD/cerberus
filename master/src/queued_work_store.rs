@@ -1,11 +1,12 @@
-use errors::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::hash::Hash;
 
+use errors::*;
+
 /// The `QueuedWork` trait defines a an object that can be stored in a `QueuedWorkStore`.
 pub trait QueuedWork {
-    type Key: Hash + Eq + Default;
+    type Key: Hash + Eq;
     fn get_work_bucket(&self) -> Self::Key;
     fn get_work_id(&self) -> Self::Key;
 }
@@ -24,19 +25,12 @@ where
     work_queue: VecDeque<T::Key>,
 }
 
-// Default can not be derived here without forcing T to implment default, which I do not want
-// to do.
-#[allow(new_without_default_derive)]
 impl<T> QueuedWorkStore<T>
 where
     T: QueuedWork,
 {
     pub fn new() -> Self {
-        QueuedWorkStore {
-            work_map: HashMap::new(),
-            work_buckets: HashMap::new(),
-            work_queue: VecDeque::new(),
-        }
+        Default::default()
     }
 
     pub fn add_to_store(&mut self, task: Box<T>) -> Result<()> {
@@ -59,6 +53,26 @@ where
         Ok(())
     }
 
+    // add_only_to_store is similar to add_to_store but it skips adding the task to the Queue.
+    pub fn add_only_to_store(&mut self, task: Box<T>) -> Result<()> {
+        if self.work_map.contains_key(&task.get_work_id()) {
+            return Err("Given task is already in the store".into());
+        }
+        // Add task to the work_bucket vector.
+        let work_bucket: T::Key = task.get_work_bucket();
+        let bucket: &mut Vec<T::Key> = self.work_buckets.entry(work_bucket).or_insert_with(
+            Vec::new,
+        );
+        bucket.push(task.get_work_id());
+
+        // Add task to work map.
+        self.work_map.insert(task.get_work_id(), task);
+
+        Ok(())
+    }
+
+    //TODO(conor): Remove this when remove_task is used.
+    #[allow(dead_code)]
     pub fn remove_task(&mut self, task_id: &T::Key) -> Result<()> {
         if !self.work_map.contains_key(task_id) {
             return Err("Given task is not in the store".into());
@@ -85,6 +99,12 @@ where
         self.work_queue.len()
     }
 
+    pub fn store_size(&self) -> usize {
+        self.work_map.len()
+    }
+
+    //TODO(conor): Remove this when queue_empty is used.
+    #[allow(dead_code)]
     pub fn queue_empty(&self) -> bool {
         self.work_queue.is_empty()
     }
@@ -95,6 +115,10 @@ where
         }
         let task_id: T::Key = self.work_queue.pop_front().unwrap();
         self.get_work_by_id_mut(&task_id)
+    }
+
+    pub fn has_work_bucket(&self, client_id: &T::Key) -> bool {
+        self.work_buckets.contains_key(client_id)
     }
 
     pub fn get_work_bucket_items(&self, client_id: &T::Key) -> Result<Vec<&T>> {
@@ -119,6 +143,21 @@ where
         }
     }
 
+    pub fn get_all_store_items(&self) -> Result<Vec<&T>> {
+        let mut work = Vec::new();
+
+        for key in self.work_buckets.keys() {
+            let work_bucket_items = self.get_work_bucket_items(key).chain_err(
+                || "Unable to retrieve work bucket items",
+            )?;
+            work.extend(work_bucket_items);
+        }
+
+        Ok(work)
+    }
+
+    //TODO(conor): Remove this when get_work_bucket is used.
+    #[allow(dead_code)]
     pub fn get_work_bucket(&self, work_bucket: &T::Key) -> Option<&Vec<T::Key>> {
         self.work_buckets.get(work_bucket)
     }
@@ -144,8 +183,14 @@ where
         }
     }
 
+    //TODO(conor): Remove this when has_task is used.
+    #[allow(dead_code)]
     pub fn has_task(&self, task_id: &T::Key) -> bool {
         self.work_map.contains_key(task_id)
+    }
+
+    pub fn task_in_queue(&self, task_id: &T::Key) -> bool {
+        self.work_queue.contains(task_id)
     }
 
     pub fn move_task_to_queue(&mut self, task_id: T::Key) -> Result<()> {
@@ -154,6 +199,19 @@ where
             return Ok(());
         }
         Err("Given task is not in the store".into())
+    }
+}
+
+impl<T> Default for QueuedWorkStore<T>
+where
+    T: QueuedWork,
+{
+    fn default() -> Self {
+        QueuedWorkStore {
+            work_map: HashMap::new(),
+            work_buckets: HashMap::new(),
+            work_queue: VecDeque::new(),
+        }
     }
 }
 

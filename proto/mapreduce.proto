@@ -29,10 +29,14 @@ message MapReduceRequest {
     // Location of the input data on an accessible filesystem.
     string input_directory = 2;
 
+    // Location of the output directory on an accessible filesystem.
+    // Will be automatically generated if it is not included.
+    string output_directory = 3;
+
     // ID of the client. Generated to be used for easier recognising who is
     // making the request. Generated on a single machine for now
     // TODO(voy): Convert to unique identity once we have authentication.
-    string client_id = 3;
+    string client_id = 4;
 }
 
 // Response from the master about the map reduce.
@@ -56,28 +60,31 @@ message MapReduceStatusRequest {
 
 // Response with the status of the requested map reduce.
 message MapReduceStatusResponse {
-    // TODO(voy): Consider unnesting this message.
-    message MapReduceReport {
-        enum Status {
-            UNKNOWN = 0;
-            DONE = 1;
-            IN_PROGRESS = 2;
-            IN_QUEUE = 3;
-            FAILED = 4;
-        };
-
-        string mapreduce_id = 1;
-        Status status = 2;
-        int64 queue_length = 3;
-        // Unix timestamp at which the MapReduce has been scheduled.
-        int64 scheduled_timestamp = 4;
-        // Unix timestamp at which the MapReduce has been started.
-        int64 started_timestamp = 5;
-        // Unix timestamp at which the MapReduce has been finished.
-        int64 done_timestamp = 6;
-    }
-
     repeated MapReduceReport reports = 1;
+}
+
+enum Status {
+    UNKNOWN = 0;
+    DONE = 1;
+    IN_PROGRESS = 2;
+    IN_QUEUE = 3;
+    FAILED = 4;
+};
+
+message MapReduceReport {
+    string mapreduce_id = 1;
+    Status status = 2;
+    int64 queue_length = 3;
+    // Unix timestamp at which the MapReduce has been scheduled.
+    int64 scheduled_timestamp = 4;
+    // Unix timestamp at which the MapReduce has been started.
+    int64 started_timestamp = 5;
+    // Unix timestamp at which the MapReduce has been finished.
+    int64 done_timestamp = 6;
+    // Location of the output directory
+    string output_directory = 7;
+    // Details accompanying a failed job.
+    string failure_details = 8;
 }
 
 message ClusterStatusResponse {

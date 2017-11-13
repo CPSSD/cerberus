@@ -14,6 +14,20 @@ pub trait EmitIntermediate<K: Serialize, V: Serialize> {
     fn emit(&mut self, key: K, value: V) -> Result<()>;
 }
 
+/// The `EmitPartitionedIntermediate` trait specifies structs which can send partitioned key-value
+/// pairs to an in-memory data structure.
+///
+/// `EmitPartitionedIntermediate` is intended for use by the `MapPartitioner` during the key
+/// partitioning phase, for emitting key value pairs in their coresponding partition.  Since these
+/// in-memory data structures will eventually be serialised to disk, they must implement the
+/// `serde::Serialize` trait.
+pub trait EmitPartitionedIntermediate<K: Serialize, V: Serialize> {
+    /// Takes ownership of a key-value pair and stores it in a sink based on its partition.
+    ///
+    /// Returns an empty `Result` used for error handling.
+    fn emit(&mut self, partition: u64, key: K, value: V) -> Result<()>;
+}
+
 /// The `EmitFinal` trait specifies structs which can send values to an in-memory data structure.
 ///
 /// `EmitFinal` is intended for use in `Reduce` operations, for emitting an intermediate key-value

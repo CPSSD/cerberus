@@ -2,18 +2,50 @@ use chrono::Local;
 use clap::ArgMatches;
 use errors::*;
 use grpc::RequestOptions;
+use std::path::Path;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService; // do not use
 
+fn verify_valid_path(path_str: &str) -> Result<String> {
+    let path = Path::new(path_str);
+
+    if !path.is_absolute() {
+        return Err("Paths passed to the CLI must be absolute.".into());
+    }
+
+    let path_option = path.to_str();
+    match path_option {
+        Some(res) => Ok(res.to_owned()),
+        None => Err("Invalid characters in path.".into()),
+    }
+}
+
 pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
-    let input = matches.value_of("input").chain_err(
-        || "Input directory cannot be empty",
+    let mut input = matches
+        .value_of("input")
+        .chain_err(|| "Input directory cannot be empty")?
+        .to_owned();
+
+    input = verify_valid_path(&input).chain_err(
+        || "Invalid input path.",
     )?;
 
-    let binary = matches.value_of("binary").chain_err(
-        || "Binary cannot be empty",
+    let output = matches.value_of("output").unwrap_or("");
+    if !output.is_empty() {
+        verify_valid_path(output).chain_err(
+            || "Invalid output path",
+        )?;
+    }
+
+    let mut binary = matches
+        .value_of("binary")
+        .chain_err(|| "Binary cannot be empty")?
+        .to_owned();
+
+    binary = verify_valid_path(&binary).chain_err(
+        || "Invalid binary path.",
     )?;
 
     let mut req = pb::MapReduceRequest::new();
@@ -21,7 +53,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
     req.set_input_directory(input.to_owned());
     // TODO(voy): Replace it with generated ClientID.
     req.set_client_id("abc".to_owned());
-    // TODO(voy): Add the output directory once its implemented in the proto.
+    req.set_output_directory(output.to_owned());
 
     let res = client
         .perform_map_reduce(RequestOptions::new(), req)
@@ -62,34 +94,39 @@ pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) ->
         .chain_err(|| "Failed to get MapReduce Status")?
         .1;
 
-    for rep in res.get_reports() {
-        print_table(rep);
+    let reports = res.get_reports();
+    if reports.is_empty() {
+        println!("No jobs for this client on cluster.");
+    } else {
+        for rep in reports {
+            print_table(rep);
+        }
     }
 
     Ok(())
 }
 
-fn print_table(rep: &pb::MapReduceStatusResponse_MapReduceReport) {
+fn print_table(rep: &pb::MapReduceReport) {
     let id = rep.get_mapreduce_id();
+    let output = rep.get_output_directory();
 
     let status: String = match rep.get_status() {
-        pb::MapReduceStatusResponse_MapReduceReport_Status::UNKNOWN => "UNKNOWN".to_owned(),
-        pb::MapReduceStatusResponse_MapReduceReport_Status::DONE => {
-            format!("DONE ({})", get_time_offset(rep.get_done_timestamp()))
+        pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
+        pb::Status::DONE => {
+            let time_taken = rep.get_done_timestamp() - rep.get_started_timestamp();
+            format!("DONE ({}s)", time_taken)
         }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_PROGRESS => {
+        pb::Status::IN_PROGRESS => {
             format!(
                 "IN_PROGRESS ({})",
                 get_time_offset(rep.get_started_timestamp())
             )
         }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::IN_QUEUE => {
-            format!("IN_QUEUE ({})", rep.get_queue_length())
-        }
-        pb::MapReduceStatusResponse_MapReduceReport_Status::FAILED => "FAILED".to_owned(),
+        pb::Status::IN_QUEUE => format!("IN_QUEUE ({})", rep.get_queue_length()),
+        pb::Status::FAILED => format!("FAILED ({})", rep.get_failure_details()).to_owned(),
     };
 
-    table!(["MRID", id], ["Status", status]).printstd();
+    table!(["MRID", id], ["Status", status], ["Output", output]).printstd();
 }
 
 fn get_time_offset(offset: i64) -> String {

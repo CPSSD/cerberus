@@ -1,5 +1,6 @@
 #![recursion_limit = "1024"]
 
+extern crate bson;
 extern crate chrono;
 extern crate clap;
 #[macro_use]
@@ -27,13 +28,15 @@ mod errors {
 pub mod emitter;
 pub mod io;
 pub mod mapper;
+pub mod partition;
 pub mod reducer;
 pub mod runner;
 pub mod serialise;
 
 pub use errors::*;
-pub use emitter::{EmitIntermediate, EmitFinal};
+pub use emitter::{EmitIntermediate, EmitPartitionedIntermediate, EmitFinal};
 pub use mapper::{Map, MapInputKV};
+pub use partition::{HashPartitioner, Partition, PartitionInputPairs};
 pub use reducer::{Reduce, ReduceInputKV};
 pub use runner::*;
 pub use serialise::{FinalOutputObject, IntermediateOutputObject};

@@ -1,4 +1,6 @@
-use cerberus_proto::mrworker::*;
+use bson;
+use cerberus_proto::worker as pb;
+use std::collections::HashMap;
 use std::thread;
 use std::path::PathBuf;
 use std::io::BufReader;
@@ -7,175 +9,178 @@ use std::fs::File;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use std::process::{Child, Command, Stdio};
+use libc::_SC_CLK_TCK;
+use procinfo::pid::stat_self;
 use serde_json;
 use serde_json::Value;
 use serde_json::Value::Array;
-use protobuf::RepeatedField;
 use uuid::Uuid;
 use errors::*;
+use util::output_error;
+use master_interface::MasterInterface;
 
-const WORKER_OUTPUT_DIRECTORY: &'static str = "/tmp/cerberus/";
+const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
+
+/// `OperationState` is a data only struct for holding the current state for the `OperationHandler`
+#[derive(Default)]
+struct OperationState {
+    pub worker_status: pb::WorkerStatus,
+    pub operation_status: pb::OperationStatus,
+}
+
+/// The `MapInput` is a struct used for serialising input data for a map operation.
+#[derive(Default, Serialize)]
+pub struct MapInput {
+    pub key: String,
+    pub value: String,
+}
+
+/// `ReduceOperation` stores the input for a reduce operation for a single key.
+struct ReduceOperation {
+    intermediate_key: String,
+    input: String,
+}
+
+/// `ReduceOperationQueue` is a struct used for storing and executing a queue of `ReduceOperations`.
+#[derive(Default)]
+pub struct ReduceOperationQueue {
+    queue: Vec<ReduceOperation>,
+}
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
 pub struct OperationHandler {
-    worker_status: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-    map_result: Arc<Mutex<Option<MapResponse>>>,
-    reduce_result: Arc<Mutex<Option<ReduceResponse>>>,
+    operation_state: Arc<Mutex<OperationState>>,
+    master_interface: Arc<Mutex<MasterInterface>>,
+
+    reduce_operation_queue: Arc<Mutex<ReduceOperationQueue>>,
     output_dir_uuid: String,
+
+    // Initial CPU time of the operation. This is used to calculate the total cpu time used for an
+    // operation
+    initial_cpu_time: Mutex<u64>,
 }
 
-fn set_worker_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    status: WorkerStatusResponse_WorkerStatus,
-) -> Result<()> {
-    let worker_status_result = worker_status_arc.lock();
-    match worker_status_result {
-        Ok(mut worker_status) => {
-            *worker_status = status;
-            Ok(())
+impl OperationState {
+    pub fn new() -> Self {
+        OperationState {
+            worker_status: pb::WorkerStatus::AVAILABLE,
+            operation_status: pb::OperationStatus::UNKNOWN,
         }
-        Err(_) => Err("Failed to lock worker_status.".into()),
     }
 }
 
-fn set_operation_status(
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-    status: WorkerStatusResponse_OperationStatus,
+fn set_operation_handler_status(
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    worker_status: pb::WorkerStatus,
+    operation_status: pb::OperationStatus,
 ) -> Result<()> {
-    let operation_status_result = operation_status_arc.lock();
-    match operation_status_result {
-        Ok(mut operation_status) => {
-            *operation_status = status;
-            Ok(())
-        }
-        Err(_) => Err("Failed to lock operation_status.".into()),
+    let mut operation_state = operation_state_arc.lock().unwrap();
+    operation_state.worker_status = worker_status;
+    operation_state.operation_status = operation_status;
+
+    Ok(())
+}
+
+fn set_complete_status(operation_state_arc: &Arc<Mutex<OperationState>>) -> Result<()> {
+    set_operation_handler_status(
+        operation_state_arc,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::COMPLETE,
+    ).chain_err(|| "Could not set operation completed status.")
+}
+
+fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
+    let result = set_operation_handler_status(
+        operation_state_arc,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::FAILED,
+    );
+
+    if let Err(err) = result {
+        output_error(&err.chain_err(|| "Could not set operation failed status."));
     }
 }
 
-fn set_complete_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-) {
-    let worker_status_result = set_worker_status(
-        worker_status_arc,
-        WorkerStatusResponse_WorkerStatus::AVAILABLE,
-    );
-    let operation_status_result = set_operation_status(
-        operation_status_arc,
-        WorkerStatusResponse_OperationStatus::COMPLETE,
-    );
+fn send_reduce_result(
+    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    result: pb::ReduceResult,
+) -> Result<()> {
+    let master_interface = master_interface_arc.lock().unwrap();
 
-    if let Err(err) = worker_status_result {
-        error!("Error setting complete status for operation: {}", err);
-    }
-    if let Err(err) = operation_status_result {
-        error!("Error setting complete status for operation: {}", err);
-    }
+    master_interface.return_reduce_result(result).chain_err(
+        || "Error sending reduce result to master.",
+    )?;
+    Ok(())
 }
 
-fn set_failed_status(
-    worker_status_arc: Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-) {
-    let worker_status_result = set_worker_status(
-        worker_status_arc,
-        WorkerStatusResponse_WorkerStatus::AVAILABLE,
-    );
-    let operation_status_result = set_operation_status(
-        operation_status_arc,
-        WorkerStatusResponse_OperationStatus::FAILED,
-    );
+fn send_map_result(
+    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    map_result: pb::MapResult,
+) -> Result<()> {
+    let master_interface = master_interface_arc.lock().unwrap();
 
-    if let Err(err) = worker_status_result {
-        error!("Error setting failed status for operation: {}", err);
-    }
-    if let Err(err) = operation_status_result {
-        error!("Error setting failed status for operation: {}", err);
-    }
+    master_interface.return_map_result(map_result).chain_err(
+        || "Error sending map result to master.",
+    )?;
+    Ok(())
 }
 
-fn parse_map_results(
-    map_result_string: &str,
-    output_dir: &str,
-) -> Result<Vec<MapResponse_MapResult>> {
+fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMap<u64, String>> {
     let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 
-    let mut map_results: Vec<MapResponse_MapResult> = Vec::new();
+    let mut map_results: HashMap<u64, String> = HashMap::new();
 
-    if let Array(ref pairs) = parse_value["pairs"] {
-        for value in pairs {
-            let key = {
-                match value["key"].as_str() {
-                    Some(key) => key,
-                    None => continue,
-                }
-            };
+    let partition_map = match parse_value["partitions"].as_object() {
+        None => return Err("Error parsing partition map.".into()),
+        Some(map) => map,
+    };
 
-            let value = {
-                match value["value"].as_str() {
-                    Some(value) => value,
-                    None => continue,
-                }
-            };
+    for (partition_str, pairs) in partition_map.iter() {
+        let partition: u64 = partition_str.to_owned().parse().chain_err(
+            || "Error parsing map response.",
+        )?;
 
-            let file_name = Uuid::new_v4().to_string();
-            let mut file_path = PathBuf::new();
-            file_path.push(output_dir);
-            file_path.push(&file_name);
+        let file_name = Uuid::new_v4().to_string();
+        let mut file_path = PathBuf::new();
+        file_path.push(output_dir);
+        file_path.push(&file_name);
 
-            let mut map_result = MapResponse_MapResult::new();
-            map_result.set_key(key.to_owned());
-            map_result.set_output_file_path((*file_path.to_string_lossy()).to_owned());
+        let mut file = File::create(file_path.clone()).chain_err(
+            || "Failed to create map output file.",
+        )?;
+        file.write_all(pairs.to_string().as_bytes()).chain_err(
+            || "Failed to write to map output file.",
+        )?;
 
-            let mut file = File::create(file_path).chain_err(
-                || "Failed to create map output file.",
-            )?;
-            file.write_all(value.as_bytes()).chain_err(
-                || "Failed to write to map output file.",
-            )?;
-
-            map_results.push(map_result);
-        }
+        map_results.insert(partition, (*file_path.to_string_lossy()).to_owned());
     }
 
     Ok(map_results)
 }
 
-fn log_map_operation_err(
-    err: &Error,
-    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-) {
-    error!("Map thread error: {}", err);
-    self::set_failed_status(
-        Arc::clone(worker_status_arc),
-        Arc::clone(operation_status_arc),
-    );
+fn log_map_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+    output_error(&err.chain_err(|| "Error running map operation."));
+    set_failed_status(operation_state_arc);
 }
 
-fn log_reduce_operation_err(
-    err: &Error,
-    worker_status_arc: &Arc<Mutex<WorkerStatusResponse_WorkerStatus>>,
-    operation_status_arc: &Arc<Mutex<WorkerStatusResponse_OperationStatus>>,
-) {
-    error!("Reduce thread error: {}", err);
-    self::set_failed_status(
-        Arc::clone(worker_status_arc),
-        Arc::clone(operation_status_arc),
-    );
+fn log_reduce_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+    output_error(&err.chain_err(|| "Error running reduce operation."));
+    set_failed_status(operation_state_arc);
 }
 
 fn map_operation_thread_impl(
-    map_input_value: &str,
+    map_input_value: &bson::Document,
     output_dir: &str,
     mut child: Child,
-    map_result_arc: Arc<Mutex<Option<MapResponse>>>,
-) -> Result<()> {
+) -> Result<pb::MapResult> {
+    let mut input_buf = Vec::new();
+    bson::encode_document(&mut input_buf, map_input_value)
+        .chain_err(|| "Could not encode map_input as BSON.")?;
+
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(map_input_value.as_bytes()).chain_err(
+        stdin.write_all(&input_buf[..]).chain_err(
             || "Error writing to payload stdin.",
         )?;
     } else {
@@ -194,104 +199,169 @@ fn map_operation_thread_impl(
         || "Error parsing map results.",
     )?;
 
-    let mut response = MapResponse::new();
-    response.set_status(OperationStatus::SUCCESS);
-    response.set_map_results(RepeatedField::from_vec(map_results));
+    let mut response = pb::MapResult::new();
+    response.set_status(pb::ResultStatus::SUCCESS);
+    response.set_map_results(map_results);
 
-    match map_result_arc.lock() {
-        Ok(mut map_result) => {
-            *map_result = Some(response);
-            Ok(())
+    Ok(response)
+}
+
+fn get_cpu_time() -> u64 {
+    // We can panic in this case. This is beyond our control and would mostly be caused by a very
+    // critical error.
+    let stat = stat_self().unwrap();
+    (stat.utime + stat.stime + stat.cstime + stat.cutime) as u64 / (_SC_CLK_TCK as u64)
+}
+
+impl ReduceOperationQueue {
+    fn new() -> Self {
+        Default::default()
+    }
+
+    fn run_reducer(
+        &self,
+        reduce_options: &ReduceOptions,
+        reduce_operation: &ReduceOperation,
+        mut child: Child,
+    ) -> Result<()> {
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin
+                .write_all(reduce_operation.input.as_bytes())
+                .chain_err(|| "Error writing to payload stdin.")?;
+        } else {
+            return Err("Error accessing stdin of payload binary.".into());
         }
-        Err(_) => Err("Could not write to map_result_arc.".into()),
+
+        let output = child.wait_with_output().chain_err(
+            || "Error waiting for payload result.",
+        )?;
+
+        let output_str = String::from_utf8(output.stdout).chain_err(
+            || "Error accessing payload output.",
+        )?;
+
+        let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
+            || "Error parsing reduce results.",
+        )?;
+        let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results)
+            .chain_err(|| "Error prettifying reduce results")?;
+
+        let mut file_path = PathBuf::new();
+        file_path.push(reduce_options.output_directory.clone());
+        file_path.push(reduce_operation.intermediate_key.clone());
+
+
+        let mut file = File::create(file_path).chain_err(
+            || "Failed to create reduce output file.",
+        )?;
+
+        file.write_all(reduce_results_pretty.as_bytes()).chain_err(
+            || "Failed to write to reduce output file.",
+        )?;
+        Ok(())
+    }
+
+    fn perform_reduce_operation(
+        &mut self,
+        reduce_options: &ReduceOptions,
+        reduce_operation: &ReduceOperation,
+    ) -> Result<()> {
+        let child = Command::new(reduce_options.reducer_file_path.to_owned())
+            .arg("reduce")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .chain_err(|| "Failed to start reduce operation process.")?;
+
+        fs::create_dir_all(reduce_options.output_directory.to_owned())
+            .chain_err(|| "Failed to create output directory")?;
+
+        self.run_reducer(reduce_options, reduce_operation, child)
+            .chain_err(|| "Error running reducer.")?;
+
+        Ok(())
+    }
+
+    fn perform_next_reduce_operation(&mut self, reduce_options: &ReduceOptions) -> Result<()> {
+        if let Some(reduce_operation) = self.queue.pop() {
+            self.perform_reduce_operation(reduce_options, &reduce_operation)
+                .chain_err(|| "Error performing reduce operation.")?;
+        }
+        Ok(())
+    }
+
+    fn is_queue_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    fn set_queue(&mut self, new_queue: Vec<ReduceOperation>) {
+        self.queue = new_queue;
     }
 }
 
-fn reduce_operation_thread_impl(
-    reduce_input: &str,
-    reduce_intermediate_key: &str,
-    output_dir: &str,
-    mut child: Child,
-    reduce_result_arc: Arc<Mutex<Option<ReduceResponse>>>,
-) -> Result<()> {
-    if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(reduce_input.as_bytes()).chain_err(
-            || "Error writing to payload stdin.",
-        )?;
-    } else {
-        return Err("Error accessing stdin of payload binary.".into());
-    }
+#[derive(Serialize)]
+struct ReduceInput {
+    pub key: String,
+    pub values: Vec<Value>,
+}
 
-    let output = child.wait_with_output().chain_err(
-        || "Error waiting for payload result.",
-    )?;
-
-    let output_str = String::from_utf8(output.stdout).chain_err(
-        || "Error accessing payload output.",
-    )?;
-
-    let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
-        || "Error parsing reduce results.",
-    )?;
-    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
-        || "Error prettifying reduce results",
-    )?;
-
-    let mut file_path = PathBuf::new();
-    file_path.push(output_dir);
-    file_path.push(reduce_intermediate_key);
-
-    let mut response = ReduceResponse::new();
-    response.set_status(OperationStatus::SUCCESS);
-    response.set_output_file_path((*file_path.to_string_lossy()).to_owned());
-
-    let mut file = File::create(file_path).chain_err(
-        || "Failed to create reduce output file.",
-    )?;
-
-    file.write_all(reduce_results_pretty.as_bytes()).chain_err(
-        || "Failed to write to reduce output file.",
-    )?;
-
-    let reduce_result_res = reduce_result_arc.lock();
-    match reduce_result_res {
-        Ok(mut reduce_result) => {
-            *reduce_result = Some(response);
-            Ok(())
-        }
-        Err(_) => Err("Could not write to reduce_result_arc".into()),
-    }
+struct ReduceOptions {
+    reducer_file_path: String,
+    output_directory: String,
 }
 
 impl OperationHandler {
-    pub fn new() -> Self {
+    pub fn new(master_interface: Arc<Mutex<MasterInterface>>) -> Self {
         OperationHandler {
-            worker_status: Arc::new(Mutex::new(WorkerStatusResponse_WorkerStatus::AVAILABLE)),
-            operation_status: Arc::new(Mutex::new(WorkerStatusResponse_OperationStatus::UNKNOWN)),
-            map_result: Arc::new(Mutex::new(None)),
-            reduce_result: Arc::new(Mutex::new(None)),
+            operation_state: Arc::new(Mutex::new(OperationState::new())),
+            reduce_operation_queue: Arc::new(Mutex::new(ReduceOperationQueue::new())),
+
+            master_interface: master_interface,
             output_dir_uuid: Uuid::new_v4().to_string(),
+
+            initial_cpu_time: Mutex::new(0),
         }
     }
 
-    pub fn get_worker_status(&self) -> WorkerStatusResponse_WorkerStatus {
-        match self.worker_status.lock() {
-            Err(_) => WorkerStatusResponse_WorkerStatus::BUSY,
-            Ok(status) => *status,
-        }
+    pub fn get_worker_status(&self) -> pb::WorkerStatus {
+        let operation_state = self.operation_state.lock().unwrap();
+
+        operation_state.worker_status
     }
 
-    pub fn get_worker_operation_status(&self) -> WorkerStatusResponse_OperationStatus {
-        match self.operation_status.lock() {
-            Err(_) => WorkerStatusResponse_OperationStatus::UNKNOWN,
-            Ok(status) => *status,
-        }
+    pub fn get_worker_operation_status(&self) -> pb::OperationStatus {
+        let operation_state = self.operation_state.lock().unwrap();
+
+        operation_state.operation_status
     }
 
-    pub fn perform_map(&mut self, map_options: PerformMapRequest) -> Result<()> {
-        if self.get_worker_status() == WorkerStatusResponse_WorkerStatus::BUSY {
+    pub fn set_operation_handler_busy(&self) -> Result<()> {
+        let mut operation_state = self.operation_state.lock().unwrap();
+
+        operation_state.worker_status = pb::WorkerStatus::BUSY;
+        operation_state.operation_status = pb::OperationStatus::IN_PROGRESS;
+
+        Ok(())
+    }
+
+    pub fn perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
+        {
+            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
+        }
+
+        info!(
+            "Performing map operation. mapper={} input={}",
+            map_options.mapper_file_path,
+            map_options.input_file_path
+        );
+
+        if self.get_worker_status() == pb::WorkerStatus::BUSY {
             return Err("Worker is busy.".into());
         }
+        self.set_operation_handler_busy().chain_err(
+            || "Couldn't set operation handler busy.",
+        )?;
 
         let file = File::open(map_options.get_input_file_path()).chain_err(
             || "Couldn't open input file.",
@@ -303,21 +373,6 @@ impl OperationHandler {
             || "Couldn't read map input file.",
         )?;
 
-        let worker_status_result = self.worker_status.lock();
-        let operation_status_result = self.operation_status.lock();
-
-        if let Ok(mut worker_status) = worker_status_result {
-            *worker_status = WorkerStatusResponse_WorkerStatus::BUSY;
-        } else {
-            return Err("Failed to lock internal operation_handler values.".into());
-        }
-
-        if let Ok(mut operation_status) = operation_status_result {
-            *operation_status = WorkerStatusResponse_OperationStatus::IN_PROGRESS;
-        } else {
-            return Err("Failed to lock internal operation_handler values.".into());
-        }
-
         let child = Command::new(map_options.get_mapper_file_path())
             .arg("map")
             .stdin(Stdio::piped())
@@ -326,16 +381,24 @@ impl OperationHandler {
             .spawn()
             .chain_err(|| "Failed to start map operation process.")?;
 
-        let operation_status_arc = Arc::clone(&self.operation_status);
-        let worker_status_arc = Arc::clone(&self.worker_status);
-        let map_result_arc = Arc::clone(&self.map_result);
+        let operation_state_arc = Arc::clone(&self.operation_state);
+        let master_interface_arc = Arc::clone(&self.master_interface);
 
-        let map_input = json!({
-            "key": map_options.get_input_file_path(),
-            "value": map_input_value,
-        });
+        let map_input = MapInput {
+            key: map_options.get_input_file_path().to_string(),
+            value: map_input_value,
+        };
 
-        let map_input_str = map_input.to_string();
+        let serialized_map_input = bson::to_bson(&map_input).chain_err(
+            || "Could not serialize map input to bson.",
+        )?;
+
+        let map_input_document;
+        if let bson::Bson::Document(document) = serialized_map_input {
+            map_input_document = document;
+        } else {
+            return Err("Could not convert map input to bson::Document.".into());
+        }
 
         let mut output_path = PathBuf::new();
         output_path.push(WORKER_OUTPUT_DIRECTORY);
@@ -346,126 +409,196 @@ impl OperationHandler {
             || "Failed to create output directory",
         )?;
 
+        let initial_cpu_time = *self.initial_cpu_time.lock().unwrap();
+
         thread::spawn(move || {
             let result = map_operation_thread_impl(
-                &map_input_str,
+                &map_input_document,
                 &*output_path.to_string_lossy(),
                 child,
-                map_result_arc,
             );
+
             match result {
-                Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
-                Err(err) => log_map_operation_err(&err, &worker_status_arc, &operation_status_arc),
+                Ok(mut map_result) => {
+                    map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
+                    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+                        log_map_operation_err(err, &operation_state_arc)
+                    } else {
+                        info!("Map operation completed sucessfully.");
+                        let result = set_complete_status(&operation_state_arc);
+                        if let Err(err) = result {
+                            log_map_operation_err(err, &operation_state_arc)
+                        }
+                    }
+                }
+                Err(err) => {
+                    let mut map_result = pb::MapResult::new();
+                    map_result.set_status(pb::ResultStatus::FAILURE);
+                    map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
+
+                    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+                        error!("Could not send map operation failed: {}", err);
+                    }
+                    log_map_operation_err(err, &operation_state_arc);
+                }
             }
         });
 
         Ok(())
     }
 
-    pub fn get_map_result(&self) -> Result<MapResponse> {
-        match self.map_result.lock() {
-            Err(_) => Err("No map result found.".into()),
-            Ok(result) => {
-                if let Some(ref map_response) = *result {
-                    Ok(map_response.clone())
-                } else {
-                    Err("No map result found.".into())
-                }
-            }
-        }
-    }
+    fn create_reduce_operations(
+        &self,
+        reduce_request: &pb::PerformReduceRequest,
+    ) -> Result<Vec<ReduceOperation>> {
+        let mut reduce_map: HashMap<String, Vec<Value>> = HashMap::new();
 
-    pub fn perform_reduce(&mut self, reduce_options: PerformReduceRequest) -> Result<()> {
-        if self.get_worker_status() == WorkerStatusResponse_WorkerStatus::BUSY {
-            return Err("Worker is busy.".into());
-        }
-
-        let mut reduce_input_values: Vec<String> = Vec::new();
-        for input_file in reduce_options.get_input_file_paths() {
-            let file = File::open(input_file).chain_err(
-                || "Couldn't open reduce input file.",
+        for reduce_input_file in reduce_request.get_input_file_paths() {
+            let file = File::open(reduce_input_file).chain_err(
+                || "Couldn't open input file.",
             )?;
 
             let mut buf_reader = BufReader::new(file);
-            let mut file_contents = String::new();
-            buf_reader.read_to_string(&mut file_contents).chain_err(
-                || "Couldn't read reduce input file.",
+            let mut reduce_input = String::new();
+            buf_reader.read_to_string(&mut reduce_input).chain_err(
+                || "Couldn't read map input file.",
             )?;
 
-            reduce_input_values.push(file_contents);
-        }
+            let parse_value: Value = serde_json::from_str(&reduce_input).chain_err(
+                || "Error parsing map response.",
+            )?;
 
-        let reduce_json_input = json!({
-            "key": reduce_options.get_intermediate_key(),
-            "values": reduce_input_values,
-        });
+            if let Array(ref pairs) = parse_value {
+                for pair in pairs {
+                    let key = pair["key"].as_str().chain_err(
+                        || "Error parsing reduce input.",
+                    )?;
 
-        let reduce_input_str = reduce_json_input.to_string();
+                    let value = pair["value"].clone();
+                    if value.is_null() {
+                        return Err("Error parsing reduce input.".into());
+                    }
 
-        let worker_status_result = self.worker_status.lock();
-        let operation_status_result = self.operation_status.lock();
-
-        if let Ok(mut worker_status) = worker_status_result {
-            *worker_status = WorkerStatusResponse_WorkerStatus::BUSY;
-        } else {
-            return Err("Failed to lock internal operation_handler values.".into());
-        }
-
-        if let Ok(mut operation_status) = operation_status_result {
-            *operation_status = WorkerStatusResponse_OperationStatus::IN_PROGRESS;
-        } else {
-            return Err("Failed to lock internal operation_handler values.".into());
-        }
-
-        let child = Command::new(reduce_options.get_reducer_file_path())
-            .arg("reduce")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .chain_err(|| "Failed to start reduce operation process.")?;
-
-        let operation_status_arc = Arc::clone(&self.operation_status);
-        let worker_status_arc = Arc::clone(&self.worker_status);
-        let reduce_result_arc = Arc::clone(&self.reduce_result);
-
-        let mut output_path = PathBuf::new();
-        output_path.push(WORKER_OUTPUT_DIRECTORY);
-        output_path.push(&self.output_dir_uuid);
-        output_path.push("reduce");
-
-        fs::create_dir_all(output_path.clone()).chain_err(
-            || "Failed to create output directory",
-        )?;
-
-        thread::spawn(move || {
-            let result = reduce_operation_thread_impl(
-                &reduce_input_str,
-                &reduce_options.get_intermediate_key(),
-                &*output_path.to_string_lossy(),
-                child,
-                reduce_result_arc,
-            );
-            match result {
-                Ok(_) => self::set_complete_status(worker_status_arc, operation_status_arc),
-                Err(err) => {
-                    log_reduce_operation_err(&err, &worker_status_arc, &operation_status_arc)
+                    let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);
+                    reduce_array.push(value);
                 }
             }
-        });
+        }
+
+        let mut reduce_operations: Vec<ReduceOperation> = Vec::new();
+        for (intermediate_key, reduce_array) in reduce_map {
+            let reduce_input = ReduceInput {
+                key: intermediate_key.to_owned(),
+                values: reduce_array,
+            };
+            let reduce_operation = ReduceOperation {
+                intermediate_key: intermediate_key.to_owned(),
+                input: serde_json::to_string(&reduce_input).chain_err(
+                    || "Error seralizing reduce operation input.",
+                )?,
+            };
+            reduce_operations.push(reduce_operation);
+        }
+        Ok(reduce_operations)
+    }
+
+    pub fn perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
+        {
+            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
+        }
+
+        info!(
+            "Performing reduce operation. reducer={}",
+            reduce_request.reducer_file_path
+        );
+
+        if self.get_worker_status() == pb::WorkerStatus::BUSY {
+            return Err("Worker is busy.".into());
+        }
+        self.set_operation_handler_busy().chain_err(
+            || "Error performing reduce.",
+        )?;
+
+        let reduce_operations = self.create_reduce_operations(reduce_request).chain_err(
+            || "Error creating reduce operations from input.",
+        )?;
+
+        {
+            let mut reduce_queue = self.reduce_operation_queue.lock().unwrap();
+            reduce_queue.set_queue(reduce_operations);
+        }
+
+        let reduce_options = ReduceOptions {
+            reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
+            output_directory: reduce_request.get_output_directory().to_owned(),
+        };
+
+        self.run_reduce_queue(reduce_options);
+
         Ok(())
     }
 
-    pub fn get_reduce_result(&self) -> Result<ReduceResponse> {
-        match self.reduce_result.lock() {
-            Err(_) => Err("No reduce result found.".into()),
-            Ok(result) => {
-                if let Some(ref reduce_response) = *result {
-                    Ok(reduce_response.clone())
+    fn run_reduce_queue(&self, reduce_options: ReduceOptions) {
+        let reduce_queue = Arc::clone(&self.reduce_operation_queue);
+        let operation_state_arc = Arc::clone(&self.operation_state);
+        let master_interface_arc = Arc::clone(&self.master_interface);
+
+        let initial_cpu_time = *self.initial_cpu_time.lock().unwrap();
+
+        thread::spawn(move || {
+            let mut reduce_complete = false;
+            loop {
+                let mut reduce_queue = reduce_queue.lock().unwrap();
+
+                if reduce_queue.is_queue_empty() {
+                    reduce_complete = true;
+                    break;
                 } else {
-                    Err("No reduce result found.".into())
+                    let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+                    if let Err(err) = result {
+                        log_reduce_operation_err(err, &operation_state_arc);
+                        break;
+                    }
                 }
             }
-        }
+
+            if reduce_complete {
+                let mut response = pb::ReduceResult::new();
+                response.set_status(pb::ResultStatus::SUCCESS);
+                response.set_cpu_time(get_cpu_time() - initial_cpu_time);
+                let result = send_reduce_result(&master_interface_arc, response);
+
+                match result {
+                    Ok(_) => {
+                        let result = set_complete_status(&operation_state_arc);
+                        if let Err(err) = result {
+                            error!("Error setting reduce complete: {}", err);
+                        } else {
+                            info!("Reduce operation completed sucessfully.");
+                        }
+                    }
+                    Err(err) => {
+                        error!("Error sending reduce result: {}", err);
+                        set_failed_status(&operation_state_arc);
+                    }
+                }
+            } else {
+                let mut response = pb::ReduceResult::new();
+                response.set_status(pb::ResultStatus::FAILURE);
+
+                let result = send_reduce_result(&master_interface_arc, response);
+                if let Err(err) = result {
+                    error!("Error sending reduce failed: {}", err);
+                }
+            }
+        });
+    }
+
+    pub fn update_worker_status(&self) -> Result<()> {
+        let worker_status = self.get_worker_status();
+        let operation_status = self.get_worker_operation_status();
+
+        let master_interface = self.master_interface.lock().unwrap();
+        master_interface.update_worker_status(worker_status, operation_status)
     }
 }

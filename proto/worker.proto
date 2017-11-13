@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package worker;
+
+// The WorkerService is implemented by the Master to allow workers to register
+// with the Cluster and update the status of completed map and reduce tasks.
+service WorkerService {
+    // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
+    rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+    // Used by the worker to update it's status on the master.
+    // This request will be used regularly so the master knows that the worker is still alive.
+    rpc UpdateWorkerStatus (UpdateStatusRequest) returns (EmptyMessage);
+
+    // Used by the worker to return the result of a Map operation.
+    rpc ReturnMapResult (MapResult) returns (EmptyMessage);
+
+    // Used by the worker to return the result of a Reduce operation.
+    rpc ReturnReduceResult (ReduceResult) returns (EmptyMessage);
+}
+
+// This message is used when the request or response does not send any data.
+message EmptyMessage {}
+
+message RegisterWorkerRequest {
+    // The workers ip and port where its MRWorkerService is exposed.
+    string worker_address = 1;
+}
+
+message RegisterWorkerResponse {
+  // The id for this worker to be used in future requests.
+  string worker_id = 1;
+}
+
+enum WorkerStatus {
+    AVAILABLE = 0;
+    BUSY = 1;
+};
+
+enum OperationStatus {
+    UNKNOWN = 0;
+    IN_PROGRESS = 1;
+    COMPLETE = 2;
+    FAILED = 3;
+};
+
+message UpdateStatusRequest {
+    WorkerStatus worker_status = 1;
+    // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
+    OperationStatus operation_status = 2;
+
+    string worker_id = 3;
+}
+
+enum ResultStatus {
+    SUCCESS = 0;
+    FAILURE = 1;
+};
+
+message MapResult {
+    ResultStatus status = 1;
+    // The mapping of result partitions to output files if the operation is a success.
+    map<uint64, string> map_results = 2;
+
+    string worker_id = 3;
+    // Total CPU time used for running the map operation
+    uint64 cpu_time = 4;
+}
+
+message ReduceResult {
+    ResultStatus status = 1;
+
+    string worker_id = 2;
+    // Total time spend on the running the reduce operation
+    uint64 cpu_time = 3;
+}
+
+// ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
+service ScheduleOperationService {
+    // Tells a worker to start a map operation with a certain set of data.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
+
+    // Tells a worker to start a reduce operation for a certain partition of the map output.
+    // An error will be returned if the operation is not valid or the worker is busy.
+    rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
+}
+
+message PerformMapRequest {
+    // The path of the input file.
+    string input_file_path = 1;
+    // The path to the binary that performs the map operation.
+    string mapper_file_path = 2;
+}
+
+message PerformReduceRequest {
+    // The intermediate partition to be reduced.
+    uint64 partition = 1;
+    // The file paths of the intermediate files produced by the map operations.
+    repeated string input_file_paths = 2;
+    // The path to the binary that performs the reduce operation.
+    string reducer_file_path = 3;
+    // The path to the output directory.
+    string output_directory = 4;
+}

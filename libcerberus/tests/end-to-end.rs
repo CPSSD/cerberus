@@ -1,6 +1,9 @@
 /// This is a set of integration tests which run against a dummy payload binary living in
 /// `libcerberus/src/bin/end-to-end.rs`.
+#[macro_use]
+extern crate bson;
 
+use std::collections::HashSet;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
@@ -33,8 +36,26 @@ fn run_sanity_check() {
 
 #[test]
 fn run_map_valid_input() {
-    let json_input = r#"{"key":"foo","value":"bar"}"#;
-    let expected_output = r#"{"pairs":[{"key":"bar","value":"test"}]}"#;
+    let bson_input = bson!({
+        "key": "foo",
+        "value":"bar zar"
+    });
+
+    let mut input_buf = Vec::new();
+    if let bson::Bson::Document(document) = bson_input {
+        bson::encode_document(&mut input_buf, &document).unwrap();
+    } else {
+        panic!("Could not convert input to bson::Document.")
+    }
+
+    // The ordering of partitions is not guarenteed.
+    let mut output_set = HashSet::new();
+    let expected_output1 =
+        r#"{"partitions":{"0":[{"key":"bar","value":"test"}],"1":[{"key":"zar","value":"test"}]}}"#;
+    let expected_output2 =
+        r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
+    output_set.insert(expected_output1.to_owned());
+    output_set.insert(expected_output2.to_owned());
 
     let mut child = Command::new(get_bin_path())
         .arg("map")
@@ -48,14 +69,16 @@ fn run_map_valid_input() {
         .stdin
         .as_mut()
         .unwrap()
-        .write_all(json_input.as_bytes())
+        .write_all(&input_buf[..])
         .unwrap();
 
     let output = child.wait_with_output().unwrap();
     let output_str = String::from_utf8(output.stdout).unwrap();
 
+    println!("Output: {}", output_str.to_owned());
+
     assert!(output.status.success());
-    assert_eq!(expected_output, output_str);
+    assert!(output_set.contains(&output_str.to_owned()));
 }
 
 #[test]

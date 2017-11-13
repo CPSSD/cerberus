@@ -6,6 +6,8 @@ extern crate error_chain;
 use cerberus::*;
 use std::str::FromStr;
 
+const MAP_OUTPUT_PARTITIONS: u64 = 15;
+
 struct WordCountMapper;
 impl Map for WordCountMapper {
     type Key = String;
@@ -53,9 +55,16 @@ fn run() -> Result<()> {
 
     let wc_mapper = WordCountMapper;
     let wc_reducer = WordCountReducer;
+    let wc_partitioner = HashPartitioner::new(MAP_OUTPUT_PARTITIONS);
 
     let matches = cerberus::parse_command_line();
-    let registry = cerberus::register_mapper_reducer(&wc_mapper, &wc_reducer);
+
+    let registry = UserImplRegistryBuilder::new()
+        .mapper(&wc_mapper)
+        .reducer(&wc_reducer)
+        .partitioner(&wc_partitioner)
+        .build()
+        .chain_err(|| "Error building UserImplRegistry.")?;
 
     cerberus::run(&matches, &registry)
 }
