@@ -19,7 +19,7 @@ Feature ideas
 * Better/More configurable input file splitting
 * Support for multiple in progress MapReduceJobs to allow better cluster utilization
 * Support for running MapReduceTasks on more than one worker at once
-* Optomizing Worker Performance
+* Optimizing Worker Performance
   * Run multiple tasks on workers with mutliple cores?
   * Don't always start new client library process as this has a lot of overhead
 
