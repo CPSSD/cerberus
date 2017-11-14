@@ -1,4 +1,3 @@
-extern crate cerberus_proto;
 extern crate chrono;
 #[macro_use]
 extern crate clap;
@@ -8,6 +7,8 @@ extern crate grpc;
 #[macro_use]
 extern crate prettytable;
 extern crate uuid;
+
+extern crate cerberus_proto;
 
 use errors::*;
 use std::net::SocketAddr;
