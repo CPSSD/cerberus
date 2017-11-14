@@ -364,6 +364,10 @@ impl MapReduceScheduler {
                 "Task belonging to this job failed too many times.".to_owned(),
             );
         }
+
+        self.map_reduce_in_progress = false;
+        self.in_progress_map_reduce_id = None;
+
         if !self.map_reduce_job_queue.queue_empty() {
             self.process_next_map_reduce().chain_err(
                 || "Error scheduling next map reduce.",
