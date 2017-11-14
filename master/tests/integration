@@ -34,9 +34,11 @@ sleep 1
 
 # Launch a MapReduce using the above data.
 ./cli -m 127.0.0.1:8081 run \
-	-b $PWD/sprint-one-demo \
+	-b $PWD/examples/word-counter \
 	-i $PWD/integration-test/input \
 	-o $PWD/integration-test/output
+
+./cli -m [::]:8081 cluster_status
 
 # Launch the CLI to monitor status.
 echo "Launching CLI."
@@ -63,4 +65,3 @@ done
 
 # Cleanup.
 rm -rf integration_test
-
