@@ -2,6 +2,11 @@ syntax = "proto3";
 
 package worker;
 
+// This message is used when the request or response does not send any data.
+message EmptyMessage {}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // The WorkerService is implemented by the Master to allow workers to register
 // with the Cluster and update the status of completed map and reduce tasks.
 service WorkerService {
@@ -18,9 +23,6 @@ service WorkerService {
     // Used by the worker to return the result of a Reduce operation.
     rpc ReturnReduceResult (ReduceResult) returns (EmptyMessage);
 }
-
-// This message is used when the request or response does not send any data.
-message EmptyMessage {}
 
 message RegisterWorkerRequest {
     // The workers ip and port where its MRWorkerService is exposed.
@@ -75,6 +77,8 @@ message ReduceResult {
     uint64 cpu_time = 3;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 // ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
 service ScheduleOperationService {
     // Tells a worker to start a map operation with a certain set of data.
@@ -96,10 +100,35 @@ message PerformMapRequest {
 message PerformReduceRequest {
     // The intermediate partition to be reduced.
     uint64 partition = 1;
+    // Worker which stores the intermediate values for the partition
+    string partition_location = 2;
     // The file paths of the intermediate files produced by the map operations.
-    repeated string input_file_paths = 2;
+    repeated string input_file_paths = 3;
     // The path to the binary that performs the reduce operation.
-    string reducer_file_path = 3;
+    string reducer_file_path = 4;
     // The path to the output directory.
-    string output_directory = 4;
+    string output_directory = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// IntermediateDataService allows reduce worker to get intemediate data from
+// workers.
+service IntermediateDataService {
+  rpc GetIntermediateData (GetIntermediateDataRequest) returns (Partition);
+}
+
+message GetIntermediateDataRequest {
+  // Partition to load
+  uint64 partition = 1;
+}
+
+message IntermediateData {
+  string key = 1;
+  string value = 2;
+}
+
+message Partition {
+  // Intermediate key and its corresponding value.
+  repeated IntermediateData data = 1;
 }
