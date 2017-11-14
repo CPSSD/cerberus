@@ -1,12 +1,13 @@
+extern crate cerberus_proto;
+extern crate chrono;
 #[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
+extern crate grpc;
 #[macro_use]
 extern crate prettytable;
-extern crate grpc;
-extern crate chrono;
-extern crate cerberus_proto;
+extern crate uuid;
 
 use errors::*;
 use std::net::SocketAddr;
