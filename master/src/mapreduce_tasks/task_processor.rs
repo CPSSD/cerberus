@@ -81,7 +81,9 @@ impl TaskProcessor {
 
         let buf_reader = BufReader::new(input_file);
         for line in buf_reader.lines() {
-            let read_str = line.chain_err(|| "Error reading Map input.")?;
+            let mut read_str = line.chain_err(|| "Error reading Map input.")?;
+            read_str.push_str("\n");
+
             map_task_file
                 .file
                 .write_all(read_str.as_bytes())
