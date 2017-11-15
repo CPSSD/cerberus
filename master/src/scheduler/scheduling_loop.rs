@@ -108,29 +108,29 @@ fn assign_worker_task<I>(
 ) where
     I: WorkerInterface + Send + Sync + 'static,
 {
-    match task.get_task_type() {
+    match task.task_type {
         TaskType::Map => {
             let map_request = {
-                match task.get_perform_map_request() {
+                match task.perform_map_request {
                     None => {
                         error!("Error assigning task: Map request not found.");
                         handle_assign_task_failure(&scheduler_resources, &task_assignment);
                         return;
                     }
-                    Some(req) => req,
+                    Some(ref req) => req.clone(),
                 }
             };
             assign_worker_map_task(scheduler_resources, task_assignment, map_request)
         }
         TaskType::Reduce => {
             let reduce_request = {
-                match task.get_perform_reduce_request() {
+                match task.perform_reduce_request {
                     None => {
                         error!("Error assigning task: Reduce request not found.");
                         handle_assign_task_failure(&scheduler_resources, &task_assignment);
                         return;
                     }
-                    Some(req) => req,
+                    Some(ref req) => req.clone(),
                 }
             };
             assign_worker_reduce_task(scheduler_resources, task_assignment, reduce_request);
@@ -182,14 +182,14 @@ fn do_scheduling_loop_step<I>(
             }
         };
 
-        worker.set_current_task_id(task.get_task_id());
+        worker.set_current_task_id(task.task_id.to_owned());
         worker.set_operation_status(pb::OperationStatus::IN_PROGRESS);
 
-        task.set_assigned_worker_id(worker.get_worker_id());
-        task.set_status(MapReduceTaskStatus::InProgress);
+        task.assigned_worker_id = worker.get_worker_id().to_owned();
+        task.status = MapReduceTaskStatus::InProgress;
 
         let task_assignment = TaskAssignment {
-            task_id: task.get_task_id().to_owned(),
+            task_id: task.task_id.to_owned(),
             worker_id: worker.get_worker_id().to_owned(),
         };
 
@@ -405,7 +405,7 @@ mod tests {
         let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
 
         let worker_id = worker.get_worker_id().to_owned();
-        let task_id = map_task.get_task_id().to_owned();
+        let task_id = map_task.task_id.to_owned();
 
         let map_reduce_scheduler = create_map_reduce_scheduler(map_task);
         let worker_interface = WorkerInterfaceStub;

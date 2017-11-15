@@ -153,7 +153,7 @@ impl TaskProcessorTrait for TaskProcessor {
         let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
         for completed_map in completed_map_tasks {
-            for (partition, output_file) in completed_map.get_map_output_files() {
+            for (partition, output_file) in completed_map.map_output_files.iter() {
                 let map_results: &mut Vec<String> =
                     key_results_map.entry(*partition).or_insert_with(Vec::new);
                 map_results.push(output_file.to_owned());
@@ -214,13 +214,10 @@ mod tests {
             task_processor.create_map_tasks(&map_reduce_job).unwrap();
 
         assert_eq!(map_tasks.len(), 1);
-        assert_eq!(map_tasks[0].get_task_type(), TaskType::Map);
-        assert_eq!(
-            map_tasks[0].get_map_reduce_id(),
-            map_reduce_job.map_reduce_id
-        );
+        assert_eq!(map_tasks[0].task_type, TaskType::Map);
+        assert_eq!(map_tasks[0].map_reduce_id, map_reduce_job.map_reduce_id);
 
-        let perform_map_req = map_tasks[0].get_perform_map_request().unwrap();
+        let perform_map_req = map_tasks[0].perform_map_request.clone().unwrap();
 
         assert_eq!(
             map_reduce_job.binary_path,
@@ -256,11 +253,20 @@ mod tests {
         }).unwrap();
 
         let mut map_task1 = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
-        map_task1.insert_map_output_file(0, "/tmp/output/1");
-        map_task1.insert_map_output_file(1, "/tmp/output/2");
+        map_task1.map_output_files.insert(
+            0,
+            "/tmp/output/1".to_owned(),
+        );
+        map_task1.map_output_files.insert(
+            1,
+            "/tmp/output/2".to_owned(),
+        );
 
         let mut map_task2 = MapReduceTask::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
-        map_task2.insert_map_output_file(0, "/tmp/output/3");
+        map_task2.map_output_files.insert(
+            0,
+            "/tmp/output/3".to_owned(),
+        );
 
         let map_tasks: Vec<&MapReduceTask> = vec![&map_task1, &map_task2];
         let mut reduce_tasks: Vec<MapReduceTask> = task_processor
@@ -268,31 +274,25 @@ mod tests {
             .unwrap();
 
         reduce_tasks.sort_by_key(|task| {
-            task.get_perform_reduce_request().unwrap().get_partition()
+            task.perform_reduce_request.clone().unwrap().get_partition()
         });
 
         assert_eq!(2, reduce_tasks.len());
 
-        let reduce_req1 = reduce_tasks[0].get_perform_reduce_request().unwrap();
-        let reduce_req2 = reduce_tasks[1].get_perform_reduce_request().unwrap();
+        let reduce_req1 = reduce_tasks[0].perform_reduce_request.clone().unwrap();
+        let reduce_req2 = reduce_tasks[1].perform_reduce_request.clone().unwrap();
 
         assert_eq!(0, reduce_req1.get_partition());
-        assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
-        assert_eq!(
-            map_reduce_job.map_reduce_id,
-            reduce_tasks[0].get_map_reduce_id()
-        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[0].task_type);
+        assert_eq!(map_reduce_job.map_reduce_id, reduce_tasks[0].map_reduce_id);
         assert_eq!(
             vec!["/tmp/output/1", "/tmp/output/3"],
             reduce_req1.get_input_file_paths()
         );
 
         assert_eq!(1, reduce_req2.get_partition());
-        assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
-        assert_eq!(
-            map_reduce_job.map_reduce_id,
-            reduce_tasks[1].get_map_reduce_id()
-        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[1].task_type);
+        assert_eq!(map_reduce_job.map_reduce_id, reduce_tasks[1].map_reduce_id);
         assert_eq!(vec!["/tmp/output/2"], reduce_req2.get_input_file_paths());
     }
 }

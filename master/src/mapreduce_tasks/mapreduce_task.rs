@@ -27,23 +27,23 @@ pub enum TaskType {
 /// This is the unit of work that is processed by a worker.
 #[derive(Clone)]
 pub struct MapReduceTask {
-    task_type: TaskType,
-    map_reduce_id: String,
-    task_id: String,
+    pub task_type: TaskType,
+    pub map_reduce_id: String,
+    pub task_id: String,
 
     // This will only exist if TaskType is Map.
-    perform_map_request: Option<pb::PerformMapRequest>,
+    pub perform_map_request: Option<pb::PerformMapRequest>,
     // This will only exist if TaskType is Reduce.
-    perform_reduce_request: Option<pb::PerformReduceRequest>,
+    pub perform_reduce_request: Option<pb::PerformReduceRequest>,
 
     // A map of partition to output file.
-    map_output_files: HashMap<u64, String>,
+    pub map_output_files: HashMap<u64, String>,
 
-    assigned_worker_id: String,
-    status: MapReduceTaskStatus,
+    pub assigned_worker_id: String,
+    pub status: MapReduceTaskStatus,
 
     // Number of times this task has failed in the past.
-    failure_count: u16,
+    pub failure_count: u16,
 }
 
 impl MapReduceTask {
@@ -151,69 +151,6 @@ impl MapReduceTask {
 
         Ok(task)
     }
-
-    pub fn get_task_type(&self) -> TaskType {
-        self.task_type.clone()
-    }
-
-    pub fn get_map_reduce_id(&self) -> &str {
-        &self.map_reduce_id
-    }
-
-    pub fn get_task_id(&self) -> &str {
-        &self.task_id
-    }
-
-    pub fn get_perform_map_request(&self) -> Option<pb::PerformMapRequest> {
-        self.perform_map_request.clone()
-    }
-
-    pub fn get_perform_reduce_request(&self) -> Option<pb::PerformReduceRequest> {
-        self.perform_reduce_request.clone()
-    }
-
-    pub fn get_map_output_files(&self) -> &HashMap<u64, String> {
-        &self.map_output_files
-    }
-
-    pub fn insert_map_output_file<S: Into<String>>(
-        &mut self,
-        output_partition: u64,
-        output_file: S,
-    ) {
-        self.map_output_files.insert(
-            output_partition,
-            output_file.into(),
-        );
-    }
-
-    //TODO(conor): Remove this when get_assigned_worker_id is used.
-    #[allow(dead_code)]
-    pub fn get_assigned_worker_id(&self) -> &str {
-        &self.assigned_worker_id
-    }
-
-    pub fn set_assigned_worker_id<S: Into<String>>(&mut self, worker_id: S) {
-        self.assigned_worker_id = worker_id.into();
-    }
-
-    //TODO(conor): Remove this when get_status is used.
-    #[allow(dead_code)]
-    pub fn get_status(&self) -> MapReduceTaskStatus {
-        self.status.clone()
-    }
-
-    pub fn set_status(&mut self, new_status: MapReduceTaskStatus) {
-        self.status = new_status;
-    }
-
-    pub fn failure_count(&self) -> u16 {
-        self.failure_count
-    }
-
-    pub fn failure_count_mut(&mut self) -> &mut u16 {
-        &mut self.failure_count
-    }
 }
 
 impl StateHandling for MapReduceTask {
@@ -290,11 +227,11 @@ impl QueuedWork for MapReduceTask {
     type Key = String;
 
     fn get_work_bucket(&self) -> String {
-        self.get_map_reduce_id().to_owned()
+        self.map_reduce_id.to_owned()
     }
 
     fn get_work_id(&self) -> String {
-        self.get_task_id().to_owned()
+        self.task_id.to_owned()
     }
 }
 
@@ -314,24 +251,24 @@ mod tests {
             "/tmp/output/",
         );
 
-        assert_eq!(map_task.get_task_type(), TaskType::Map);
-        assert_eq!(reduce_task.get_task_type(), TaskType::Reduce);
+        assert_eq!(map_task.task_type, TaskType::Map);
+        assert_eq!(reduce_task.task_type, TaskType::Reduce);
     }
 
     #[test]
     fn test_get_map_reduce_id() {
         let map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
-        assert_eq!(map_task.get_map_reduce_id(), "map-1");
+        assert_eq!(map_task.map_reduce_id, "map-1");
     }
 
     #[test]
     fn test_map_task_request() {
         let map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/file1");
-        let map_request = map_task.get_perform_map_request().unwrap();
+        let map_request = map_task.perform_map_request.unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
         assert_eq!("/tmp/input/file1", map_request.get_input_file_path());
-        assert!(map_task.get_perform_reduce_request().is_none());
+        assert!(map_task.perform_reduce_request.is_none());
     }
 
     #[test]
@@ -343,32 +280,32 @@ mod tests {
             vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
             "/tmp/output/",
         );
-        let reduce_request = reduce_task.get_perform_reduce_request().unwrap();
+        let reduce_request = reduce_task.perform_reduce_request.unwrap();
 
         assert_eq!("/tmp/bin", reduce_request.get_reducer_file_path());
         assert_eq!(0, reduce_request.get_partition());
         assert_eq!("/tmp/input/file1", reduce_request.get_input_file_paths()[0]);
         assert_eq!("/tmp/input/file2", reduce_request.get_input_file_paths()[1]);
         assert_eq!("/tmp/output/", reduce_request.get_output_directory());
-        assert!(reduce_task.get_perform_map_request().is_none());
+        assert!(reduce_task.perform_map_request.is_none());
     }
 
     #[test]
     fn test_set_output_files() {
         let mut map_task = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/bin/input");
 
-        map_task.insert_map_output_file(0, "output_file_1");
-        {
-            let output_files = map_task.get_map_output_files();
-            assert_eq!("output_file_1", output_files.get(&0).unwrap());
-        }
+        map_task.map_output_files.insert(
+            0,
+            "output_file_1".to_owned(),
+        );
+        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
 
-        map_task.insert_map_output_file(1, "output_file_2");
-        {
-            let output_files = map_task.get_map_output_files();
-            assert_eq!("output_file_1", output_files.get(&0).unwrap());
-            assert_eq!("output_file_2", output_files.get(&1).unwrap());
-        }
+        map_task.map_output_files.insert(
+            1,
+            "output_file_2".to_owned(),
+        );
+        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
+        assert_eq!("output_file_2", map_task.map_output_files.get(&1).unwrap());
     }
 
     #[test]
@@ -381,10 +318,10 @@ mod tests {
             "/tmp/output/",
         );
         // Assert assigned worker id starts as an empty string.
-        assert_eq!(reduce_task.get_assigned_worker_id(), "");
+        assert_eq!(reduce_task.assigned_worker_id, "");
 
-        reduce_task.set_assigned_worker_id("worker-1");
-        assert_eq!(reduce_task.get_assigned_worker_id(), "worker-1");
+        reduce_task.assigned_worker_id = "worker-1".to_owned();
+        assert_eq!(reduce_task.assigned_worker_id, "worker-1");
     }
 
     #[test]
@@ -397,11 +334,11 @@ mod tests {
             "/tmp/output/",
         );
         // Assert that the default status for a task is Queued.
-        assert_eq!(reduce_task.get_status(), MapReduceTaskStatus::Queued);
+        assert_eq!(reduce_task.status, MapReduceTaskStatus::Queued);
 
         // Set the status to Completed and assert success.
-        reduce_task.set_status(MapReduceTaskStatus::Complete);
-        assert_eq!(reduce_task.get_status(), MapReduceTaskStatus::Complete);
+        reduce_task.status = MapReduceTaskStatus::Complete;
+        assert_eq!(reduce_task.status, MapReduceTaskStatus::Complete);
     }
 
     #[test]
@@ -415,6 +352,6 @@ mod tests {
         );
 
         assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
-        assert_eq!(reduce_task.get_work_id(), reduce_task.get_task_id());
+        assert_eq!(reduce_task.get_work_id(), reduce_task.task_id);
     }
 }
