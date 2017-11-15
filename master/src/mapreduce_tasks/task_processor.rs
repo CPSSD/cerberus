@@ -73,12 +73,6 @@ impl TaskProcessor {
         output_directory: &PathBuf,
         map_tasks: &mut Vec<MapReduceTask>,
     ) -> Result<()> {
-        if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
-            map_task_file.file.write_all(b"\n").chain_err(
-                || "Error writing line break to file",
-            )?;
-        }
-
         let buf_reader = BufReader::new(input_file);
         for line in buf_reader.lines() {
             let mut read_str = line.chain_err(|| "Error reading Map input.")?;
@@ -241,10 +235,10 @@ mod tests {
         // Either input file order is fine.
         let mut good_inputs = HashSet::new();
         good_inputs.insert(
-            "this is the first test file\nthis is the second test file".to_owned(),
+            "this is the first test file\nthis is the second test file\n".to_owned(),
         );
         good_inputs.insert(
-            "this is the second test file\nthis is the first test file".to_owned(),
+            "this is the second test file\nthis is the first test file\n".to_owned(),
         );
 
         assert!(good_inputs.contains(&map_input));
