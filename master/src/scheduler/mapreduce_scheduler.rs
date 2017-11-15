@@ -181,26 +181,36 @@ impl MapReduceScheduler {
             map_reduce_id
         );
 
-        let map_reduce_job = self.map_reduce_job_queue
-            .get_work_by_id_mut(&map_reduce_id.to_owned())
-            .chain_err(|| "Error creating reduce tasks.")?;
-
-        let reduce_tasks = {
-            let map_tasks = self.map_reduce_task_queue
-                .get_work_bucket_items(&map_reduce_id.to_owned())
+        let reduce_tasks_total = {
+            let map_reduce_job = self.map_reduce_job_queue
+                .get_work_by_id_mut(&map_reduce_id.to_owned())
                 .chain_err(|| "Error creating reduce tasks.")?;
 
-            self.task_processor
-                .create_reduce_tasks(map_reduce_job, map_tasks.as_slice())
-                .chain_err(|| "Error creating reduce tasks.")?
+            let reduce_tasks = {
+                let map_tasks = self.map_reduce_task_queue
+                    .get_work_bucket_items(&map_reduce_id.to_owned())
+                    .chain_err(|| "Error creating reduce tasks.")?;
+
+                self.task_processor
+                    .create_reduce_tasks(map_reduce_job, map_tasks.as_slice())
+                    .chain_err(|| "Error creating reduce tasks.")?
+            };
+
+            map_reduce_job.reduce_tasks_total = reduce_tasks.len() as u32;
+
+            for reduce_task in reduce_tasks {
+                self.map_reduce_task_queue
+                    .add_to_store(Box::new(reduce_task))
+                    .chain_err(|| "Error adding reduce task to store.")?;
+            }
+
+            map_reduce_job.reduce_tasks_total
         };
 
-        map_reduce_job.reduce_tasks_total = reduce_tasks.len() as u32;
-
-        for reduce_task in reduce_tasks {
-            self.map_reduce_task_queue
-                .add_to_store(Box::new(reduce_task))
-                .chain_err(|| "Error adding reduce task to store.")?;
+        if reduce_tasks_total == 0 {
+            self.complete_current_job().chain_err(
+                || "Error completing map reduce job.",
+            )?;
         }
 
         Ok(())
@@ -265,6 +275,39 @@ impl MapReduceScheduler {
         Ok(())
     }
 
+    fn complete_current_job(&mut self) -> Result<()> {
+        let job_id = self.get_in_progress_map_reduce_id().chain_err(
+            || "Unable to get ID of in-progress job.",
+        )?;
+
+        {
+            let map_reduce_job = self.map_reduce_job_queue
+                .get_work_by_id_mut(&job_id)
+                .chain_err(|| "Mapreduce job not found in queue.")?;
+
+            self.map_reduce_task_queue
+                .remove_work_bucket(&map_reduce_job.get_work_id())
+                .chain_err(|| "Error marking map reduce job as complete.")?;
+
+            map_reduce_job.status = MapReduceJobStatus::DONE;
+            map_reduce_job.time_completed = Some(Utc::now());
+
+            info!("Completed Map Reduce Job ({}).", job_id);
+            info!("Total CPU time used: {}", map_reduce_job.cpu_time);
+        }
+
+        self.map_reduce_in_progress = false;
+        self.in_progress_map_reduce_id = None;
+
+        if self.map_reduce_job_queue.queue_size() > 0 {
+            self.process_next_map_reduce().chain_err(
+                || "Error incrementing completed reduce tasks.",
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// `increment_reduce_tasks_completed` increments the completed reduce tasks for a given job.
     /// If all the reduce tasks have been completed it will make the next `MapReduceJob` in the
     /// queue active, if one exists.
@@ -273,38 +316,21 @@ impl MapReduceScheduler {
         map_reduce_id: &str,
         cpu_time: u64,
     ) -> Result<()> {
-        let mut total_cpu_time: u64 = 0;
         let completed_map_reduce: bool = {
             let map_reduce_job = self.map_reduce_job_queue
                 .get_work_by_id_mut(&map_reduce_id.to_owned())
                 .chain_err(|| "Mapreduce job not found in queue.")?;
 
             map_reduce_job.reduce_tasks_completed += 1;
+            map_reduce_job.cpu_time += cpu_time;
 
-            if map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total {
-                self.map_reduce_task_queue
-                    .remove_work_bucket(&map_reduce_job.get_work_id())
-                    .chain_err(|| "Error marking map reduce job as complete.")?;
-                map_reduce_job.status = MapReduceJobStatus::DONE;
-                map_reduce_job.time_completed = Some(Utc::now());
-                map_reduce_job.cpu_time += cpu_time;
-                total_cpu_time = map_reduce_job.cpu_time;
-            }
             map_reduce_job.reduce_tasks_completed == map_reduce_job.reduce_tasks_total
         };
 
         if completed_map_reduce {
-            info!("Completed Map Reduce Job ({}).", map_reduce_id);
-            info!("Total CPU time used: {}", total_cpu_time);
-
-            self.map_reduce_in_progress = false;
-            self.in_progress_map_reduce_id = None;
-
-            if self.map_reduce_job_queue.queue_size() > 0 {
-                self.process_next_map_reduce().chain_err(
-                    || "Error incrementing completed reduce tasks.",
-                )?;
-            }
+            self.complete_current_job().chain_err(
+                || "Error completing current job.",
+            )?;
         }
         Ok(())
     }
