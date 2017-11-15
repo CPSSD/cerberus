@@ -125,6 +125,16 @@ fn send_map_result(
     Ok(())
 }
 
+fn failure_details_from_error(err: &Error) -> String {
+    let mut failure_details = format!("{}", err);
+
+    for e in err.iter().skip(1) {
+        failure_details.push_str("\n");
+        failure_details.push_str(&format!("caused by: {}", e));
+    }
+    failure_details
+}
+
 fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMap<u64, String>> {
     let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
@@ -435,6 +445,7 @@ impl OperationHandler {
                     let mut map_result = pb::MapResult::new();
                     map_result.set_status(pb::ResultStatus::FAILURE);
                     map_result.set_cpu_time(get_cpu_time() - initial_cpu_time);
+                    map_result.set_failure_details(failure_details_from_error(&err));
 
                     if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                         error!("Could not send map operation failed: {}", err);
@@ -546,23 +557,33 @@ impl OperationHandler {
         let initial_cpu_time = *self.initial_cpu_time.lock().unwrap();
 
         thread::spawn(move || {
-            let mut reduce_complete = false;
+            let mut reduce_err = None;
             loop {
                 let mut reduce_queue = reduce_queue.lock().unwrap();
 
                 if reduce_queue.is_queue_empty() {
-                    reduce_complete = true;
                     break;
                 } else {
                     let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
                     if let Err(err) = result {
-                        log_reduce_operation_err(err, &operation_state_arc);
+                        reduce_err = Some(err);
                         break;
                     }
                 }
             }
 
-            if reduce_complete {
+            if let Some(err) = reduce_err {
+                let mut response = pb::ReduceResult::new();
+                response.set_status(pb::ResultStatus::FAILURE);
+                response.set_failure_details(failure_details_from_error(&err));
+
+                let result = send_reduce_result(&master_interface_arc, response);
+                if let Err(err) = result {
+                    error!("Error sending reduce failed: {}", err);
+                }
+
+                log_reduce_operation_err(err, &operation_state_arc);
+            } else {
                 let mut response = pb::ReduceResult::new();
                 response.set_status(pb::ResultStatus::SUCCESS);
                 response.set_cpu_time(get_cpu_time() - initial_cpu_time);
@@ -581,14 +602,6 @@ impl OperationHandler {
                         error!("Error sending reduce result: {}", err);
                         set_failed_status(&operation_state_arc);
                     }
-                }
-            } else {
-                let mut response = pb::ReduceResult::new();
-                response.set_status(pb::ResultStatus::FAILURE);
-
-                let result = send_reduce_result(&master_interface_arc, response);
-                if let Err(err) = result {
-                    error!("Error sending reduce failed: {}", err);
                 }
             }
         });
