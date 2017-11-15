@@ -169,8 +169,8 @@ impl MapReduceScheduler {
             .get_work_by_id_mut(&task_id.to_owned())
             .chain_err(|| "Error unschuling map reduce task")?;
 
-        task.set_assigned_worker_id(String::new());
-        task.set_status(MapReduceTaskStatus::Queued);
+        task.assigned_worker_id = String::new();
+        task.status = MapReduceTaskStatus::Queued;
 
         Ok(())
     }
@@ -236,7 +236,7 @@ impl MapReduceScheduler {
         map_task_id: &str,
         map_response: &pb::MapResult,
     ) -> Result<()> {
-        if map_response.get_status() == pb::ResultStatus::SUCCESS {
+        if map_response.status == pb::ResultStatus::SUCCESS {
             let map_reduce_id = {
                 let map_task = self.map_reduce_task_queue
                     .get_work_by_id_mut(&map_task_id.to_owned())
@@ -244,15 +244,18 @@ impl MapReduceScheduler {
 
                 // TODO(conor): When we add retrying for map tasks after reduce tasks have already
                 // been completed, add some logic here to update the input of those reduce jobs.
-                if map_task.get_status() == MapReduceTaskStatus::Complete {
+                if map_task.status == MapReduceTaskStatus::Complete {
                     return Ok(());
                 }
 
-                map_task.set_status(MapReduceTaskStatus::Complete);
+                map_task.status = MapReduceTaskStatus::Complete;
                 for (partition, output_file) in map_response.get_map_results() {
-                    map_task.insert_map_output_file(*partition, output_file.to_owned());
+                    map_task.map_output_files.insert(
+                        *partition,
+                        output_file.to_owned(),
+                    );
                 }
-                map_task.get_map_reduce_id().to_owned()
+                map_task.map_reduce_id.to_owned()
             };
             self.increment_map_tasks_completed(&map_reduce_id, map_response.get_cpu_time())
                 .chain_err(|| "Error marking map task as completed.")?;
@@ -325,12 +328,12 @@ impl MapReduceScheduler {
 
                 // If a result for a reduce task has already been returned, make sure we don't
                 // increment completed reduce tasks again.
-                if reduce_task.get_status() == MapReduceTaskStatus::Complete {
+                if reduce_task.status == MapReduceTaskStatus::Complete {
                     return Ok(());
                 }
 
-                reduce_task.set_status(MapReduceTaskStatus::Complete);
-                reduce_task.get_map_reduce_id().to_owned()
+                reduce_task.status = MapReduceTaskStatus::Complete;
+                reduce_task.map_reduce_id.to_owned()
             };
 
             self.increment_reduce_tasks_completed(&map_reduce_id, reduce_response.get_cpu_time())
@@ -345,7 +348,7 @@ impl MapReduceScheduler {
     }
 
     fn task_exceeds_failure_threshold(&self, task: &MapReduceTask) -> bool {
-        task.failure_count() >= TASK_FAILURE_THRESHOLD
+        task.failure_count >= TASK_FAILURE_THRESHOLD
     }
 
     fn fail_current_job(&mut self) -> Result<()> {
@@ -381,7 +384,7 @@ impl MapReduceScheduler {
             let task_mut = self.map_reduce_task_queue
                 .get_work_by_id_mut(&task_id.to_owned())
                 .chain_err(|| "Error fetching map task.")?;
-            *task_mut.failure_count_mut() += 1;
+            task_mut.failure_count += 1;
         }
         let task = self.map_reduce_task_queue
             .get_work_by_id(&task_id.to_owned())
@@ -687,7 +690,7 @@ mod tests {
 
         // Process response for map task
         map_reduce_scheduler
-            .process_map_task_response(map_task1.get_task_id(), &map_response)
+            .process_map_task_response(&map_task1.task_id, &map_response)
             .unwrap();
 
         {
@@ -702,14 +705,14 @@ mod tests {
                 .unwrap();
 
             assert_eq!(1, map_reduce_job.map_tasks_completed);
-            assert_eq!(MapReduceTaskStatus::Complete, map_task1.get_status());
+            assert_eq!(MapReduceTaskStatus::Complete, map_task1.status);
             assert_eq!(
                 "/tmp/worker/intermediate1",
-                map_task1.get_map_output_files().get(&0).unwrap()
+                map_task1.map_output_files.get(&0).unwrap()
             );
             assert_eq!(
                 "/tmp/worker/intermediate2",
-                map_task1.get_map_output_files().get(&1).unwrap()
+                map_task1.map_output_files.get(&1).unwrap()
             );
             assert_eq!(2, map_reduce_scheduler.map_reduce_task_queue.queue_size());
         }
@@ -719,7 +722,7 @@ mod tests {
 
         // Process response for reduce task 1.
         map_reduce_scheduler
-            .process_reduce_task_response(reduce_task1.get_task_id(), &reduce_response1)
+            .process_reduce_task_response(&reduce_task1.task_id, &reduce_response1)
             .unwrap();
 
         {
@@ -734,12 +737,12 @@ mod tests {
                 .unwrap();
 
             assert_eq!(1, map_reduce_job.reduce_tasks_completed);
-            assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.get_status());
+            assert_eq!(MapReduceTaskStatus::Complete, reduce_task1.status);
 
         }
 
         map_reduce_scheduler
-            .process_reduce_task_response(reduce_task2.get_task_id(), &reduce_response2)
+            .process_reduce_task_response(&reduce_task2.task_id, &reduce_response2)
             .unwrap();
 
         let map_reduce_job = map_reduce_scheduler
