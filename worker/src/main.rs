@@ -59,6 +59,8 @@ fn register_worker(
 ) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
+        retries -= 1;
+
         let mut interface = master_interface.lock().unwrap();
         match interface.register_worker(address) {
             Ok(_) => break,
@@ -72,7 +74,6 @@ fn register_worker(
         thread::sleep(time::Duration::from_millis(
             WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS,
         ));
-        retries -= 1;
     }
 
     Ok(())
