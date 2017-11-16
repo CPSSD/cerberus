@@ -346,19 +346,16 @@ impl OperationHandler {
         operation_state.operation_status
     }
 
-    pub fn set_operation_handler_busy(&self) -> Result<()> {
+    pub fn set_operation_handler_busy(&self) {
         let mut operation_state = self.operation_state.lock().unwrap();
 
         operation_state.worker_status = pb::WorkerStatus::BUSY;
         operation_state.operation_status = pb::OperationStatus::IN_PROGRESS;
-
-        Ok(())
     }
 
+    // Public api for performing a map task.
     pub fn perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
-        {
-            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
-        }
+        *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
 
         info!(
             "Performing map operation. mapper={} input={}",
@@ -367,12 +364,21 @@ impl OperationHandler {
         );
 
         if self.get_worker_status() == pb::WorkerStatus::BUSY {
+            warn!("Map operation requested while worker is busy");
             return Err("Worker is busy.".into());
         }
-        self.set_operation_handler_busy().chain_err(
-            || "Couldn't set operation handler busy.",
-        )?;
+        self.set_operation_handler_busy();
 
+        if let Err(err) = self.do_perform_map(map_options) {
+            log_map_operation_err(err, &self.operation_state);
+            return Err("Error starting map operation.".into());
+        }
+        Ok(())
+    }
+
+    // Internal implementation for performing a map task.
+    // TODO: Split this function into smaller pieces (https://github.com/CPSSD/cerberus/issues/281)
+    fn do_perform_map(&mut self, map_options: &pb::PerformMapRequest) -> Result<()> {
         let file = File::open(map_options.get_input_file_path()).chain_err(
             || "Couldn't open input file.",
         )?;
@@ -513,10 +519,9 @@ impl OperationHandler {
         Ok(reduce_operations)
     }
 
+    // Public api for performing a reduce task.
     pub fn perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
-        {
-            *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
-        }
+        *self.initial_cpu_time.lock().unwrap() = get_cpu_time();
 
         info!(
             "Performing reduce operation. reducer={}",
@@ -524,12 +529,20 @@ impl OperationHandler {
         );
 
         if self.get_worker_status() == pb::WorkerStatus::BUSY {
+            warn!("Reduce operation requested while worker is busy");
             return Err("Worker is busy.".into());
         }
-        self.set_operation_handler_busy().chain_err(
-            || "Error performing reduce.",
-        )?;
+        self.set_operation_handler_busy();
 
+        if let Err(err) = self.do_perform_reduce(reduce_request) {
+            log_reduce_operation_err(err, &self.operation_state);
+            return Err("Error starting reduce operation.".into());
+        }
+        Ok(())
+    }
+
+    // Internal implementation for performing a reduce task.
+    fn do_perform_reduce(&mut self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
         let reduce_operations = self.create_reduce_operations(reduce_request).chain_err(
             || "Error creating reduce operations from input.",
         )?;
