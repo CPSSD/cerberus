@@ -179,7 +179,7 @@ fn print_table(rep: &pb::MapReduceReport) {
             )
         }
         pb::Status::IN_QUEUE => format!("IN_QUEUE ({})", rep.get_queue_length()),
-        pb::Status::FAILED => format!("FAILED ({})", rep.get_failure_details()).to_owned(),
+        pb::Status::FAILED => format!("FAILED\n{}", rep.get_failure_details()).to_owned(),
     };
 
     table!(["MRID", id], ["Status", status], ["Output", output]).printstd();

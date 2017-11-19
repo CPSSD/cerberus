@@ -44,6 +44,7 @@ pub struct MapReduceTask {
 
     // Number of times this task has failed in the past.
     pub failure_count: u16,
+    pub failure_details: Option<String>,
 }
 
 impl MapReduceTask {
@@ -67,6 +68,7 @@ impl MapReduceTask {
             status: MapReduceTaskStatus::Queued,
 
             failure_count: 0,
+            failure_details: None,
         }
     }
 
@@ -120,6 +122,7 @@ impl MapReduceTask {
             status: MapReduceTaskStatus::Queued,
 
             failure_count: 0,
+            failure_details: None,
         }
     }
 
@@ -202,6 +205,7 @@ impl StateHandling for MapReduceTask {
             "assigned_worker_id": self.assigned_worker_id,
             "status": self.status,
             "failure_count": self.failure_count,
+            "failure_details": self.failure_details,
         }))
     }
 
@@ -218,6 +222,8 @@ impl StateHandling for MapReduceTask {
         )?;
         self.failure_count = serde_json::from_value(data["failure_count"].clone())
             .chain_err(|| "Unable to convert failure_count")?;
+        self.failure_details = serde_json::from_value(data["failure_details"].clone())
+            .chain_err(|| "Unable to convert failure_details")?;
 
         Ok(())
     }

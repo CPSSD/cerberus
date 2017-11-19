@@ -273,7 +273,10 @@ impl MapReduceScheduler {
             self.unschedule_task(map_task_id).chain_err(
                 || "Error marking map task as complete.",
             )?;
-            self.handle_task_failure(map_task_id)?;
+            self.handle_task_failure(
+                map_task_id,
+                map_response.get_failure_details(),
+            )?;
         }
         Ok(())
     }
@@ -368,7 +371,10 @@ impl MapReduceScheduler {
             self.unschedule_task(reduce_task_id).chain_err(
                 || "Error marking reduce task as complete.",
             )?;
-            self.handle_task_failure(reduce_task_id)?;
+            self.handle_task_failure(
+                reduce_task_id,
+                reduce_response.get_failure_details(),
+            )?;
         }
         Ok(())
     }
@@ -377,7 +383,7 @@ impl MapReduceScheduler {
         task.failure_count >= TASK_FAILURE_THRESHOLD
     }
 
-    fn fail_current_job(&mut self) -> Result<()> {
+    fn fail_current_job(&mut self, failure_reason: String) -> Result<()> {
         let job_id = self.get_in_progress_map_reduce_id().chain_err(
             || "Unable to get ID of in-progress job.",
         )?;
@@ -389,9 +395,7 @@ impl MapReduceScheduler {
                 .remove_work_bucket(&job.get_work_id())
                 .chain_err(|| "Error removing failed job from the queue.")?;
             job.status = MapReduceJobStatus::FAILED;
-            job.status_details = Some(
-                "Task belonging to this job failed too many times.".to_owned(),
-            );
+            job.status_details = Some(failure_reason);
         }
 
         self.map_reduce_in_progress = false;
@@ -405,13 +409,18 @@ impl MapReduceScheduler {
         Ok(())
     }
 
-    fn handle_task_failure(&mut self, task_id: &str) -> Result<()> {
+    fn handle_task_failure(&mut self, task_id: &str, failure_details: &str) -> Result<()> {
         {
             let task_mut = self.map_reduce_task_queue
                 .get_work_by_id_mut(&task_id.to_owned())
                 .chain_err(|| "Error fetching map task.")?;
+
             task_mut.failure_count += 1;
+            if !failure_details.is_empty() {
+                task_mut.failure_details = Some(failure_details.to_owned());
+            }
         }
+
         let task = self.map_reduce_task_queue
             .get_work_by_id(&task_id.to_owned())
             .chain_err(|| "Error fetching map task.")?
@@ -422,7 +431,13 @@ impl MapReduceScheduler {
                 task_id,
                 TASK_FAILURE_THRESHOLD
             );
-            self.fail_current_job().chain_err(
+
+            let failure_reason = match task.failure_details {
+                Some(details) => details,
+                None => "Task belonging to this job failed too many times.".to_owned(),
+            };
+
+            self.fail_current_job(failure_reason).chain_err(
                 || "Error marking current job as failed.",
             )?;
         }
