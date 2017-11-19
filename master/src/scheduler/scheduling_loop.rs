@@ -1,11 +1,13 @@
-use chrono::prelude::*;
-use errors::*;
-use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskType};
 use std::{thread, time};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+
+use chrono::prelude::*;
+
+use common::{MapReduceTask, MapReduceTaskStatus, TaskType, Worker};
+use errors::*;
 use scheduler::MapReduceScheduler;
 use worker_communication::WorkerInterface;
-use worker_management::{Worker, WorkerManager};
+use worker_management::WorkerManager;
 use util::output_error;
 
 use cerberus_proto::worker as pb;
@@ -295,8 +297,7 @@ pub fn run_scheduling_loop<I>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mapreduce_job::MapReduceJob;
-    use mapreduce_job::MapReduceJobOptions;
+    use common::{MapReduceJob, MapReduceJobOptions};
     use mapreduce_tasks::TaskProcessorTrait;
 
     struct WorkerInterfaceStub;

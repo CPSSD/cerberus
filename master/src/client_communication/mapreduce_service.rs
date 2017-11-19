@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
+
 use grpc::{SingleResponse, Error, RequestOptions};
 
+use common::{MapReduceJob, MapReduceJobOptions};
 use scheduler::MapReduceScheduler;
-use mapreduce_job::{MapReduceJob, MapReduceJobOptions};
 use util::output_error;
 
 use cerberus_proto::mapreduce as pb;
@@ -119,9 +120,9 @@ impl grpc_pb::MapReduceService for MapReduceServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use common::{MapReduceJob, MapReduceTask};
     use errors::*;
-    use mapreduce_job::MapReduceJob;
-    use mapreduce_tasks::{MapReduceTask, TaskProcessorTrait};
+    use mapreduce_tasks::TaskProcessorTrait;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
 
