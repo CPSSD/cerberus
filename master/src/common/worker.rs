@@ -6,7 +6,7 @@ use uuid::Uuid;
 use serde_json;
 use errors::*;
 
-use state_management::StateHandling;
+use state::StateHandling;
 
 use cerberus_proto::worker as pb;
 

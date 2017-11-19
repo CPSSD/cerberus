@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
-use state_management::StateHandling;
+use state::StateHandling;
 use cerberus_proto::mapreduce as pb;
 use queued_work_store::QueuedWork;
 

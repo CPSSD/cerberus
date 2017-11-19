@@ -5,7 +5,7 @@ use serde_json;
 use common::Worker;
 use errors::*;
 use scheduler::MapReduceScheduler;
-use state_management::StateHandling;
+use state::StateHandling;
 use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 
 use cerberus_proto::worker as pb;
