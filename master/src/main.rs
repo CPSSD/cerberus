@@ -29,13 +29,12 @@ mod errors {
 }
 
 mod common;
-mod client_communication;
 mod mapreduce_tasks;
 mod queued_work_store;
 mod scheduler;
 mod worker_communication;
 mod worker_management;
-mod grpc_server;
+mod server;
 mod parser;
 mod state_management;
 
@@ -44,15 +43,13 @@ use std::{thread, time};
 use std::path::Path;
 use std::str::FromStr;
 
-use client_communication::MapReduceServiceImpl;
 use errors::*;
 use mapreduce_tasks::TaskProcessor;
 use scheduler::{MapReduceScheduler, run_scheduling_loop};
 use util::init_logger;
-use worker_communication::WorkerServiceImpl;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
-use grpc_server::GRPCServer;
+use server::{Server, ClientService, WorkerService};
 use state_management::StateHandler;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
@@ -80,15 +77,15 @@ fn run() -> Result<()> {
         Some(Arc::clone(&map_reduce_scheduler)),
     )));
 
-    let worker_service = WorkerServiceImpl::new(
+    let worker_service = WorkerService::new(
         Arc::clone(&worker_manager),
         Arc::clone(&worker_interface),
         Arc::clone(&map_reduce_scheduler),
     );
 
     // Cli to Master Communications
-    let mapreduce_service = MapReduceServiceImpl::new(Arc::clone(&map_reduce_scheduler));
-    let grpc_server = GRPCServer::new(port, mapreduce_service, worker_service)
+    let client_service = ClientService::new(Arc::clone(&map_reduce_scheduler));
+    let srv = Server::new(port, client_service, worker_service)
         .chain_err(|| "Error building grpc server.")?;
 
     let state_handler = StateHandler::new(
@@ -116,8 +113,7 @@ fn run() -> Result<()> {
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        let server = grpc_server.get_server();
-        if !server.is_alive() {
+        if !srv.is_alive() {
             return Err("GRPC server unexpectedly died".into());
         }
 

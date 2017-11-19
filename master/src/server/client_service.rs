@@ -13,18 +13,18 @@ const JOB_SCHEDULE_ERROR: &str = "Unable to schedule mapreduce job";
 const JOB_RETRIEVAL_ERROR: &str = "Unable to retrieve mapreduce jobs";
 const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 
-/// `MapReduceServiceImpl` recieves communication from a client.
-pub struct MapReduceServiceImpl {
+/// `ClientService` recieves communication from a client.
+pub struct ClientService {
     scheduler: Arc<Mutex<MapReduceScheduler>>,
 }
 
-impl MapReduceServiceImpl {
+impl ClientService {
     pub fn new(scheduler: Arc<Mutex<MapReduceScheduler>>) -> Self {
-        MapReduceServiceImpl { scheduler: scheduler }
+        ClientService { scheduler: scheduler }
     }
 }
 
-impl grpc_pb::MapReduceService for MapReduceServiceImpl {
+impl grpc_pb::MapReduceService for ClientService {
     fn perform_map_reduce(
         &self,
         _: RequestOptions,
@@ -151,7 +151,7 @@ mod tests {
         let scheduler = create_map_reduce_scheduler();
         assert!(!scheduler.get_map_reduce_in_progress());
 
-        let master_impl = MapReduceServiceImpl { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
 
         let _ = master_impl
             .perform_map_reduce(RequestOptions::new(), pb::MapReduceRequest::new())
@@ -175,7 +175,7 @@ mod tests {
         let result = scheduler.schedule_map_reduce(job);
         assert!(result.is_ok());
 
-        let master_impl = MapReduceServiceImpl { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
         let response = master_impl.map_reduce_status(RequestOptions::new(), request);
 
         let (_, mut item, _) = response.wait().unwrap();
@@ -197,7 +197,7 @@ mod tests {
                 .unwrap(),
         );
 
-        let master_impl = MapReduceServiceImpl { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();
 
