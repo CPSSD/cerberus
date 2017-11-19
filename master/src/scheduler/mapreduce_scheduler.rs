@@ -1,13 +1,14 @@
 use chrono::prelude::*;
+use serde_json;
+
+use errors::*;
+use common::{MapReduceJob, MapReduceTask, MapReduceTaskStatus};
+use mapreduce_tasks::TaskProcessorTrait;
+use queued_work_store::{QueuedWork, QueuedWorkStore};
+use state_management;
 
 use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 use cerberus_proto::worker as pb;
-use errors::*;
-use mapreduce_job::MapReduceJob;
-use mapreduce_tasks::{MapReduceTask, MapReduceTaskStatus, TaskProcessorTrait};
-use queued_work_store::{QueuedWork, QueuedWorkStore};
-use serde_json;
-use state_management;
 
 const TASK_FAILURE_THRESHOLD: u16 = 10;
 
@@ -585,7 +586,7 @@ impl state_management::StateHandling for MapReduceScheduler {
 mod tests {
     use super::*;
     use queued_work_store::QueuedWork;
-    use mapreduce_job::MapReduceJobOptions;
+    use common::MapReduceJobOptions;
 
     fn get_test_job_options() -> MapReduceJobOptions {
         MapReduceJobOptions {

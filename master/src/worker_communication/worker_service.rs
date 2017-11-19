@@ -1,8 +1,11 @@
-use chrono::prelude::*;
-use grpc::{RequestOptions, SingleResponse, Error};
 use std::sync::{Arc, Mutex, RwLock};
+
+use grpc::{RequestOptions, SingleResponse, Error};
+use chrono::prelude::*;
+
+use common::Worker;
 use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
-use worker_management::{Worker, WorkerManager};
+use worker_management::WorkerManager;
 use scheduler::MapReduceScheduler;
 
 use cerberus_proto::worker as pb;

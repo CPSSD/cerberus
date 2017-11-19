@@ -3,9 +3,8 @@ use std::fs;
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;
 
+use common::{MapReduceJob, MapReduceTask};
 use errors::*;
-use mapreduce_job::MapReduceJob;
-use mapreduce_tasks::MapReduceTask;
 
 const MEGA_BYTE: usize = 1000 * 1000;
 const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
@@ -180,8 +179,7 @@ mod tests {
     use std::path::Path;
     use std::io::Read;
     use std::collections::HashSet;
-    use mapreduce_job::MapReduceJobOptions;
-    use mapreduce_tasks::TaskType;
+    use common::{MapReduceJobOptions, TaskType};
 
     #[test]
     fn test_create_map_tasks() {

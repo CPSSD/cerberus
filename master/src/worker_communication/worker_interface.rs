@@ -1,7 +1,9 @@
-use errors::*;
-use grpc::RequestOptions;
 use std::collections::HashMap;
-use worker_management::Worker;
+
+use grpc::RequestOptions;
+
+use errors::*;
+use common::Worker;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;

@@ -28,8 +28,8 @@ mod errors {
     }
 }
 
+mod common;
 mod client_communication;
-mod mapreduce_job;
 mod mapreduce_tasks;
 mod queued_work_store;
 mod scheduler;

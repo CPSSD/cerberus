@@ -2,10 +2,11 @@ use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::fs;
 use std::io::{Read, Write};
-use errors::*;
+
 use serde_json;
 use serde_json::Value as json;
 
+use errors::*;
 use scheduler::MapReduceScheduler;
 use worker_management::WorkerManager;
 
