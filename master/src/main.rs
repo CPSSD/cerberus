@@ -1,20 +1,24 @@
+#![feature(conservative_impl_trait)]
+
 extern crate cerberus_proto;
 extern crate chrono;
-extern crate env_logger;
 #[macro_use]
 extern crate clap;
+extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
+extern crate futures;
+extern crate futures_cpupool;
 extern crate grpc;
 #[macro_use]
 extern crate log;
-extern crate uuid;
-extern crate util;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
+extern crate uuid;
+extern crate util;
 
 mod errors {
     error_chain! {
