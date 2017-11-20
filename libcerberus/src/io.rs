@@ -3,6 +3,7 @@ use errors::*;
 use mapper::MapInputKV;
 use reducer::ReduceInputKV;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json;
 use serialise::{FinalOutputObject, IntermediateOutputObject};
 use std::io::{Read, Write};
@@ -26,7 +27,11 @@ pub fn read_map_input<R: Read>(source: &mut R) -> Result<MapInputKV> {
 ///
 /// It attempts to parse the string from the input source as JSON and returns an `errors::Error` if
 /// the attempt fails.
-pub fn read_reduce_input<R: Read>(source: &mut R) -> Result<ReduceInputKV> {
+pub fn read_reduce_input<R, V>(source: &mut R) -> Result<ReduceInputKV<V>>
+where
+    R: Read,
+    V: Default + Serialize + DeserializeOwned,
+{
     let mut input_string = String::new();
     let bytes_read = source.read_to_string(&mut input_string).chain_err(
         || "Error reading from source.",
@@ -117,7 +122,7 @@ mod tests {
             values: vec!["bar".to_owned(), "baz".to_owned()],
         };
 
-        let result = read_reduce_input(&mut cursor).unwrap();
+        let result: ReduceInputKV<String> = read_reduce_input(&mut cursor).unwrap();
 
         assert_eq!(expected_result, result);
     }
@@ -128,7 +133,7 @@ mod tests {
         let test_string = "";
         let mut cursor = Cursor::new(test_string);
 
-        read_reduce_input(&mut cursor).unwrap();
+        let _: ReduceInputKV<String> = read_reduce_input(&mut cursor).unwrap();
     }
 
     #[test]
