@@ -31,8 +31,8 @@ mod errors {
     }
 }
 
-mod operation_handler;
 mod master_interface;
+mod operations;
 mod worker_interface;
 mod schedule_operation_service;
 mod parser;
@@ -45,7 +45,7 @@ use std::sync::{Arc, Mutex};
 use util::init_logger;
 use worker_interface::WorkerInterface;
 use master_interface::MasterInterface;
-use operation_handler::OperationHandler;
+use operations::OperationHandler;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAIN_LOOP_SLEEP_MS: u64 = 3000;
