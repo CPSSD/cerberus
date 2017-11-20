@@ -7,7 +7,7 @@ use serde_json;
 use serde_json::Value as json;
 
 use errors::*;
-use scheduler::MapReduceScheduler;
+use scheduler::Scheduler;
 use worker_management::WorkerManager;
 
 /// The `StateHandling` trait defines an object that can have it's state saved
@@ -27,14 +27,14 @@ pub trait StateHandling {
 
 pub struct StateHandler {
     port: u16,
-    scheduler: Arc<Mutex<MapReduceScheduler>>,
+    scheduler: Arc<Mutex<Scheduler>>,
     worker_manager: Arc<Mutex<WorkerManager>>,
 }
 
 impl StateHandler {
     pub fn new(
         port: u16,
-        scheduler: Arc<Mutex<MapReduceScheduler>>,
+        scheduler: Arc<Mutex<Scheduler>>,
         worker_manager: Arc<Mutex<WorkerManager>>,
         create_dir: bool,
     ) -> Result<Self> {
@@ -99,7 +99,7 @@ impl StateHandler {
             || "Unable to parse string as JSON",
         )?;
 
-        // Reset scheduler state (including MapReduceJobs and MapReduceTasks) to the dumped state.
+        // Reset scheduler state (including Jobs and Tasks) to the dumped state.
         let scheduler_json = json["scheduler"].clone();
         if scheduler_json == json::Null {
             return Err("Unable to retrieve Scheduler state from JSON".into());

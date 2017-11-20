@@ -9,9 +9,9 @@ use state::StateHandling;
 use cerberus_proto::mapreduce as pb;
 use queued_work_store::QueuedWork;
 
-/// `MapReduceJobOptions` stores arguments used to construct a `MapReduceJob`.
+/// `JobOptions` stores arguments used to construct a `Job`.
 #[derive(Default)]
-pub struct MapReduceJobOptions {
+pub struct JobOptions {
     /// An ID for the client owning the job.
     pub client_id: String,
     /// The path to the payload binary for the job.
@@ -22,9 +22,9 @@ pub struct MapReduceJobOptions {
     pub output_directory: Option<String>,
 }
 
-impl From<pb::MapReduceRequest> for MapReduceJobOptions {
+impl From<pb::MapReduceRequest> for JobOptions {
     fn from(other: pb::MapReduceRequest) -> Self {
-        MapReduceJobOptions {
+        JobOptions {
             client_id: other.client_id,
             binary_path: other.binary_path,
             input_directory: other.input_directory,
@@ -37,11 +37,11 @@ impl From<pb::MapReduceRequest> for MapReduceJobOptions {
     }
 }
 
-/// The `MapReduceJob` is a struct that represents a `MapReduce` job submitted by a client.
+/// The `Job` is a struct that represents a mapreduce job submitted by a client.
 #[derive(Clone)]
-pub struct MapReduceJob {
+pub struct Job {
     pub client_id: String,
-    pub map_reduce_id: String,
+    pub id: String,
     pub binary_path: String,
     pub input_directory: String,
     pub output_directory: String,
@@ -74,9 +74,8 @@ pub enum SerializableJobStatus {
     UNKNOWN,
 }
 
-impl MapReduceJob {
-    pub fn new(options: MapReduceJobOptions) -> Result<Self> {
-        let map_reduce_id = Uuid::new_v4();
+impl Job {
+    pub fn new(options: JobOptions) -> Result<Self> {
         let input_directory = options.input_directory;
         let output_directory = match options.output_directory {
             Some(dir) => dir,
@@ -91,9 +90,9 @@ impl MapReduceJob {
             }
         };
 
-        Ok(MapReduceJob {
+        Ok(Job {
             client_id: options.client_id,
-            map_reduce_id: map_reduce_id.to_string(),
+            id: Uuid::new_v4().to_string(),
             binary_path: options.binary_path,
             input_directory: input_directory,
             output_directory: output_directory,
@@ -115,7 +114,7 @@ impl MapReduceJob {
         })
     }
 
-    fn mapreduce_status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
+    fn status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
         match *state {
             SerializableJobStatus::DONE => pb::Status::DONE,
             SerializableJobStatus::IN_PROGRESS => pb::Status::IN_PROGRESS,
@@ -136,9 +135,9 @@ impl MapReduceJob {
     }
 }
 
-impl StateHandling for MapReduceJob {
+impl StateHandling for Job {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
-        let options = MapReduceJobOptions {
+        let options = JobOptions {
             client_id: serde_json::from_value(data["client_id"].clone())
                 .chain_err(|| "Unable to convert client_id")?,
             binary_path: serde_json::from_value(data["binary_path"].clone())
@@ -149,15 +148,13 @@ impl StateHandling for MapReduceJob {
                 .chain_err(|| "Unable to convert output dir")?,
         };
 
-        let mut map_reduce_job = MapReduceJob::new(options).chain_err(
+        let mut job = Job::new(options).chain_err(
             || "Unable to create map reduce job",
         )?;
 
-        map_reduce_job.load_state(data).chain_err(
-            || "Unable to load state",
-        )?;
+        job.load_state(data).chain_err(|| "Unable to load state")?;
 
-        Ok(map_reduce_job)
+        Ok(job)
     }
 
     fn dump_state(&self) -> Result<serde_json::Value> {
@@ -171,7 +168,7 @@ impl StateHandling for MapReduceJob {
         };
         Ok(json!({
             "client_id": self.client_id,
-            "map_reduce_id": self.map_reduce_id,
+            "id": self.id,
             "binary_path": self.binary_path,
             "input_directory": self.input_directory,
             "output_directory": self.output_directory,
@@ -192,14 +189,15 @@ impl StateHandling for MapReduceJob {
     }
 
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
-        self.map_reduce_id = serde_json::from_value(data["map_reduce_id"].clone())
-            .chain_err(|| "Unable to convert map_reduce_id")?;
+        self.id = serde_json::from_value(data["id"].clone()).chain_err(
+            || "Unable to convert id",
+        )?;
 
-        let mapreduce_status: SerializableJobStatus =
+        let status: SerializableJobStatus =
             serde_json::from_value(data["status"].clone()).chain_err(
                 || "Unable to convert mapreduce status",
             )?;
-        self.status = self.mapreduce_status_from_state(&mapreduce_status);
+        self.status = self.status_from_state(&status);
         self.status_details = serde_json::from_value(data["status_details"].clone())
             .chain_err(|| "Unable to convert status_details.")?;
 
@@ -243,7 +241,7 @@ impl StateHandling for MapReduceJob {
     }
 }
 
-impl QueuedWork for MapReduceJob {
+impl QueuedWork for Job {
     type Key = String;
 
     fn get_work_bucket(&self) -> String {
@@ -251,7 +249,7 @@ impl QueuedWork for MapReduceJob {
     }
 
     fn get_work_id(&self) -> String {
-        self.map_reduce_id.clone()
+        self.id.clone()
     }
 }
 
@@ -259,8 +257,8 @@ impl QueuedWork for MapReduceJob {
 mod tests {
     use super::*;
 
-    fn get_test_job_options() -> MapReduceJobOptions {
-        MapReduceJobOptions {
+    fn get_test_job_options() -> JobOptions {
+        JobOptions {
             client_id: "client-1".to_owned(),
             binary_path: "/tmp/bin".to_owned(),
             input_directory: "/tmp/input/".to_owned(),
@@ -270,36 +268,36 @@ mod tests {
 
     #[test]
     fn test_defaults() {
-        let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
+        let job = Job::new(get_test_job_options()).unwrap();
         // Assert that the default status for a map reduce job is Queued.
-        assert_eq!(pb::Status::IN_QUEUE, map_reduce_job.status);
+        assert_eq!(pb::Status::IN_QUEUE, job.status);
         // Assert that completed tasks starts at 0.
-        assert_eq!(0, map_reduce_job.map_tasks_completed);
-        assert_eq!(0, map_reduce_job.reduce_tasks_completed);
+        assert_eq!(0, job.map_tasks_completed);
+        assert_eq!(0, job.reduce_tasks_completed);
         // Assert that total tasks starts at 0.
-        assert_eq!(0, map_reduce_job.map_tasks_total);
-        assert_eq!(0, map_reduce_job.reduce_tasks_total);
+        assert_eq!(0, job.map_tasks_total);
+        assert_eq!(0, job.reduce_tasks_total);
     }
 
     #[test]
     fn test_queued_work_impl() {
-        let map_reduce_job = MapReduceJob::new(get_test_job_options()).unwrap();
+        let job = Job::new(get_test_job_options()).unwrap();
 
-        assert_eq!(map_reduce_job.get_work_bucket(), "client-1");
-        assert_eq!(map_reduce_job.get_work_id(), map_reduce_job.map_reduce_id);
+        assert_eq!(job.get_work_bucket(), "client-1");
+        assert_eq!(job.get_work_id(), job.id);
     }
 
     #[test]
     fn test_output_directory() {
-        let map_reduce_job1 = MapReduceJob::new(get_test_job_options()).unwrap();
-        let map_reduce_job2 = MapReduceJob::new(MapReduceJobOptions {
+        let job1 = Job::new(get_test_job_options()).unwrap();
+        let job2 = Job::new(JobOptions {
             client_id: "client-1".to_owned(),
             binary_path: "/tmp/binary".to_owned(),
             input_directory: "/tmp/input/".to_owned(),
             output_directory: Some("/tmp/output/".to_owned()),
         }).unwrap();
 
-        assert_eq!("/tmp/input/output/", map_reduce_job1.output_directory);
-        assert_eq!("/tmp/output/", map_reduce_job2.output_directory);
+        assert_eq!("/tmp/input/output/", job1.output_directory);
+        assert_eq!("/tmp/output/", job2.output_directory);
     }
 }

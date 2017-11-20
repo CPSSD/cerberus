@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use grpc::{SingleResponse, Error, RequestOptions};
 
-use common::{MapReduceJob, MapReduceJobOptions};
-use scheduler::MapReduceScheduler;
+use common::{Job, JobOptions};
+use scheduler::Scheduler;
 use util::output_error;
 
 use cerberus_proto::mapreduce as pb;
@@ -15,11 +15,11 @@ const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 
 /// `ClientService` recieves communication from a client.
 pub struct ClientService {
-    scheduler: Arc<Mutex<MapReduceScheduler>>,
+    scheduler: Arc<Mutex<Scheduler>>,
 }
 
 impl ClientService {
-    pub fn new(scheduler: Arc<Mutex<MapReduceScheduler>>) -> Self {
+    pub fn new(scheduler: Arc<Mutex<Scheduler>>) -> Self {
         ClientService { scheduler: scheduler }
     }
 }
@@ -33,12 +33,12 @@ impl grpc_pb::MapReduceService for ClientService {
         let mut scheduler = self.scheduler.lock().unwrap();
 
         let mut response = pb::MapReduceResponse::new();
-        let job = match MapReduceJob::new(MapReduceJobOptions::from(req)) {
+        let job = match Job::new(JobOptions::from(req)) {
             Ok(job) => job,
             Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
         };
-        response.mapreduce_id = job.map_reduce_id.clone();
-        match scheduler.schedule_map_reduce(job) {
+        response.mapreduce_id = job.id.clone();
+        match scheduler.schedule_job(job) {
             Err(err) => {
                 output_error(&err.chain_err(|| "Error scheduling map reduce job."));
                 SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
@@ -55,7 +55,7 @@ impl grpc_pb::MapReduceService for ClientService {
         let scheduler = self.scheduler.lock().unwrap();
 
         let mut response = pb::MapReduceStatusResponse::new();
-        let jobs: Vec<&MapReduceJob>;
+        let jobs: Vec<&Job>;
 
         if !req.client_id.is_empty() {
             match scheduler.get_mapreduce_client_status(&req.client_id) {
@@ -79,7 +79,7 @@ impl grpc_pb::MapReduceService for ClientService {
 
         for job in jobs {
             let mut report = pb::MapReduceReport::new();
-            report.mapreduce_id = job.map_reduce_id.clone();
+            report.mapreduce_id = job.id.clone();
             report.status = job.status;
             if job.status == pb::Status::FAILED {
                 report.failure_details = job.status_details.clone().unwrap_or_else(
@@ -110,7 +110,7 @@ impl grpc_pb::MapReduceService for ClientService {
 
         let mut response = pb::ClusterStatusResponse::new();
         response.workers = i64::from(scheduler.get_available_workers());
-        response.queue_size = scheduler.get_map_reduce_job_queue_size() as i64;
+        response.queue_size = scheduler.get_job_queue_size() as i64;
 
         SingleResponse::completed(response)
     }
@@ -120,7 +120,7 @@ impl grpc_pb::MapReduceService for ClientService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::{MapReduceJob, MapReduceTask};
+    use common::{Job, Task};
     use errors::*;
     use mapreduce_tasks::TaskProcessorTrait;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
@@ -129,26 +129,22 @@ mod tests {
     struct NullTaskProcessor;
 
     impl TaskProcessorTrait for NullTaskProcessor {
-        fn create_map_tasks(&self, _: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
+        fn create_map_tasks(&self, _: &Job) -> Result<Vec<Task>> {
             Ok(Vec::new())
         }
 
-        fn create_reduce_tasks(
-            &self,
-            _: &MapReduceJob,
-            _: &[&MapReduceTask],
-        ) -> Result<Vec<MapReduceTask>> {
+        fn create_reduce_tasks(&self, _: &Job, _: &[&Task]) -> Result<Vec<Task>> {
             Ok(Vec::new())
         }
     }
 
-    fn create_map_reduce_scheduler() -> MapReduceScheduler {
-        MapReduceScheduler::new(Box::new(NullTaskProcessor {}))
+    fn create_scheduler() -> Scheduler {
+        Scheduler::new(Box::new(NullTaskProcessor {}))
     }
 
     #[test]
     fn queue_mapreduce() {
-        let scheduler = create_map_reduce_scheduler();
+        let scheduler = create_scheduler();
         assert!(!scheduler.get_map_reduce_in_progress());
 
         let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
@@ -167,12 +163,12 @@ mod tests {
 
     #[test]
     fn get_mapreduce_status() {
-        let mut scheduler = create_map_reduce_scheduler();
+        let mut scheduler = create_scheduler();
 
-        let job = MapReduceJob::new(MapReduceJobOptions::default()).unwrap();
+        let job = Job::new(JobOptions::default()).unwrap();
         let mut request = pb::MapReduceStatusRequest::new();
-        request.mapreduce_id = job.map_reduce_id.clone();
-        let result = scheduler.schedule_map_reduce(job);
+        request.mapreduce_id = job.id.clone();
+        let result = scheduler.schedule_job(job);
         assert!(result.is_ok());
 
         let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
@@ -186,16 +182,10 @@ mod tests {
 
     #[test]
     fn cluster_status() {
-        let mut scheduler = create_map_reduce_scheduler();
+        let mut scheduler = create_scheduler();
         scheduler.set_available_workers(5);
-        let _ = scheduler.schedule_map_reduce(
-            MapReduceJob::new(MapReduceJobOptions::default())
-                .unwrap(),
-        );
-        let _ = scheduler.schedule_map_reduce(
-            MapReduceJob::new(MapReduceJobOptions::default())
-                .unwrap(),
-        );
+        let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
+        let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
 
         let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());

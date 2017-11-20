@@ -45,7 +45,7 @@ use std::str::FromStr;
 
 use errors::*;
 use mapreduce_tasks::TaskProcessor;
-use scheduler::{MapReduceScheduler, run_scheduling_loop};
+use scheduler::{Scheduler, run_scheduling_loop};
 use util::init_logger;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
@@ -68,9 +68,7 @@ fn run() -> Result<()> {
     let create_dump_dir = !matches.is_present("nodump");
 
     let task_processor = TaskProcessor;
-    let map_reduce_scheduler = Arc::new(Mutex::new(
-        MapReduceScheduler::new(Box::new(task_processor)),
-    ));
+    let map_reduce_scheduler = Arc::new(Mutex::new(Scheduler::new(Box::new(task_processor))));
     let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
     let worker_manager = Arc::new(Mutex::new(WorkerManager::new(
         Some(Arc::clone(&worker_interface)),

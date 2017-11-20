@@ -4,7 +4,7 @@ use serde_json;
 
 use common::Worker;
 use errors::*;
-use scheduler::MapReduceScheduler;
+use scheduler::Scheduler;
 use state::StateHandling;
 use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 
@@ -15,13 +15,13 @@ pub struct WorkerManager {
 
     // This is required for reloading workers from state.
     worker_interface: Option<Arc<RwLock<WorkerInterfaceImpl>>>,
-    scheduler: Option<Arc<Mutex<MapReduceScheduler>>>,
+    scheduler: Option<Arc<Mutex<Scheduler>>>,
 }
 
 impl WorkerManager {
     pub fn new(
         worker_interface: Option<Arc<RwLock<WorkerInterfaceImpl>>>,
-        scheduler: Option<Arc<Mutex<MapReduceScheduler>>>,
+        scheduler: Option<Arc<Mutex<Scheduler>>>,
     ) -> Self {
         WorkerManager {
             workers: Vec::new(),
@@ -101,7 +101,7 @@ impl WorkerManager {
 
             let scheduler = match self.scheduler {
                 Some(ref scheduler) => scheduler,
-                None => return Err("WorkerManager has no valid MapReduceScheduler Arc".into()),
+                None => return Err("WorkerManager has no valid Scheduler Arc".into()),
             };
 
             scheduler
