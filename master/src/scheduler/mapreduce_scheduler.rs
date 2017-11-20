@@ -5,7 +5,7 @@ use errors::*;
 use common::{MapReduceJob, MapReduceTask, MapReduceTaskStatus};
 use mapreduce_tasks::TaskProcessorTrait;
 use queued_work_store::{QueuedWork, QueuedWorkStore};
-use state_management;
+use state;
 
 use cerberus_proto::mapreduce::Status as MapReduceJobStatus;
 use cerberus_proto::worker as pb;
@@ -446,7 +446,7 @@ impl MapReduceScheduler {
     }
 }
 
-impl state_management::StateHandling for MapReduceScheduler {
+impl state::StateHandling for MapReduceScheduler {
     fn new_from_json(_: serde_json::Value) -> Result<Self> {
         Err("Unable to create MapReduceScheduler from JSON.".into())
     }

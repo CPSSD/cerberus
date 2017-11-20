@@ -32,11 +32,11 @@ mod common;
 mod mapreduce_tasks;
 mod queued_work_store;
 mod scheduler;
+mod state;
 mod worker_communication;
 mod worker_management;
 mod server;
 mod parser;
-mod state_management;
 
 use std::sync::{Arc, Mutex, RwLock};
 use std::{thread, time};
@@ -50,7 +50,7 @@ use util::init_logger;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
 use server::{Server, ClientService, WorkerService};
-use state_management::StateHandler;
+use state::StateHandler;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const DUMP_LOOP_MS: u64 = 5000;
