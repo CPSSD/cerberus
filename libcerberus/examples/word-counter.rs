@@ -4,21 +4,20 @@ extern crate env_logger;
 extern crate error_chain;
 
 use cerberus::*;
-use std::str::FromStr;
 
 const MAP_OUTPUT_PARTITIONS: u64 = 15;
 
 struct WordCountMapper;
 impl Map for WordCountMapper {
     type Key = String;
-    type Value = String;
+    type Value = u64;
     fn map<E>(&self, input: MapInputKV, mut emitter: E) -> Result<()>
     where
         E: EmitIntermediate<Self::Key, Self::Value>,
     {
         for token in input.value.split(char::is_whitespace) {
             if !token.is_empty() {
-                emitter.emit(token.to_owned(), "1".to_owned()).chain_err(
+                emitter.emit(token.to_owned(), 1).chain_err(
                     || "Error emitting map key-value pair.",
                 )?;
             }
@@ -29,19 +28,16 @@ impl Map for WordCountMapper {
 
 struct WordCountReducer;
 impl Reduce for WordCountReducer {
-    type Value = String;
-    fn reduce<E>(&self, input: ReduceInputKV, mut emitter: E) -> Result<()>
+    type Value = u64;
+    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
     {
         let mut total: u64 = 0;
-        for val in &input.values {
-            let int_val = u64::from_str(val).chain_err(|| {
-                format!("Unable to convert value {} to string.", val)
-            })?;
-            total += int_val;
+        for val in input.values {
+            total += val;
         }
-        emitter.emit(total.to_string()).chain_err(|| {
+        emitter.emit(total).chain_err(|| {
             format!("Error emitting value {:?}.", total)
         })?;
         Ok(())
