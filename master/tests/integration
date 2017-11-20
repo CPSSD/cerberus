@@ -8,7 +8,7 @@ mkdir -p integration-test/output
 
 # Launch the master.
 echo "Launching Master."
-./master --fresh --nodump > integration-test/logs/master.log 2>&1 &
+./master --fresh --nodump --port=10008 > integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
 # Spin up 3 workers.
@@ -16,7 +16,7 @@ worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
 	echo "Launching worker $i"
-	./worker -m 127.0.0.1:8081 > integration-test/logs/worker-${i}.log 2>&1 &
+	./worker -m [::]:10008 > integration-test/logs/worker-${i}.log 2>&1 &
 	worker_pids[$i]=$!
 done
 
@@ -33,19 +33,21 @@ results+=( [how]=1 [much]=1 [wood]=4 [would]=1 [a]=2 [chuck]=4 [could]=1 [if]=1 
 sleep 1
 
 # Launch a MapReduce using the above data.
-./cli -m 127.0.0.1:8081 run \
+./cli -m [::]:10008 run \
 	-b $PWD/examples/word-counter \
 	-i $PWD/integration-test/input \
 	-o $PWD/integration-test/output
 
-./cli -m [::]:8081 cluster_status
+./cli -m [::]:10008 cluster_status
 
 # Launch the CLI to monitor status.
 echo "Launching CLI."
 while true
 do
-	job_status=`./cli -m 127.0.0.1:8081 status 2>&1 | tee | grep "DONE" -o`;
-	if [ "$job_status" == "DONE" ]; then break; fi
+	done_status=`./cli -m [::]:10008 status 2>&1 | tee | grep "DONE" -o`;
+	fail_status=`./cli -m [::]:10008 status 2>&1 | tee | grep "FAILED" -o`;
+	if [ "$done_status" == "DONE" ]; then break; fi
+	if [ "$fail_status" == "FAILED" ]; then exit 1; fi
 done
 
 # Kill any spawned processes.
