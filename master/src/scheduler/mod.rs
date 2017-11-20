@@ -1,6 +1,6 @@
-mod mapreduce_scheduler;
+mod scheduler;
 mod scheduling_loop;
 
-pub use self::mapreduce_scheduler::MapReduceScheduler;
+pub use self::scheduler::Scheduler;
 
 pub use self::scheduling_loop::run_scheduling_loop;

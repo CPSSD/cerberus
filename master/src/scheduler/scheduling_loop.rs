@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use chrono::prelude::*;
 
-use common::{MapReduceTask, MapReduceTaskStatus, TaskType, Worker};
+use common::{Task, TaskStatus, TaskType, Worker};
 use errors::*;
-use scheduler::MapReduceScheduler;
+use scheduler::Scheduler;
 use worker_communication::WorkerInterface;
 use worker_management::WorkerManager;
 use util::output_error;
@@ -20,7 +20,7 @@ struct SchedulerResources<I>
 where
     I: WorkerInterface + Send + Sync,
 {
-    scheduler_arc: Arc<Mutex<MapReduceScheduler>>,
+    scheduler_arc: Arc<Mutex<Scheduler>>,
     worker_manager_arc: Arc<Mutex<WorkerManager>>,
     worker_interface_arc: Arc<RwLock<I>>,
 }
@@ -106,14 +106,14 @@ fn assign_worker_reduce_task<I>(
 fn assign_worker_task<I>(
     scheduler_resources: SchedulerResources<I>,
     task_assignment: TaskAssignment,
-    task: &MapReduceTask,
+    task: &Task,
 ) where
     I: WorkerInterface + Send + Sync + 'static,
 {
     match task.task_type {
         TaskType::Map => {
             let map_request = {
-                match task.perform_map_request {
+                match task.map_request {
                     None => {
                         error!("Error assigning task: Map request not found.");
                         handle_assign_task_failure(&scheduler_resources, &task_assignment);
@@ -126,7 +126,7 @@ fn assign_worker_task<I>(
         }
         TaskType::Reduce => {
             let reduce_request = {
-                match task.perform_reduce_request {
+                match task.reduce_request {
                     None => {
                         error!("Error assigning task: Reduce request not found.");
                         handle_assign_task_failure(&scheduler_resources, &task_assignment);
@@ -140,10 +140,10 @@ fn assign_worker_task<I>(
     }
 }
 
-/// `do_scheduling_loop_step` assigns `MapReduceTask`s to available workers.
+/// `do_scheduling_loop_step` assigns `Task`s to available workers.
 fn do_scheduling_loop_step<I>(
     scheduler_resources: &SchedulerResources<I>,
-    mut scheduler: MutexGuard<MapReduceScheduler>,
+    mut scheduler: MutexGuard<Scheduler>,
     mut worker_manager: MutexGuard<WorkerManager>,
 ) where
     I: WorkerInterface + Send + Sync + 'static,
@@ -159,13 +159,13 @@ fn do_scheduling_loop_step<I>(
             .reverse()
     });
 
-    while scheduler.get_map_reduce_task_queue_size() > 0 {
+    while scheduler.get_task_queue_size() > 0 {
         if available_workers.is_empty() {
             break;
         }
 
-        let task: &mut MapReduceTask = {
-            match scheduler.pop_queued_map_reduce_task() {
+        let task: &mut Task = {
+            match scheduler.pop_queued_task() {
                 Some(task) => task,
                 None => {
                     error!("Unexpected error getting queued map reduce task");
@@ -184,14 +184,14 @@ fn do_scheduling_loop_step<I>(
             }
         };
 
-        worker.set_current_task_id(task.task_id.to_owned());
+        worker.set_current_task_id(task.id.to_owned());
         worker.set_operation_status(pb::OperationStatus::IN_PROGRESS);
 
         task.assigned_worker_id = worker.get_worker_id().to_owned();
-        task.status = MapReduceTaskStatus::InProgress;
+        task.status = TaskStatus::InProgress;
 
         let task_assignment = TaskAssignment {
-            task_id: task.task_id.to_owned(),
+            task_id: task.id.to_owned(),
             worker_id: worker.get_worker_id().to_owned(),
         };
 
@@ -200,7 +200,7 @@ fn do_scheduling_loop_step<I>(
 }
 
 /// Remove a task from its worker and push it back onto the queue.
-fn reschedule_task(task_id: &str, scheduler: &mut MutexGuard<MapReduceScheduler>) -> Result<()> {
+fn reschedule_task(task_id: &str, scheduler: &mut MutexGuard<Scheduler>) -> Result<()> {
     scheduler.unschedule_task(task_id).chain_err(|| {
         format!("Unable to unschedule task with ID {:?}.", task_id)
     })?;
@@ -211,7 +211,7 @@ fn reschedule_task(task_id: &str, scheduler: &mut MutexGuard<MapReduceScheduler>
 fn remove_worker(
     worker_id: &str,
     worker_manager: &mut MutexGuard<WorkerManager>,
-    scheduler: &mut MutexGuard<MapReduceScheduler>,
+    scheduler: &mut MutexGuard<Scheduler>,
 ) {
     worker_manager.remove_worker(worker_id);
     let available_workers = scheduler.get_available_workers();
@@ -222,7 +222,7 @@ fn remove_worker(
 /// need to have their tasks restarted.
 // If a worker has not updated it's status for a long time it is removed from the list of workers.
 fn update_healthy_workers(
-    scheduler: &mut MutexGuard<MapReduceScheduler>,
+    scheduler: &mut MutexGuard<Scheduler>,
     worker_manager: &mut MutexGuard<WorkerManager>,
 ) {
     let mut workers_to_reassign = Vec::new();
@@ -266,10 +266,10 @@ fn update_healthy_workers(
 }
 
 /// `run_scheduling_loop` is the main loop that performs all functionality related to assigning
-/// `MapReduceTask`s to workers.
+/// `Task`s to workers.
 pub fn run_scheduling_loop<I>(
     worker_interface_arc: Arc<RwLock<I>>,
-    scheduler_arc: Arc<Mutex<MapReduceScheduler>>,
+    scheduler_arc: Arc<Mutex<Scheduler>>,
     worker_manager_arc: Arc<Mutex<WorkerManager>>,
 ) where
     I: WorkerInterface + Send + Sync + 'static,
@@ -297,7 +297,7 @@ pub fn run_scheduling_loop<I>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::{MapReduceJob, MapReduceJobOptions};
+    use common::{Job, JobOptions};
     use mapreduce_tasks::TaskProcessorTrait;
 
     struct WorkerInterfaceStub;
@@ -322,12 +322,12 @@ mod tests {
     }
 
     struct TaskProcessorStub {
-        map_tasks: Vec<MapReduceTask>,
-        reduce_tasks: Vec<MapReduceTask>,
+        map_tasks: Vec<Task>,
+        reduce_tasks: Vec<Task>,
     }
 
     impl TaskProcessorStub {
-        fn new(map_tasks: Vec<MapReduceTask>, reduce_tasks: Vec<MapReduceTask>) -> Self {
+        fn new(map_tasks: Vec<Task>, reduce_tasks: Vec<Task>) -> Self {
             TaskProcessorStub {
                 map_tasks: map_tasks,
                 reduce_tasks: reduce_tasks,
@@ -336,31 +336,29 @@ mod tests {
     }
 
     impl TaskProcessorTrait for TaskProcessorStub {
-        fn create_map_tasks(&self, _map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
+        fn create_map_tasks(&self, _job: &Job) -> Result<Vec<Task>> {
             Ok(self.map_tasks.clone())
         }
         fn create_reduce_tasks(
             &self,
-            _map_reduce_job: &MapReduceJob,
-            _completed_map_tasks: &[&MapReduceTask],
-        ) -> Result<Vec<MapReduceTask>> {
+            __job: &Job,
+            _completed_map_tasks: &[&Task],
+        ) -> Result<Vec<Task>> {
             Ok(self.reduce_tasks.clone())
         }
     }
 
-    fn create_map_reduce_scheduler(map_task: MapReduceTask) -> MapReduceScheduler {
-        let mut map_reduce_scheduler =
-            MapReduceScheduler::new(Box::new(TaskProcessorStub::new(vec![map_task], Vec::new())));
-        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+    fn create_scheduler(map_task: Task) -> Scheduler {
+        let mut scheduler =
+            Scheduler::new(Box::new(TaskProcessorStub::new(vec![map_task], Vec::new())));
+        let job = Job::new(JobOptions {
             client_id: "client-1".to_owned(),
             binary_path: "/tmp/bin".to_owned(),
             input_directory: "/tmp/input".to_owned(),
             output_directory: Some("/tmp/output".to_owned()),
         }).unwrap();
-        map_reduce_scheduler
-            .schedule_map_reduce(map_reduce_job)
-            .unwrap();
-        map_reduce_scheduler
+        scheduler.schedule_job(job).unwrap();
+        scheduler
     }
 
     fn create_worker_manager(worker: Worker) -> WorkerManager {
@@ -372,15 +370,15 @@ mod tests {
 
     #[test]
     fn test_scheduling_assign_map() {
-        let map_task = MapReduceTask::new_map_task("map-reduce1", "/tmp/bin", "input-1");
+        let map_task = Task::new_map_task("map-reduce1", "/tmp/bin", "input-1");
         let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
 
-        let map_reduce_scheduler = create_map_reduce_scheduler(map_task);
+        let scheduler = create_scheduler(map_task);
         let worker_interface = WorkerInterfaceStub;
         let worker_manager = create_worker_manager(worker);
 
         let scheduling_resources = &SchedulerResources {
-            scheduler_arc: Arc::new(Mutex::new(map_reduce_scheduler)),
+            scheduler_arc: Arc::new(Mutex::new(scheduler)),
             worker_manager_arc: Arc::new(Mutex::new(worker_manager)),
             worker_interface_arc: Arc::new(RwLock::new(worker_interface)),
         };
@@ -391,10 +389,10 @@ mod tests {
             scheduling_resources.worker_manager_arc.lock().unwrap(),
         );
 
-        let map_reduce_scheduler = scheduling_resources.scheduler_arc.lock().unwrap();
+        let scheduler = scheduling_resources.scheduler_arc.lock().unwrap();
         let worker_manager = scheduling_resources.worker_manager_arc.lock().unwrap();
 
-        assert_eq!(0, map_reduce_scheduler.get_map_reduce_task_queue_size());
+        assert_eq!(0, scheduler.get_task_queue_size());
         assert!(!worker_manager.get_workers()[0]
             .get_current_task_id()
             .is_empty());
@@ -402,18 +400,18 @@ mod tests {
 
     #[test]
     fn test_handle_assign_task_failure() {
-        let map_task = MapReduceTask::new_map_task("map-reduce1", "/tmp/bin", "input-1");
+        let map_task = Task::new_map_task("map-reduce1", "/tmp/bin", "input-1");
         let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
 
         let worker_id = worker.get_worker_id().to_owned();
-        let task_id = map_task.task_id.to_owned();
+        let task_id = map_task.id.to_owned();
 
-        let map_reduce_scheduler = create_map_reduce_scheduler(map_task);
+        let scheduler = create_scheduler(map_task);
         let worker_interface = WorkerInterfaceStub;
         let worker_manager = create_worker_manager(worker);
 
         let scheduling_resources = &SchedulerResources {
-            scheduler_arc: Arc::new(Mutex::new(map_reduce_scheduler)),
+            scheduler_arc: Arc::new(Mutex::new(scheduler)),
             worker_manager_arc: Arc::new(Mutex::new(worker_manager)),
             worker_interface_arc: Arc::new(RwLock::new(worker_interface)),
         };
@@ -431,10 +429,10 @@ mod tests {
 
         handle_assign_task_failure(scheduling_resources, &task_assignment);
 
-        let map_reduce_scheduler = scheduling_resources.scheduler_arc.lock().unwrap();
+        let scheduler = scheduling_resources.scheduler_arc.lock().unwrap();
         let worker_manager = scheduling_resources.worker_manager_arc.lock().unwrap();
 
-        assert_eq!(1, map_reduce_scheduler.get_map_reduce_task_queue_size());
+        assert_eq!(1, scheduler.get_task_queue_size());
         assert!(
             worker_manager.get_workers()[0]
                 .get_current_task_id()

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use common::MapReduceJob as Job;
+use common::Job;
 
 // JobQueue contains a custom queue which can hold both new jobs and old.
 pub struct JobQueue {

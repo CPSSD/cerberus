@@ -6,7 +6,7 @@ use chrono::prelude::*;
 use common::Worker;
 use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
 use worker_management::WorkerManager;
-use scheduler::MapReduceScheduler;
+use scheduler::Scheduler;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
@@ -17,14 +17,14 @@ const INVALID_WORKER_ID: &str = "No worker found for provided id.";
 pub struct WorkerService {
     worker_manager: Arc<Mutex<WorkerManager>>,
     worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-    scheduler: Arc<Mutex<MapReduceScheduler>>,
+    scheduler: Arc<Mutex<Scheduler>>,
 }
 
 impl WorkerService {
     pub fn new(
         worker_manager: Arc<Mutex<WorkerManager>>,
         worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-        scheduler: Arc<Mutex<MapReduceScheduler>>,
+        scheduler: Arc<Mutex<Scheduler>>,
     ) -> Self {
         WorkerService {
             worker_manager,
@@ -185,9 +185,7 @@ mod tests {
         let worker_manager = Arc::new(Mutex::new(WorkerManager::new(None, None)));
         let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
         let task_processor = TaskProcessor;
-        let scheduler = Arc::new(Mutex::new(
-            MapReduceScheduler::new(Box::new(task_processor)),
-        ));
+        let scheduler = Arc::new(Mutex::new(Scheduler::new(Box::new(task_processor))));
 
         let worker_service =
             WorkerService::new(worker_manager.clone(), worker_interface, scheduler);
