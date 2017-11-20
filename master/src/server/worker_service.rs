@@ -14,19 +14,19 @@ use cerberus_proto::worker_grpc as grpc_pb;
 const INVALID_TASK_ID: &str = "No valid Task ID for this worker.";
 const INVALID_WORKER_ID: &str = "No worker found for provided id.";
 
-pub struct WorkerServiceImpl {
+pub struct WorkerService {
     worker_manager: Arc<Mutex<WorkerManager>>,
     worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
     scheduler: Arc<Mutex<MapReduceScheduler>>,
 }
 
-impl WorkerServiceImpl {
+impl WorkerService {
     pub fn new(
         worker_manager: Arc<Mutex<WorkerManager>>,
         worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
         scheduler: Arc<Mutex<MapReduceScheduler>>,
     ) -> Self {
-        WorkerServiceImpl {
+        WorkerService {
             worker_manager,
             worker_interface,
             scheduler,
@@ -34,7 +34,7 @@ impl WorkerServiceImpl {
     }
 }
 
-impl grpc_pb::WorkerService for WorkerServiceImpl {
+impl grpc_pb::WorkerService for WorkerService {
     fn register_worker(
         &self,
         _o: RequestOptions,
@@ -177,7 +177,7 @@ impl grpc_pb::WorkerService for WorkerServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cerberus_proto::worker_grpc::WorkerService;
+    use cerberus_proto::worker_grpc::WorkerService as WS;
     use mapreduce_tasks::TaskProcessor;
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
         ));
 
         let worker_service =
-            WorkerServiceImpl::new(worker_manager.clone(), worker_interface, scheduler);
+            WorkerService::new(worker_manager.clone(), worker_interface, scheduler);
 
         let mut register_worker_request = pb::RegisterWorkerRequest::new();
         register_worker_request.set_worker_address(String::from("127.0.0.1:8080"));
