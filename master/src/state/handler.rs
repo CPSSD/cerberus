@@ -29,6 +29,7 @@ pub struct StateHandler {
     port: u16,
     scheduler: Arc<Mutex<Scheduler>>,
     worker_manager: Arc<Mutex<WorkerManager>>,
+    dump_dir: String,
 }
 
 impl StateHandler {
@@ -37,17 +38,19 @@ impl StateHandler {
         scheduler: Arc<Mutex<Scheduler>>,
         worker_manager: Arc<Mutex<WorkerManager>>,
         create_dir: bool,
+        dir: &str,
     ) -> Result<Self> {
         if create_dir {
-            fs::create_dir_all("/var/lib/cerberus").chain_err(
-                || "Unable to create dir: /var/lib/cerberus",
-            )?;
+            fs::create_dir_all(dir).chain_err(|| {
+                format!("Unable to create dir: {}", dir)
+            })?;
         }
 
         Ok(StateHandler {
             port: port,
             scheduler: scheduler,
             worker_manager: worker_manager,
+            dump_dir: dir.into(),
         })
     }
 
@@ -71,25 +74,23 @@ impl StateHandler {
         });
 
         // Write the state to file.
-        let mut file = File::create("/var/lib/cerberus/temp.dump").chain_err(
-            || "Unable to create file",
-        )?;
+        let mut file = File::create(format!("{}/temp.dump", self.dump_dir))
+            .chain_err(|| "Unable to create file")?;
         file.write_all(json.to_string().as_bytes()).chain_err(
             || "Unable to write data",
         )?;
 
         fs::rename(
-            "/var/lib/cerberus/temp.dump",
-            "/var/lib/cerberus/master.dump",
+            format!("{}/temp.dump", self.dump_dir),
+            format!("{}/master.dump", self.dump_dir),
         ).chain_err(|| "Unable to rename file")?;
 
         Ok(())
     }
 
     pub fn load_state(&self) -> Result<()> {
-        let mut file = File::open("/var/lib/cerberus/master.dump").chain_err(
-            || "Unable to open file",
-        )?;
+        let mut file = File::open(format!("{}/master.dump", self.dump_dir))
+            .chain_err(|| "Unable to open file")?;
         let mut data = String::new();
         file.read_to_string(&mut data).chain_err(
             || "Unable to read from state file",
