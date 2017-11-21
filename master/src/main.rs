@@ -59,6 +59,7 @@ use state::StateHandler;
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const DUMP_LOOP_MS: u64 = 5000;
 const DEFAULT_PORT: &str = "8081";
+const DEFAULT_DUMP_DIR: &str = "/var/lib/cerberus";
 
 fn run() -> Result<()> {
     println!("Cerberus Master!");
@@ -70,6 +71,10 @@ fn run() -> Result<()> {
 
     let fresh = matches.is_present("fresh");
     let create_dump_dir = !matches.is_present("nodump");
+
+    let dump_dir = matches.value_of("state-location").unwrap_or(
+        DEFAULT_DUMP_DIR,
+    );
 
     let task_processor = TaskProcessor;
     let map_reduce_scheduler = Arc::new(Mutex::new(Scheduler::new(Box::new(task_processor))));
@@ -95,6 +100,7 @@ fn run() -> Result<()> {
         Arc::clone(&map_reduce_scheduler),
         Arc::clone(&worker_manager),
         create_dump_dir,
+        dump_dir,
     ).chain_err(|| "Unable to create StateHandler")?;
 
     // If our state dump file exists and we aren't running a fresh copy of master we
