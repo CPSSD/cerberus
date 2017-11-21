@@ -18,6 +18,7 @@ use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
 use operations::operation_handler;
 use operations::operation_handler::OperationState;
+use util::output_error;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 
@@ -26,6 +27,11 @@ const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 pub struct MapInput {
     pub key: String,
     pub value: String,
+}
+
+fn log_map_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+    output_error(&err.chain_err(|| "Error running map operation."));
+    operation_handler::set_failed_status(operation_state_arc);
 }
 
 fn send_map_result(
@@ -141,7 +147,7 @@ pub fn perform_map(
         output_dir_uuid,
     );
     if let Err(err) = result {
-        operation_handler::log_map_operation_err(err, operation_state_arc);
+        log_map_operation_err(err, operation_state_arc);
         return Err("Error starting map operation.".into());
     }
 
@@ -209,7 +215,7 @@ fn do_perform_map(
             Ok(mut map_result) => {
                 map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
                 if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-                    operation_handler::log_map_operation_err(err, &operation_state_arc);
+                    log_map_operation_err(err, &operation_state_arc);
                 } else {
                     info!("Map operation completed sucessfully.");
                     operation_handler::set_complete_status(&operation_state_arc);
@@ -224,7 +230,7 @@ fn do_perform_map(
                 if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                     error!("Could not send map operation failed: {}", err);
                 }
-                operation_handler::log_map_operation_err(err, &operation_state_arc);
+                log_map_operation_err(err, &operation_state_arc);
             }
         }
     });
