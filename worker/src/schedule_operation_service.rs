@@ -1,7 +1,7 @@
 use grpc::{RequestOptions, SingleResponse, Error};
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
-use operation_handler::OperationHandler;
+use operations::OperationHandler;
 use std::sync::{Arc, Mutex};
 
 pub struct ScheduleOperationServiceImpl {
