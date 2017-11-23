@@ -5,7 +5,7 @@ use futures_cpupool;
 
 use common::Job;
 use errors::*;
-use super::job_processor::JobProcessor;
+use super::job_processing;
 use super::state::State;
 use super::task_manager::TaskManager;
 
@@ -17,7 +17,6 @@ pub struct Scheduler {
     cpu_pool: futures_cpupool::CpuPool,
     state: Arc<State>,
 
-    job_processor: Arc<JobProcessor>,
     task_manager: Arc<TaskManager>,
 }
 
@@ -39,7 +38,6 @@ impl Scheduler {
             cpu_pool: pool.clone(),
             state: Arc::clone(&state),
 
-            job_processor: Arc::new(JobProcessor::new(pool.clone(), Arc::clone(&state))),
             task_manager: Arc::new(TaskManager::new(pool.clone(), Arc::clone(&state))),
         }
     }
@@ -47,6 +45,7 @@ impl Scheduler {
     /// Schedule a [`Job`](common::Job) to be executed.
     ///
     /// Returns the ID of the `Job`.
+    #[allow(needless_pass_by_value)]
     pub fn schedule_job(job: Job) -> String {
         unimplemented!();
     }
