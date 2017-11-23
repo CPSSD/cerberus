@@ -48,6 +48,7 @@ use master_interface::MasterInterface;
 use operations::OperationHandler;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
+const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
 const MAIN_LOOP_SLEEP_MS: u64 = 3000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
@@ -112,6 +113,9 @@ fn run() -> Result<()> {
         local_addr.to_string(),
         master_addr.to_string(),
     );
+
+    let mut current_health_check_failures = 0;
+
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
@@ -119,6 +123,18 @@ fn run() -> Result<()> {
 
         if let Err(err) = handler.update_worker_status() {
             error!("Could not send updated worker status to master: {}", err);
+            current_health_check_failures += 1;
+        } else {
+            current_health_check_failures = 0;
+        }
+
+        if current_health_check_failures >= MAX_HEALTH_CHECK_FAILURES {
+            if let Err(err) = register_worker(&master_interface, &local_addr) {
+                error!("Failed to re-register worker after disconnecting: {}", err);
+            } else {
+                info!("Successfully re-registered with master after being disconnected.");
+                current_health_check_failures = 0;
+            }
         }
 
         let server = worker_interface.get_server();
