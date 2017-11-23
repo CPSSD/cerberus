@@ -7,14 +7,15 @@ message EmptyMessage {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The WorkerService is implemented by the Master to allow workers to register
-// with the Cluster and update the status of completed map and reduce tasks.
+// The WorkerService is implemented by the Master to allow workers to register with the Cluster and
+// update the status of completed map and reduce tasks.
 service WorkerService {
-    // Registers the worker with the cluster so the worker can start recieving map and reduce operations.
+    // Registers the worker with the cluster so the worker can start recieving map and reduce
+    // operations.
     rpc RegisterWorker (RegisterWorkerRequest) returns (RegisterWorkerResponse);
 
-    // Used by the worker to update it's status on the master.
-    // This request will be used regularly so the master knows that the worker is still alive.
+    // Used by the worker to update it's status on the master. This request will be used regularly
+    // so the master knows that the worker is still alive.
     rpc UpdateWorkerStatus (UpdateStatusRequest) returns (EmptyMessage);
 
     // Used by the worker to return the result of a Map operation.
@@ -48,7 +49,8 @@ enum OperationStatus {
 
 message UpdateStatusRequest {
     WorkerStatus worker_status = 1;
-    // The status of the last assigned operation. This field will be UNKNOWN if there is no assigned operation.
+    // The status of the last assigned operation. This field will be UNKNOWN if there is no
+    // assigned operation.
     OperationStatus operation_status = 2;
 
     string worker_id = 3;
@@ -81,12 +83,11 @@ message ReduceResult {
     string failure_details = 4;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-// ScheduleOperationService is used by the master to schedule Map and Reduce operations on the worker.
+// ScheduleOperationService is used by the master to schedule Map and Reduce operations on the
+// worker.
 service ScheduleOperationService {
-    // Tells a worker to start a map operation with a certain set of data.
-    // An error will be returned if the operation is not valid or the worker is busy.
+    // Tells a worker to start a map operation with a certain set of data. An error will be
+    // returned if the operation is not valid or the worker is busy.
     rpc PerformMap (PerformMapRequest) returns (EmptyMessage);
 
     // Tells a worker to start a reduce operation for a certain partition of the map output.
@@ -116,8 +117,7 @@ message PerformReduceRequest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// IntermediateDataService allows reduce worker to get intemediate data from
-// workers.
+// IntermediateDataService allows reduce worker to get intemediate data from workers.
 service IntermediateDataService {
   rpc GetIntermediateData (GetIntermediateDataRequest) returns (Partition);
 }
