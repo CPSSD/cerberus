@@ -65,7 +65,7 @@ impl Scheduler {
             future::result(job_processing::create_map_tasks(&job))
                 .and_then(|_| {
                     // TODO(tbolt): This is just a placeholder so that the result type of the
-                    // future matches what is is expected. Will be removed soon.
+                    // future matches what is expected. Will be removed soon.
                     future::ok(Job::new(JobOptions::default()).unwrap())
                 })
         }).select(failure)
