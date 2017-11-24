@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::Mutex;
 
 use futures::Future;
 use futures::sync::oneshot::Sender;
@@ -13,16 +13,10 @@ use errors::*;
 pub struct ScheduledJob {
     pub cancellation_channel: Sender<()>,
     pub job_future: Box<Future<Item = Job, Error = Error>>,
+    pub job_id: String,
 }
 
 impl ScheduledJob {
-    pub fn new(cancel: Sender<()>, future: Box<Future<Item = Job, Error = Error>>) -> Self {
-        ScheduledJob {
-            cancellation_channel: cancel,
-            job_future: future,
-        }
-    }
-
     /// Sends a cancellation signal to the underlying future.
     ///
     /// This consumes `self` and returns the Boxed future.
@@ -43,11 +37,30 @@ impl ScheduledJob {
 /// keys.
 #[derive(Default)]
 pub struct State {
-    pub scheduled_jobs: RwLock<HashMap<String, ScheduledJob>>,
+    scheduled_jobs: Mutex<HashMap<String, ScheduledJob>>,
 }
 
 impl State {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn add_job(&self, job: ScheduledJob) -> Result<()> {
+        let mut map = self.scheduled_jobs.lock().unwrap();
+        if map.contains_key(&job.job_id) {
+            return Err(
+                format!("Job with ID {} is already running.", &job.job_id).into(),
+            );
+        }
+        map.insert(job.job_id.clone(), job);
+        Ok(())
+    }
+
+    pub fn cancel_job(&self, job_id: &str) -> Result<Box<Future<Item = Job, Error = Error>>> {
+        let mut map = self.scheduled_jobs.lock().unwrap();
+        let job_future = map.remove(job_id).ok_or_else(|| {
+            format!("Job with ID {} does not exist.", job_id)
+        })?;
+        Ok(job_future.cancel())
     }
 }
