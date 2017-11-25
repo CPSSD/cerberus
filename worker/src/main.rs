@@ -33,19 +33,19 @@ mod errors {
 
 mod master_interface;
 mod operations;
-mod worker_interface;
-mod schedule_operation_service;
+mod server;
 mod parser;
 
-use errors::*;
 use std::{thread, time};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use util::init_logger;
-use worker_interface::WorkerInterface;
+
+use errors::*;
 use master_interface::MasterInterface;
 use operations::OperationHandler;
+use server::{Server, ScheduleOperationServer};
+use util::init_logger;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
@@ -53,6 +53,7 @@ const MAIN_LOOP_SLEEP_MS: u64 = 3000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
 const DEFAULT_PORT: &str = "0";
+const DEFAULT_MASTER_ADDR: &str = "[::]:8081";
 
 fn register_worker(
     master_interface: &Arc<Mutex<MasterInterface>>,
@@ -85,7 +86,7 @@ fn run() -> Result<()> {
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();
-    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or("[::]:8081"))
+    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or(DEFAULT_MASTER_ADDR))
         .chain_err(|| "Error parsing master address")?;
     let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
         .chain_err(|| "Error parsing port")?;
@@ -96,13 +97,14 @@ fn run() -> Result<()> {
     let operation_handler = Arc::new(Mutex::new(
         OperationHandler::new(Arc::clone(&master_interface)),
     ));
-    let worker_interface = WorkerInterface::new(Arc::clone(&operation_handler), port)
-        .chain_err(|| "Error building worker interface.")?;
+
+    let scheduler_server = ScheduleOperationServer::new(Arc::clone(&operation_handler));
+    let srv = Server::new(port, scheduler_server).chain_err(||"Can't create server")?;
 
     let local_addr = SocketAddr::from_str(&format!(
         "{}:{}",
         local_ip::get().expect("Could not get IP"),
-        worker_interface.get_server().local_addr().port()
+        srv.addr().port(),
     )).chain_err(|| "Not a valid address of the worker")?;
     register_worker(&master_interface, &local_addr).chain_err(
         || "Failed to register worker.",
@@ -137,8 +139,7 @@ fn run() -> Result<()> {
             }
         }
 
-        let server = worker_interface.get_server();
-        if !server.is_alive() {
+        if !srv.is_alive() {
             return Err("Worker interface server has unexpectingly died.".into());
         }
     }
