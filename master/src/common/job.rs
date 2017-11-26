@@ -300,4 +300,16 @@ mod tests {
         assert_eq!("/tmp/input/output/", job1.output_directory);
         assert_eq!("/tmp/output/", job2.output_directory);
     }
+
+    #[test]
+    fn test_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Job>();
+    }
+
+    #[test]
+    fn test_sync() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Job>();
+    }
 }

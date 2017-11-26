@@ -355,4 +355,16 @@ mod tests {
         assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
         assert_eq!(reduce_task.get_work_id(), reduce_task.id);
     }
+
+    #[test]
+    fn test_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Task>();
+    }
+
+    #[test]
+    fn test_sync() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Task>();
+    }
 }

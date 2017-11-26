@@ -1,5 +1,8 @@
 /// `job_processing` is responsible for processing a [`Job`](common::Job) into a set of
 /// [`Task`s](common::Task).
+///
+/// It also handles the management of Job metadata, such as its status, the time it was started,
+/// etc.
 
 // TODO(tbolt): Refactor the contents of these functions after the scheduler refactor is complete.
 
@@ -8,6 +11,9 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 
+use chrono::Utc;
+
+use cerberus_proto::mapreduce::Status as JobStatus;
 use common::{Job, Task};
 use errors::*;
 
@@ -20,6 +26,13 @@ struct MapTaskFile {
 
     file: fs::File,
     file_path: String,
+}
+
+pub fn activate_job(mut job: Job) -> Job {
+    info!("Activating job with ID {}.", job.id);
+    job.status = JobStatus::IN_PROGRESS;
+    job.time_started = Some(Utc::now());
+    job
 }
 
 pub fn create_map_tasks(job: &Job) -> Result<Vec<Task>> {

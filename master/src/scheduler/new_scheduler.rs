@@ -7,9 +7,10 @@ use futures_cpupool;
 
 use common::{Job, JobOptions};
 use errors::*;
-use super::job_processing;
-use super::state::{ScheduledJob, State};
-use super::task_manager::TaskManager;
+use scheduler::job_processing;
+use scheduler::state::{ScheduledJob, State};
+use scheduler::task_manager::TaskManager;
+use scheduler::worker_manager_adapter::WorkerManager;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
 ///
@@ -24,23 +25,26 @@ pub struct Scheduler {
 
 impl Scheduler {
     /// Construct a new `Scheduler`, using the default [`CpuPool`](futures_cpupool::CpuPool).
-    pub fn new() -> Self {
+    pub fn new(worker_manager: Arc<WorkerManager>) -> Self {
         // The default number of threads in a CpuPool is the same as the number of CPUs on the
         // host.
         let mut builder = futures_cpupool::Builder::new();
-        Scheduler::from_cpu_pool_builder(&mut builder)
+        Scheduler::from_cpu_pool_builder(&mut builder, worker_manager)
     }
 
     /// Construct a new `Scheduler` using a provided [`CpuPool builder`](futures_cpupool::Builder).
-    pub fn from_cpu_pool_builder(builder: &mut futures_cpupool::Builder) -> Self {
+    pub fn from_cpu_pool_builder(
+        builder: &mut futures_cpupool::Builder,
+        worker_manager: Arc<WorkerManager>,
+    ) -> Self {
         let pool = builder.create();
         let state = Arc::new(State::new());
         Scheduler {
             // Cloning a CpuPool simply clones the reference to the underlying pool.
             cpu_pool: pool.clone(),
-            state: Arc::clone(&state),
+            state: state,
 
-            task_manager: Arc::new(TaskManager::new(pool.clone(), Arc::clone(&state))),
+            task_manager: Arc::new(TaskManager::new(worker_manager)),
         }
     }
 
@@ -62,12 +66,15 @@ impl Scheduler {
         let task_manager = Arc::clone(&self.task_manager);
 
         let job_future = future::lazy(move || {
+            future::ok(job_processing::activate_job(job))
+        }).and_then(|job| {
             future::result(job_processing::create_map_tasks(&job))
-                .and_then(|_| {
-                    // TODO(tbolt): This is just a placeholder so that the result type of the
-                    // future matches what is expected. Will be removed soon.
-                    future::ok(Job::new(JobOptions::default()).unwrap())
-                })
+        }).and_then(move |tasks| {
+            task_manager.run_tasks(tasks)
+        }).and_then(|_completed_tasks| {
+            // TODO(tbolt): This is just a placeholder so that the result type of the
+            // future matches what is expected. Will be removed soon.
+            future::ok(Job::new(JobOptions::default()).unwrap())
         }).select(failure)
         // We only care about whichever future resolves first, so map the ok pair and the error
         // pair to single values.
