@@ -4,17 +4,17 @@ use cerberus_proto::worker_grpc as grpc_pb;
 use operations::OperationHandler;
 use std::sync::{Arc, Mutex};
 
-pub struct ScheduleOperationServiceImpl {
+pub struct ScheduleOperationService {
     operation_handler: Arc<Mutex<OperationHandler>>,
 }
 
-impl ScheduleOperationServiceImpl {
+impl ScheduleOperationService {
     pub fn new(operation_handler: Arc<Mutex<OperationHandler>>) -> Self {
-        ScheduleOperationServiceImpl { operation_handler: operation_handler }
+        ScheduleOperationService { operation_handler: operation_handler }
     }
 }
 
-impl grpc_pb::ScheduleOperationService for ScheduleOperationServiceImpl {
+impl grpc_pb::ScheduleOperationService for ScheduleOperationService {
     fn perform_map(
         &self,
         _o: RequestOptions,
