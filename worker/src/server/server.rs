@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use grpc;
 
 use errors::*;
-use server::master_service::ScheduleOperationServer;
+use server::master_service::ScheduleOperationService;
 
 use cerberus_proto::worker_grpc;
 
@@ -16,15 +16,15 @@ pub struct Server {
 impl Server {
     pub fn new(
         port: u16,
-        scheduler_server: ScheduleOperationServer,
+        scheduler_service: ScheduleOperationService,
     ) -> Result<Self> {
         let mut server_builder = grpc::ServerBuilder::new_plain();
         server_builder.http.set_port(port);
         server_builder.http.set_cpu_pool_threads(GRPC_THREAD_POOL_SIZE);
 
-        // Register the ScheduleOperationServer
+        // Register the ScheduleOperationService
         server_builder.add_service(worker_grpc::ScheduleOperationServiceServer::new_service_def(
-            scheduler_server,
+            scheduler_service,
         ));
 
         Ok(Server {

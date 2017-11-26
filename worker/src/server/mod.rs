@@ -2,5 +2,5 @@
 mod master_service;
 mod server;
 
-pub use self::master_service::ScheduleOperationServer;
+pub use self::master_service::ScheduleOperationService;
 pub use self::server::Server;
