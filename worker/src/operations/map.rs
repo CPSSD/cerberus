@@ -44,7 +44,11 @@ fn send_map_result(
     Ok(())
 }
 
-fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMap<u64, String>> {
+/// ParsedMapResults is a tuple containing a HashMap of parsed map results and a vector
+/// of intermediate files created by the worker.
+type ParsedMapResults = (HashMap<u64, String>, Vec<PathBuf>);
+
+fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<ParsedMapResults> {
     let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
@@ -56,6 +60,7 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMa
         Some(map) => map,
     };
 
+    let mut intermediate_files = Vec::new();
     for (partition_str, pairs) in partition_map.iter() {
         let partition: u64 = partition_str.to_owned().parse().chain_err(
             || "Error parsing map response.",
@@ -72,18 +77,23 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<HashMa
         file.write_all(pairs.to_string().as_bytes()).chain_err(
             || "Failed to write to map output file.",
         )?;
+        intermediate_files.push(file_path.clone());
 
         map_results.insert(partition, (*file_path.to_string_lossy()).to_owned());
     }
 
-    Ok(map_results)
+    Ok((map_results, intermediate_files))
 }
+
+/// MapOperationResults is a tuple containing a pb::MapResult object and a vector of intermediate
+/// files created by the worker.
+type MapOperationResults = (pb::MapResult, Vec<PathBuf>);
 
 fn map_operation_thread_impl(
     map_input_value: &bson::Document,
     output_dir: &str,
     mut child: Child,
-) -> Result<pb::MapResult> {
+) -> Result<MapOperationResults> {
     let mut input_buf = Vec::new();
     bson::encode_document(&mut input_buf, map_input_value)
         .chain_err(|| "Could not encode map_input as BSON.")?;
@@ -104,7 +114,7 @@ fn map_operation_thread_impl(
         || "Error accessing payload output.",
     )?;
 
-    let map_results = parse_map_results(&output_str, output_dir).chain_err(
+    let (map_results, intermediate_files) = parse_map_results(&output_str, output_dir).chain_err(
         || "Error parsing map results.",
     )?;
 
@@ -112,7 +122,7 @@ fn map_operation_thread_impl(
     response.set_status(pb::ResultStatus::SUCCESS);
     response.set_map_results(map_results);
 
-    Ok(response)
+    Ok((response, intermediate_files))
 }
 
 pub fn perform_map(
@@ -210,7 +220,10 @@ fn do_perform_map(
             map_operation_thread_impl(&map_input_document, &*output_path.to_string_lossy(), child);
 
         match result {
-            Ok(mut map_result) => {
+            Ok((mut map_result, intermediate_files)) => {
+                let mut operation_state = operation_state_arc.lock().unwrap();
+                operation_state.add_intermediate_files(intermediate_files);
+
                 map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
                 if let Err(err) = send_map_result(&master_interface_arc, map_result) {
                     log_map_operation_err(err, &operation_state_arc);
