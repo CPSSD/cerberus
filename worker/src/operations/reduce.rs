@@ -15,8 +15,8 @@ use serde_json::Value::Array;
 use errors::*;
 use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
-use operations::operation_handler;
-use operations::operation_handler::OperationState;
+use super::operation_handler;
+use super::state::OperationState;
 use util::output_error;
 
 /// `ReduceOperation` stores the input for a reduce operation for a single key.
@@ -135,14 +135,12 @@ fn log_reduce_operation_err(err: Error, operation_state_arc: &Arc<Mutex<Operatio
 }
 
 fn send_reduce_result(
-    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    master_interface_arc: &Arc<MasterInterface>,
     result: pb::ReduceResult,
 ) -> Result<()> {
-    let master_interface = master_interface_arc.lock().unwrap();
-
-    master_interface.return_reduce_result(result).chain_err(
-        || "Error sending reduce result to master.",
-    )?;
+    master_interface_arc
+        .return_reduce_result(result)
+        .chain_err(|| "Error sending reduce result to master.")?;
     Ok(())
 }
 
@@ -205,8 +203,7 @@ fn create_reduce_operations(
 pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
-    reduce_queue_arc: Arc<Mutex<ReduceOperationQueue>>,
-    master_interface_arc: Arc<Mutex<MasterInterface>>,
+    master_interface_arc: Arc<MasterInterface>,
 ) -> Result<()> {
     {
         let mut operation_state = operation_state_arc.lock().unwrap();
@@ -227,7 +224,6 @@ pub fn perform_reduce(
     let result = do_perform_reduce(
         reduce_request,
         Arc::clone(operation_state_arc),
-        reduce_queue_arc,
         master_interface_arc,
     );
     if let Err(err) = result {
@@ -242,17 +238,11 @@ pub fn perform_reduce(
 fn do_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
-    reduce_queue_arc: Arc<Mutex<ReduceOperationQueue>>,
-    master_interface_arc: Arc<Mutex<MasterInterface>>,
+    master_interface_arc: Arc<MasterInterface>,
 ) -> Result<()> {
     let reduce_operations = create_reduce_operations(reduce_request).chain_err(
         || "Error creating reduce operations from input.",
     )?;
-
-    {
-        let mut reduce_queue = reduce_queue_arc.lock().unwrap();
-        reduce_queue.set_queue(reduce_operations);
-    }
 
     let reduce_options = ReduceOptions {
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
@@ -262,7 +252,7 @@ fn do_perform_reduce(
     run_reduce_queue(
         reduce_options,
         operation_state_arc,
-        reduce_queue_arc,
+        reduce_operations,
         master_interface_arc,
     );
 
@@ -272,16 +262,18 @@ fn do_perform_reduce(
 fn run_reduce_queue(
     reduce_options: ReduceOptions,
     operation_state_arc: Arc<Mutex<OperationState>>,
-    reduce_queue_arc: Arc<Mutex<ReduceOperationQueue>>,
-    master_interface_arc: Arc<Mutex<MasterInterface>>,
+    reduce_operations: Vec<ReduceOperation>,
+    master_interface_arc: Arc<MasterInterface>,
 ) {
     let initial_cpu_time = operation_state_arc.lock().unwrap().initial_cpu_time;
 
     thread::spawn(move || {
         let mut reduce_err = None;
-        loop {
-            let mut reduce_queue = reduce_queue_arc.lock().unwrap();
 
+        let mut reduce_queue = ReduceOperationQueue::new();
+        reduce_queue.set_queue(reduce_operations);
+
+        loop {
             if reduce_queue.is_queue_empty() {
                 break;
             } else {

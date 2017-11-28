@@ -16,8 +16,8 @@ use uuid::Uuid;
 use errors::*;
 use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
-use operations::operation_handler;
-use operations::operation_handler::OperationState;
+use super::operation_handler;
+use super::state::OperationState;
 use util::output_error;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
@@ -35,14 +35,12 @@ fn log_map_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationSt
 }
 
 fn send_map_result(
-    master_interface_arc: &Arc<Mutex<MasterInterface>>,
+    master_interface_arc: &Arc<MasterInterface>,
     map_result: pb::MapResult,
 ) -> Result<()> {
-    let master_interface = master_interface_arc.lock().unwrap();
-
-    master_interface.return_map_result(map_result).chain_err(
-        || "Error sending map result to master.",
-    )?;
+    master_interface_arc
+        .return_map_result(map_result)
+        .chain_err(|| "Error sending map result to master.")?;
     Ok(())
 }
 
@@ -120,7 +118,7 @@ fn map_operation_thread_impl(
 pub fn perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<Mutex<MasterInterface>>,
+    master_interface_arc: Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     {
@@ -159,7 +157,7 @@ pub fn perform_map(
 fn do_perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<Mutex<MasterInterface>>,
+    master_interface_arc: Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     let file = File::open(map_options.get_input_file_path()).chain_err(
