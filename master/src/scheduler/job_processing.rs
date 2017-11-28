@@ -35,6 +35,13 @@ pub fn activate_job(mut job: Job) -> Job {
     job
 }
 
+pub fn complete_job(mut job: Job) -> Job {
+    info!("Job with ID {} completed.", job.id);
+    job.status = JobStatus::DONE;
+    job.time_completed = Some(Utc::now());
+    job
+}
+
 pub fn create_map_tasks(job: &Job) -> Result<Vec<Task>> {
     let mut map_tasks = Vec::new();
     let input_directory = PathBuf::from(job.input_directory.as_str());
@@ -76,7 +83,7 @@ pub fn create_map_tasks(job: &Job) -> Result<Vec<Task>> {
     Ok(map_tasks)
 }
 
-pub fn create_reduce_tasks(job: &Job, completed_map_tasks: &[&Task]) -> Result<Vec<Task>> {
+pub fn create_reduce_tasks(job: &Job, completed_map_tasks: Vec<Task>) -> Result<Vec<Task>> {
     let mut reduce_tasks = Vec::new();
     let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
