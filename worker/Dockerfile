@@ -1,4 +1,4 @@
-FROM rust:jessie
+FROM rustlang/rust:nightly
 
 # TODO: consider alternatives.
 # Required thanks to local-ip package...

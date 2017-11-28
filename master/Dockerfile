@@ -1,4 +1,4 @@
-FROM rust
+FROM rustlang/rust:nightly
 
 EXPOSE 8081
 

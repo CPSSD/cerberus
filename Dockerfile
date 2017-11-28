@@ -1,6 +1,6 @@
 # Dockerfile for testing the project in a Docker container.
 
-FROM rust
+FROM rustlang/rust:nightly
 
 MAINTAINER Cerberus Developers
 
