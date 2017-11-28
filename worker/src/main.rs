@@ -44,7 +44,7 @@ use std::sync::Arc;
 use errors::*;
 use master_interface::MasterInterface;
 use operations::OperationHandler;
-use server::{Server, ScheduleOperationService};
+use server::{Server, ScheduleOperationService, IntermediateDataService};
 use util::init_logger;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
@@ -93,10 +93,10 @@ fn run() -> Result<()> {
     )?);
     let operation_handler = Arc::new(OperationHandler::new(Arc::clone(&master_interface)));
 
-    let scheduler_server = ScheduleOperationService::new(Arc::clone(&operation_handler));
-    let srv = Server::new(port, scheduler_server).chain_err(
-        || "Can't create server",
-    )?;
+    let scheduler_service = ScheduleOperationService::new(Arc::clone(&operation_handler));
+    let interm_data_service = IntermediateDataService::new();
+    let srv = Server::new(port, scheduler_service, interm_data_service)
+        .chain_err(|| "Can't create server")?;
 
     let local_addr = SocketAddr::from_str(&format!(
         "{}:{}",
