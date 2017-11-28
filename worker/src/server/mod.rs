@@ -1,6 +1,10 @@
+/// `intermediate_data_service` is responsible for handing traffic coming from other workers
+/// requesting intermediate data created by the map task.
+mod intermediate_data_service;
 /// `master_service` is responsible for handing data incoming from the master.
 mod master_service;
 
+pub use self::intermediate_data_service::IntermediateDataService;
 pub use self::master_service::ScheduleOperationService;
 
 use std::net::SocketAddr;
@@ -15,7 +19,11 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(port: u16, scheduler_service: ScheduleOperationService) -> Result<Self> {
+    pub fn new(
+        port: u16,
+        scheduler_service: ScheduleOperationService,
+        interm_data_service: IntermediateDataService,
+    ) -> Result<Self> {
         let mut server_builder = grpc::ServerBuilder::new_plain();
         server_builder.http.set_port(port);
         server_builder.http.set_cpu_pool_threads(
@@ -26,6 +34,12 @@ impl Server {
         server_builder.add_service(
             worker_grpc::ScheduleOperationServiceServer::new_service_def(
                 scheduler_service,
+            ),
+        );
+        // Register IntermediateDataService
+        server_builder.add_service(
+            worker_grpc::IntermediateDataServiceServer::new_service_def(
+                interm_data_service,
             ),
         );
 
