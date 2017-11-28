@@ -10,3 +10,4 @@ mod job_processing;
 mod new_scheduler;
 mod state;
 mod task_manager;
+mod worker_manager_adapter;

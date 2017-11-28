@@ -1,21 +1,31 @@
 use std::sync::Arc;
 
-use futures_cpupool;
+use futures::future;
+use futures::prelude::*;
 
-use super::state::State;
+use common::Task;
+use errors::*;
+use scheduler::worker_manager_adapter::WorkerManager;
 
 /// The `TaskManager` is responsible for communicating with the
 /// [`WorkerManager`](worker_management::WorkerManager).
 pub struct TaskManager {
-    cpu_pool: futures_cpupool::CpuPool,
-    state: Arc<State>,
+    worker_manager: Arc<WorkerManager>,
 }
 
 impl TaskManager {
-    pub fn new(cpu_pool: futures_cpupool::CpuPool, state: Arc<State>) -> Self {
-        TaskManager {
-            cpu_pool: cpu_pool,
-            state: state,
-        }
+    pub fn new(manager: Arc<WorkerManager>) -> Self {
+        TaskManager { worker_manager: manager }
+    }
+
+    pub fn run_tasks<'a>(
+        &self,
+        tasks: Vec<Task>,
+    ) -> impl Future<Item = Vec<Task>, Error = Error> + 'a {
+        let task_futures: Vec<Box<Future<Item = Task, Error = Error> + Send>> = tasks
+            .into_iter()
+            .map(|task| self.worker_manager.run_task(task))
+            .collect();
+        future::join_all(task_futures)
     }
 }

@@ -12,7 +12,7 @@ use errors::*;
 /// job future.
 pub struct ScheduledJob {
     pub cancellation_channel: Sender<()>,
-    pub job_future: Box<Future<Item = Job, Error = Error>>,
+    pub job_future: Box<Future<Item = Job, Error = Error> + Send>,
     pub job_id: String,
 }
 
@@ -49,7 +49,7 @@ impl State {
         let mut map = self.scheduled_jobs.lock().unwrap();
         if map.contains_key(&job.job_id) {
             return Err(
-                format!("Job with ID {} is already running.", &job.job_id).into(),
+                format!("Job with ID {} is already scheduled.", &job.job_id).into(),
             );
         }
         map.insert(job.job_id.clone(), job);
