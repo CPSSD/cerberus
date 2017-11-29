@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 use grpc::RequestOptions;
 
@@ -11,9 +12,9 @@ use cerberus_proto::worker_grpc::ScheduleOperationService; // Importing methods,
 
 const NO_CLIENT_FOUND_ERR: &str = "No client found for this worker";
 
-pub trait WorkerInterface {
-    fn add_client(&mut self, worker: &Worker) -> Result<()>;
-    fn remove_client(&mut self, worker_id: &str) -> Result<()>;
+pub trait WorkerInterface: Sync + Send {
+    fn add_client(&self, worker: &Worker) -> Result<()>;
+    fn remove_client(&self, worker_id: &str) -> Result<()>;
 
     fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()>;
     fn schedule_reduce(&self, request: pb::PerformReduceRequest, worker_id: &str) -> Result<()>;
@@ -21,7 +22,7 @@ pub trait WorkerInterface {
 
 #[derive(Default)]
 pub struct WorkerInterfaceImpl {
-    clients: HashMap<String, grpc_pb::ScheduleOperationServiceClient>,
+    clients: RwLock<HashMap<String, grpc_pb::ScheduleOperationServiceClient>>,
 }
 
 
@@ -33,9 +34,13 @@ impl WorkerInterfaceImpl {
 }
 
 impl WorkerInterface for WorkerInterfaceImpl {
-    fn add_client(&mut self, worker: &Worker) -> Result<()> {
-        if self.clients.get(&worker.worker_id).is_some() {
-            return Err("Client already exists for this worker".into());
+    fn add_client(&self, worker: &Worker) -> Result<()> {
+        let mut clients = self.clients.write().unwrap();
+
+        if clients.get(&worker.worker_id).is_some() {
+            return Err(
+                format!("client already exists for worker {}", &worker.worker_id).into(),
+            );
         }
 
         let client = grpc_pb::ScheduleOperationServiceClient::new_plain(
@@ -44,21 +49,25 @@ impl WorkerInterface for WorkerInterfaceImpl {
             Default::default(),
         ).chain_err(|| "Error building client for worker")?;
 
-        self.clients.insert(worker.worker_id.to_owned(), client);
+        clients.insert(worker.worker_id.to_owned(), client);
         Ok(())
     }
 
-    fn remove_client(&mut self, worker_id: &str) -> Result<()> {
-        if self.clients.get(worker_id).is_none() {
+    fn remove_client(&self, worker_id: &str) -> Result<()> {
+        let mut clients = self.clients.write().unwrap();
+
+        if clients.get(worker_id).is_none() {
             return Err(NO_CLIENT_FOUND_ERR.into());
         }
 
-        self.clients.remove(worker_id);
+        clients.remove(worker_id);
         Ok(())
     }
 
     fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()> {
-        if let Some(client) = self.clients.get(worker_id) {
+        let clients = self.clients.read().unwrap();
+
+        if let Some(client) = clients.get(worker_id) {
             client
                 .perform_map(RequestOptions::new(), request)
                 .wait()
@@ -70,7 +79,9 @@ impl WorkerInterface for WorkerInterfaceImpl {
     }
 
     fn schedule_reduce(&self, request: pb::PerformReduceRequest, worker_id: &str) -> Result<()> {
-        if let Some(client) = self.clients.get(worker_id) {
+        let clients = self.clients.read().unwrap();
+
+        if let Some(client) = clients.get(worker_id) {
             client
                 .perform_reduce(RequestOptions::new(), request)
                 .wait()

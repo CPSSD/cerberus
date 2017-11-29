@@ -46,7 +46,7 @@ impl grpc_pb::WorkerService for WorkerService {
         };
 
         // Add client for worker to worker interface.
-        let mut interface = self.worker_interface.write().unwrap();
+        let interface = self.worker_interface.write().unwrap();
         let result = interface.add_client(&worker);
         if let Err(err) = result {
             return SingleResponse::err(Error::Panic(err.to_string()));

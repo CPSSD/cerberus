@@ -301,10 +301,10 @@ mod tests {
     struct WorkerInterfaceStub;
 
     impl WorkerInterface for WorkerInterfaceStub {
-        fn add_client(&mut self, _worker: &Worker) -> Result<()> {
+        fn add_client(&self, _worker: &Worker) -> Result<()> {
             Ok(())
         }
-        fn remove_client(&mut self, _worker_id: &str) -> Result<()> {
+        fn remove_client(&self, _worker_id: &str) -> Result<()> {
             Ok(())
         }
         fn schedule_map(&self, _request: pb::PerformMapRequest, _worker_id: &str) -> Result<()> {

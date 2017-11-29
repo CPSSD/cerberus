@@ -1,6 +1,8 @@
 pub mod client_service;
 pub mod worker_service;
 
+pub mod new_worker_service;
+
 pub use self::client_service::ClientService;
 pub use self::worker_service::WorkerService;
 
