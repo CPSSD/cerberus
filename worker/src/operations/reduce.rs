@@ -19,6 +19,13 @@ use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
 
+#[cfg(test)]
+use mocktopus;
+#[cfg(test)]
+use mocktopus::macros::*;
+#[cfg(test)]
+use std;
+
 /// `ReduceOperation` stores the input for a reduce operation for a single key.
 struct ReduceOperation {
     intermediate_key: String,
@@ -42,52 +49,53 @@ pub struct ReduceOperationQueue {
     queue: Vec<ReduceOperation>,
 }
 
+fn run_reducer(
+    reduce_options: &ReduceOptions,
+    reduce_operation: &ReduceOperation,
+    mut child: Child,
+) -> Result<()> {
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(reduce_operation.input.as_bytes())
+            .chain_err(|| "Error writing to payload stdin.")?;
+    } else {
+        return Err("Error accessing stdin of payload binary.".into());
+    }
+
+    let output = child.wait_with_output().chain_err(
+        || "Error waiting for payload result.",
+    )?;
+
+    let output_str = String::from_utf8(output.stdout).chain_err(
+        || "Error accessing payload output.",
+    )?;
+
+    let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
+        || "Error parsing reduce results.",
+    )?;
+    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
+        || "Error prettifying reduce results",
+    )?;
+
+    let mut file_path = PathBuf::new();
+    file_path.push(reduce_options.output_directory.clone());
+    file_path.push(reduce_operation.intermediate_key.clone());
+
+
+    let mut file = File::create(file_path).chain_err(
+        || "Failed to create reduce output file.",
+    )?;
+
+    file.write_all(reduce_results_pretty.as_bytes()).chain_err(
+        || "Failed to write to reduce output file.",
+    )?;
+    Ok(())
+}
+
+#[cfg_attr(test, mockable)]
 impl ReduceOperationQueue {
     pub fn new() -> Self {
         Default::default()
-    }
-
-    fn run_reducer(
-        &self,
-        reduce_options: &ReduceOptions,
-        reduce_operation: &ReduceOperation,
-        mut child: Child,
-    ) -> Result<()> {
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin
-                .write_all(reduce_operation.input.as_bytes())
-                .chain_err(|| "Error writing to payload stdin.")?;
-        } else {
-            return Err("Error accessing stdin of payload binary.".into());
-        }
-
-        let output = child.wait_with_output().chain_err(
-            || "Error waiting for payload result.",
-        )?;
-
-        let output_str = String::from_utf8(output.stdout).chain_err(
-            || "Error accessing payload output.",
-        )?;
-
-        let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
-            || "Error parsing reduce results.",
-        )?;
-        let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results)
-            .chain_err(|| "Error prettifying reduce results")?;
-
-        let mut file_path = PathBuf::new();
-        file_path.push(reduce_options.output_directory.clone());
-        file_path.push(reduce_operation.intermediate_key.clone());
-
-
-        let mut file = File::create(file_path).chain_err(
-            || "Failed to create reduce output file.",
-        )?;
-
-        file.write_all(reduce_results_pretty.as_bytes()).chain_err(
-            || "Failed to write to reduce output file.",
-        )?;
-        Ok(())
     }
 
     fn perform_reduce_operation(
@@ -106,7 +114,7 @@ impl ReduceOperationQueue {
         fs::create_dir_all(reduce_options.output_directory.to_owned())
             .chain_err(|| "Failed to create output directory")?;
 
-        self.run_reducer(reduce_options, reduce_operation, child)
+        run_reducer(reduce_options, reduce_operation, child)
             .chain_err(|| "Error running reducer.")?;
 
         Ok(())
@@ -116,6 +124,8 @@ impl ReduceOperationQueue {
         if let Some(reduce_operation) = self.queue.pop() {
             self.perform_reduce_operation(reduce_options, &reduce_operation)
                 .chain_err(|| "Error performing reduce operation.")?;
+        } else {
+            return Err("No reduce operations in queue".into());
         }
         Ok(())
     }
@@ -314,4 +324,44 @@ fn run_reduce_queue(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mocktopus::mocking::*;
+
+    #[test]
+    fn test_reduce_operation_queue() {
+        ReduceOperationQueue::perform_reduce_operation.mock_safe(
+            |_, _, _| {
+                return MockResult::Return(Ok(()));
+            },
+        );
+
+        let reduce_operation = ReduceOperation {
+            input: "foo".to_owned(),
+            intermediate_key: "bar".to_owned(),
+        };
+        let mut reduce_operations = Vec::new();
+        reduce_operations.push(reduce_operation);
+
+        let mut reduce_queue = ReduceOperationQueue::new();
+        assert!(reduce_queue.is_queue_empty());
+
+        reduce_queue.set_queue(reduce_operations);
+        assert!(!reduce_queue.is_queue_empty());
+
+        let reduce_options = ReduceOptions {
+            output_directory: "foo".to_owned(),
+            reducer_file_path: "bar".to_owned(),
+        };
+
+        let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+        assert!(!result.is_err());
+        assert!(reduce_queue.is_queue_empty());
+
+        let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+        assert!(result.is_err());
+    }
 }

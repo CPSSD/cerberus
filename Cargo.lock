@@ -497,6 +497,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mocktopus"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "mocktopus_macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "mocktopus_macros"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.11.11 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "net2"
 version = "0.2.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1036,6 +1053,7 @@ dependencies = [
  "libc 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "local-ip 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mocktopus 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "procinfo 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 1.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1107,6 +1125,8 @@ dependencies = [
 "checksum memchr 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "148fab2e51b4f1cfc66da2a7c32981d1d3c083a803978268bb11fe4b86925e7a"
 "checksum mio 0.6.11 (registry+https://github.com/rust-lang/crates.io-index)" = "0e8411968194c7b139e9105bc4ae7db0bae232af087147e72f0616ebf5fdb9cb"
 "checksum miow 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f2f3b1cf331de6896aabf6e9d55dca90356cc9960cca7eaaf408a355ae919"
+"checksum mocktopus 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "9dc5fbcabea8244edabd101547b0981f9a9cee2aa89fcccbbbe6ff9c59c0a262"
+"checksum mocktopus_macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "1aefe0f9a78f54eb38430e506f499165b36505f377ec1dc22e74c17e739f194e"
 "checksum net2 0.2.31 (registry+https://github.com/rust-lang/crates.io-index)" = "3a80f842784ef6c9a958b68b7516bc7e35883c614004dd94959a4dca1b716c09"
 "checksum nom 2.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cf51a729ecf40266a2368ad335a5fdde43471f545a967109cd62146ecf8b66ff"
 "checksum num 0.1.40 (registry+https://github.com/rust-lang/crates.io-index)" = "a311b77ebdc5dd4cf6449d81e4135d9f0e3b153839ac90e648a8ef538f923525"
