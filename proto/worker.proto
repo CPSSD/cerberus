@@ -105,7 +105,8 @@ message PerformMapRequest {
 message PerformReduceRequest {
     // The intermediate partition to be reduced.
     uint64 partition = 1;
-    // The file paths of the intermediate files produced by the map operations.
+    // The file paths of the intermediate files produced by the map operations in
+    // the form: "address:port/path"
     repeated string input_file_paths = 2;
     // The path to the binary that performs the reduce operation.
     string reducer_file_path = 3;
