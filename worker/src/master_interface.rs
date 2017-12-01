@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use grpc::RequestOptions;
 
@@ -13,7 +13,7 @@ use errors::*;
 /// registering the worker with the cluster and updating the worker status on a regular interval.
 pub struct MasterInterface {
     client: grpc_pb::WorkerServiceClient,
-    worker_id: Mutex<String>,
+    worker_id: RwLock<String>,
 }
 
 impl MasterInterface {
@@ -26,7 +26,7 @@ impl MasterInterface {
 
         Ok(MasterInterface {
             client: client,
-            worker_id: Mutex::new(String::new()),
+            worker_id: RwLock::new(String::new()),
         })
     }
 
@@ -42,7 +42,7 @@ impl MasterInterface {
             .chain_err(|| "Failed to register worker")?
             .1;
 
-        *self.worker_id.lock().unwrap() = response.get_worker_id().to_owned();
+        *self.worker_id.write().unwrap() = response.get_worker_id().to_owned();
 
         Ok(())
     }
@@ -55,7 +55,7 @@ impl MasterInterface {
         let mut req = pb::UpdateStatusRequest::new();
         req.set_worker_status(worker_status);
         req.set_operation_status(operation_status);
-        req.set_worker_id(self.worker_id.lock().unwrap().clone());
+        req.set_worker_id(self.worker_id.read().unwrap().clone());
 
         self.client
             .update_worker_status(RequestOptions::new(), req)
@@ -66,7 +66,7 @@ impl MasterInterface {
     }
 
     pub fn return_map_result(&self, mut map_result: pb::MapResult) -> Result<()> {
-        map_result.set_worker_id(self.worker_id.lock().unwrap().clone());
+        map_result.set_worker_id(self.worker_id.read().unwrap().clone());
 
         self.client
             .return_map_result(RequestOptions::new(), map_result)
@@ -77,7 +77,7 @@ impl MasterInterface {
     }
 
     pub fn return_reduce_result(&self, mut reduce_result: pb::ReduceResult) -> Result<()> {
-        reduce_result.set_worker_id(self.worker_id.lock().unwrap().clone());
+        reduce_result.set_worker_id(self.worker_id.read().unwrap().clone());
 
         self.client
             .return_reduce_result(RequestOptions::new(), reduce_result)
