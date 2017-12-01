@@ -1,3 +1,5 @@
+#![cfg_attr(test, feature(proc_macro))]
+
 extern crate bson;
 extern crate cerberus_proto;
 #[macro_use]
@@ -18,6 +20,9 @@ extern crate serde_json;
 extern crate tls_api;
 extern crate util;
 extern crate uuid;
+
+#[cfg(test)]
+extern crate mocktopus;
 
 mod errors {
     error_chain! {
