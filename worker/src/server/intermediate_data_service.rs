@@ -15,9 +15,9 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
     fn get_intermediate_data(
         &self,
         _o: RequestOptions,
-        _req: pb::GetIntermediateDataRequest,
-    ) -> SingleResponse<pb::Partition> {
+        _req: pb::IntermediateDataRequest,
+    ) -> SingleResponse<pb::IntermediateData> {
         // TODO(voy): Implement
-        return SingleResponse::completed(pb::Partition::new());
+        return SingleResponse::completed(pb::IntermediateData::new());
     }
 }
