@@ -105,14 +105,12 @@ message PerformMapRequest {
 message PerformReduceRequest {
     // The intermediate partition to be reduced.
     uint64 partition = 1;
-    // Worker which stores the intermediate values for the partition
-    string partition_location = 2;
     // The file paths of the intermediate files produced by the map operations.
-    repeated string input_file_paths = 3;
+    repeated string input_file_paths = 2;
     // The path to the binary that performs the reduce operation.
-    string reducer_file_path = 4;
+    string reducer_file_path = 3;
     // The path to the output directory.
-    string output_directory = 5;
+    string output_directory = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
