@@ -1,3 +1,4 @@
+#![feature(conservative_impl_trait)]
 #![cfg_attr(test, feature(proc_macro))]
 
 extern crate bson;
@@ -6,6 +7,7 @@ extern crate cerberus_proto;
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
+extern crate futures;
 extern crate grpc;
 extern crate local_ip;
 extern crate libc;
