@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs;
-use std::fs::File;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -13,6 +11,7 @@ use serde_json;
 use errors::*;
 use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
+use super::io;
 use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
@@ -79,13 +78,8 @@ fn run_reducer(
     file_path.push(reduce_options.output_directory.clone());
     file_path.push(reduce_operation.intermediate_key.clone());
 
-
-    let mut file = File::create(file_path).chain_err(
-        || "Failed to create reduce output file.",
-    )?;
-
-    file.write_all(reduce_results_pretty.as_bytes()).chain_err(
-        || "Failed to write to reduce output file.",
+    io::write(file_path, reduce_results_pretty.as_bytes()).chain_err(
+        || "failed to write reduce output",
     )?;
     Ok(())
 }
@@ -158,27 +152,20 @@ fn create_reduce_operations(
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
-
         // Stripping the address from the input_file_path until it's properly used by the worker.
         // TODO: Remove this code and make use of the address.
         let reduce_input_file_data: Vec<&str> = reduce_input_file.splitn(2, "/").collect();
         let file_path = &format!("/{}", reduce_input_file_data[1].to_owned());
 
-        let file = File::open(file_path).chain_err(|| {
-            format!("Couldn't open input file: {}", file_path)
-        })?;
-
-        let mut buf_reader = BufReader::new(file);
-        let mut reduce_input = String::new();
-        buf_reader.read_to_string(&mut reduce_input).chain_err(
-            || "Couldn't read map input file.",
+        let reduce_input = io::read(file_path).chain_err(
+            || "couldn't read map input file",
         )?;
 
-        let parse_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
+        let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing map response.",
         )?;
 
-        if let serde_json::Value::Array(ref pairs) = parse_value {
+        if let serde_json::Value::Array(ref pairs) = parsed_value {
             for pair in pairs {
                 let key = pair["key"].as_str().chain_err(
                     || "Error parsing reduce input.",
