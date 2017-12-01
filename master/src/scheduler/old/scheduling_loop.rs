@@ -54,8 +54,8 @@ fn handle_assign_task_failure<I>(
     let mut worker_manager = scheduler_resources.worker_manager_arc.lock().unwrap();
     match worker_manager.get_worker(&task_assignment.worker_id) {
         Some(worker) => {
-            worker.set_current_task_id(String::new());
-            worker.set_operation_status(pb::OperationStatus::UNKNOWN);
+            worker.current_task_id = String::new();
+            worker.operation_status = pb::OperationStatus::UNKNOWN;
         }
         None => error!("Error reverting worker state on task failure: Worker not found"),
     }
@@ -154,9 +154,7 @@ fn do_scheduling_loop_step<I>(
     // Sort workers by most recent health checks, to avoid repeatedly trying to assign work to a
     // worker which is not responding.
     available_workers.sort_by(|a, b| {
-        a.get_status_last_updated()
-            .cmp(&b.get_status_last_updated())
-            .reverse()
+        a.status_last_updated.cmp(&b.status_last_updated).reverse()
     });
 
     while scheduler.get_task_queue_size() > 0 {
@@ -184,15 +182,15 @@ fn do_scheduling_loop_step<I>(
             }
         };
 
-        worker.set_current_task_id(task.id.to_owned());
-        worker.set_operation_status(pb::OperationStatus::IN_PROGRESS);
+        worker.current_task_id = task.id.to_owned();
+        worker.operation_status = pb::OperationStatus::IN_PROGRESS;
 
-        task.assigned_worker_id = worker.get_worker_id().to_owned();
+        task.assigned_worker_id = worker.worker_id.to_owned();
         task.status = TaskStatus::InProgress;
 
         let task_assignment = TaskAssignment {
             task_id: task.id.to_owned(),
-            worker_id: worker.get_worker_id().to_owned(),
+            worker_id: worker.worker_id.to_owned(),
         };
 
         assign_worker_task(scheduler_resources.clone(), task_assignment, task);
@@ -230,18 +228,18 @@ fn update_healthy_workers(
 
     for worker in worker_manager.get_workers() {
         let time_since_worker_updated = Utc::now().timestamp() -
-            worker.get_status_last_updated().timestamp();
+            worker.status_last_updated.timestamp();
 
         if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S &&
-            worker.get_current_task_id().is_empty()
+            worker.current_task_id.is_empty()
         {
-            workers_to_remove.push(worker.get_worker_id().to_owned());
+            workers_to_remove.push(worker.worker_id.to_owned());
         }
 
         if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S &&
-            !worker.get_current_task_id().is_empty()
+            !worker.current_task_id.is_empty()
         {
-            workers_to_reassign.push(worker.get_worker_id().to_owned());
+            workers_to_reassign.push(worker.worker_id.to_owned());
         }
     }
 
@@ -254,8 +252,8 @@ fn update_healthy_workers(
             }
         };
 
-        match reschedule_task(worker.get_current_task_id(), scheduler) {
-            Ok(_) => worker.set_current_task_id(""),
+        match reschedule_task(&worker.current_task_id, scheduler) {
+            Ok(_) => worker.current_task_id = String::new(),
             Err(err) => error!("Error trying to reschedule task: {}", err),
         }
     }
@@ -393,9 +391,7 @@ mod tests {
         let worker_manager = scheduling_resources.worker_manager_arc.lock().unwrap();
 
         assert_eq!(0, scheduler.get_task_queue_size());
-        assert!(!worker_manager.get_workers()[0]
-            .get_current_task_id()
-            .is_empty());
+        assert!(!worker_manager.get_workers()[0].current_task_id.is_empty());
     }
 
     #[test]
@@ -403,7 +399,7 @@ mod tests {
         let map_task = Task::new_map_task("map-reduce1", "/tmp/bin", "input-1");
         let worker = Worker::new(String::from("127.0.0.1:8080")).unwrap();
 
-        let worker_id = worker.get_worker_id().to_owned();
+        let worker_id = worker.worker_id.to_owned();
         let task_id = map_task.id.to_owned();
 
         let scheduler = create_scheduler(map_task);
@@ -433,10 +429,6 @@ mod tests {
         let worker_manager = scheduling_resources.worker_manager_arc.lock().unwrap();
 
         assert_eq!(1, scheduler.get_task_queue_size());
-        assert!(
-            worker_manager.get_workers()[0]
-                .get_current_task_id()
-                .is_empty()
-        );
+        assert!(worker_manager.get_workers()[0].current_task_id.is_empty());
     }
 }

@@ -29,14 +29,14 @@ pub enum OperationStatus {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Worker {
-    address: SocketAddr,
+    pub address: SocketAddr,
 
-    status: pb::WorkerStatus,
-    operation_status: pb::OperationStatus,
-    status_last_updated: DateTime<Utc>,
+    pub status: pb::WorkerStatus,
+    pub operation_status: pb::OperationStatus,
+    pub status_last_updated: DateTime<Utc>,
 
-    current_task_id: String,
-    worker_id: String,
+    pub current_task_id: String,
+    pub worker_id: String,
 }
 
 impl Worker {
@@ -55,46 +55,6 @@ impl Worker {
             current_task_id: String::new(),
             worker_id: Uuid::new_v4().to_string(),
         })
-    }
-
-    pub fn is_available_for_scheduling(&self) -> bool {
-        self.current_task_id == ""
-    }
-
-    pub fn get_worker_id(&self) -> &str {
-        &self.worker_id
-    }
-
-    pub fn get_address(&self) -> SocketAddr {
-        self.address
-    }
-
-    pub fn get_current_task_id(&self) -> &str {
-        &self.current_task_id
-    }
-
-    pub fn set_status(&mut self, status: pb::WorkerStatus) {
-        self.status = status;
-    }
-
-    pub fn set_operation_status(&mut self, operation_status: pb::OperationStatus) {
-        self.operation_status = operation_status;
-    }
-
-    pub fn get_operation_status(&self) -> pb::OperationStatus {
-        self.operation_status
-    }
-
-    pub fn get_status_last_updated(&self) -> DateTime<Utc> {
-        self.status_last_updated
-    }
-
-    pub fn set_status_last_updated(&mut self, time: DateTime<Utc>) {
-        self.status_last_updated = time
-    }
-
-    pub fn set_current_task_id<S: Into<String>>(&mut self, task_id: S) {
-        self.current_task_id = task_id.into();
     }
 
     fn operation_status_from_state(&self, state: &OperationStatus) -> pb::OperationStatus {
