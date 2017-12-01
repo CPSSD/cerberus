@@ -41,7 +41,7 @@ impl WorkerManager {
     pub fn get_available_workers(&mut self) -> Vec<&mut Worker> {
         let mut available_workers = Vec::new();
         for worker in &mut self.workers {
-            if worker.is_available_for_scheduling() {
+            if worker.current_task_id == "" {
                 available_workers.push(worker);
             }
         }
@@ -52,8 +52,8 @@ impl WorkerManager {
     pub fn add_worker(&mut self, worker: Worker) {
         info!(
             "New Worker ({}) connected from {}",
-            worker.get_worker_id(),
-            worker.get_address(),
+            worker.worker_id,
+            worker.address,
         );
 
         self.workers.push(worker);
@@ -61,7 +61,7 @@ impl WorkerManager {
 
     pub fn get_worker(&mut self, worker_id: &str) -> Option<&mut Worker> {
         for worker in &mut self.workers {
-            if worker.get_worker_id() == worker_id {
+            if worker.worker_id == worker_id {
                 return Some(worker);
             }
         }
@@ -71,7 +71,7 @@ impl WorkerManager {
     pub fn remove_worker(&mut self, worker_id: &str) {
         self.workers
             .iter()
-            .position(|w| w.get_worker_id() == worker_id)
+            .position(|w| w.worker_id == worker_id)
             .map(|index| self.workers.remove(index));
         info!("Removed {} from list of active workers.", worker_id);
     }
@@ -96,8 +96,8 @@ impl WorkerManager {
             None => return Err("WorkerManager has no valid WorkerInterface Arc".into()),
         };
 
-        if worker.get_operation_status() == pb::OperationStatus::FAILED {
-            info!("Requeueing task: {}", worker.get_current_task_id());
+        if worker.operation_status == pb::OperationStatus::FAILED {
+            info!("Requeueing task: {}", worker.current_task_id);
 
             let scheduler = match self.scheduler {
                 Some(ref scheduler) => scheduler,
@@ -107,9 +107,9 @@ impl WorkerManager {
             scheduler
                 .lock()
                 .unwrap()
-                .unschedule_task(worker.get_current_task_id())
+                .unschedule_task(&worker.current_task_id)
                 .chain_err(|| "Unable to move task back to queue")?;
-            worker.set_current_task_id(String::new());
+            worker.current_task_id = String::new();
         }
 
         // Add worker to worker manager.

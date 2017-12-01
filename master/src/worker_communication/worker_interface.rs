@@ -34,17 +34,17 @@ impl WorkerInterfaceImpl {
 
 impl WorkerInterface for WorkerInterfaceImpl {
     fn add_client(&mut self, worker: &Worker) -> Result<()> {
-        if self.clients.get(worker.get_worker_id()).is_some() {
+        if self.clients.get(&worker.worker_id).is_some() {
             return Err("Client already exists for this worker".into());
         }
 
         let client = grpc_pb::ScheduleOperationServiceClient::new_plain(
-            &worker.get_address().ip().to_string(),
-            worker.get_address().port(),
+            &worker.address.ip().to_string(),
+            worker.address.port(),
             Default::default(),
         ).chain_err(|| "Error building client for worker")?;
 
-        self.clients.insert(worker.get_worker_id().into(), client);
+        self.clients.insert(worker.worker_id.to_owned(), client);
         Ok(())
     }
 

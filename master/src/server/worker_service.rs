@@ -54,7 +54,7 @@ impl grpc_pb::WorkerService for WorkerService {
 
         // Add worker to worker manager.
         let mut manager = self.worker_manager.lock().unwrap();
-        let worker_id = worker.get_worker_id().to_owned();
+        let worker_id = worker.worker_id.to_owned();
         manager.add_worker(worker);
 
         let mut response = pb::RegisterWorkerResponse::new();
@@ -70,19 +70,19 @@ impl grpc_pb::WorkerService for WorkerService {
         let mut manager = self.worker_manager.lock().unwrap();
         match manager.get_worker(request.get_worker_id()) {
             Some(ref mut worker) => {
-                worker.set_status(request.get_worker_status());
-                worker.set_operation_status(request.get_operation_status());
-                worker.set_status_last_updated(Utc::now());
+                worker.status = request.get_worker_status();
+                worker.operation_status = request.get_operation_status();
+                worker.status_last_updated = Utc::now();
 
-                if !worker.get_current_task_id().is_empty() &&
+                if !worker.current_task_id.is_empty() &&
                     (request.get_operation_status() == pb::OperationStatus::FAILED ||
                          request.get_operation_status() == pb::OperationStatus::COMPLETE)
                 {
                     // No result has been received for this operation
                     // We need to reschedule it
                     let mut scheduler = self.scheduler.lock().unwrap();
-                    match scheduler.unschedule_task(worker.get_current_task_id()) {
-                        Ok(_) => worker.set_current_task_id(""),
+                    match scheduler.unschedule_task(&worker.current_task_id) {
+                        Ok(_) => worker.current_task_id = String::new(),
                         Err(err) => error!("Could not unschedule task for worker, error: {}", err),
                     }
                 }
@@ -106,7 +106,7 @@ impl grpc_pb::WorkerService for WorkerService {
             None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
         };
 
-        let task_id = worker.get_current_task_id().to_owned();
+        let task_id = worker.current_task_id.to_owned();
         if task_id.is_empty() {
             return SingleResponse::err(Error::Other(INVALID_TASK_ID));
         }
@@ -121,14 +121,14 @@ impl grpc_pb::WorkerService for WorkerService {
             }
         }
 
-        worker.set_status(pb::WorkerStatus::AVAILABLE);
+        worker.status = pb::WorkerStatus::AVAILABLE;
         if request.get_status() == pb::ResultStatus::SUCCESS {
-            worker.set_operation_status(pb::OperationStatus::COMPLETE);
+            worker.operation_status = pb::OperationStatus::COMPLETE;
         } else {
-            worker.set_operation_status(pb::OperationStatus::FAILED);
+            worker.operation_status = pb::OperationStatus::FAILED;
         }
-        worker.set_status_last_updated(Utc::now());
-        worker.set_current_task_id("");
+        worker.status_last_updated = Utc::now();
+        worker.current_task_id = String::new();
 
         let response = pb::EmptyMessage::new();
         SingleResponse::completed(response)
@@ -145,7 +145,7 @@ impl grpc_pb::WorkerService for WorkerService {
             None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
         };
 
-        let task_id = worker.get_current_task_id().to_owned();
+        let task_id = worker.current_task_id.to_owned();
         if task_id.is_empty() {
             return SingleResponse::err(Error::Other(INVALID_TASK_ID));
         }
@@ -160,14 +160,14 @@ impl grpc_pb::WorkerService for WorkerService {
             }
         }
 
-        worker.set_status(pb::WorkerStatus::AVAILABLE);
+        worker.status = pb::WorkerStatus::AVAILABLE;
         if request.get_status() == pb::ResultStatus::SUCCESS {
-            worker.set_operation_status(pb::OperationStatus::COMPLETE);
+            worker.operation_status = pb::OperationStatus::COMPLETE;
         } else {
-            worker.set_operation_status(pb::OperationStatus::FAILED);
+            worker.operation_status = pb::OperationStatus::FAILED;
         }
-        worker.set_status_last_updated(Utc::now());
-        worker.set_current_task_id("");
+        worker.status_last_updated = Utc::now();
+        worker.current_task_id = String::new();
 
         let response = pb::EmptyMessage::new();
         SingleResponse::completed(response)
