@@ -1,11 +1,13 @@
 use std::sync::{Arc, Mutex};
 
+use futures::future;
+use futures::prelude::*;
 use libc::_SC_CLK_TCK;
 use procinfo::pid::stat_self;
 use uuid::Uuid;
 
-use errors::*;
 use cerberus_proto::worker as pb;
+use errors::*;
 use master_interface::MasterInterface;
 use super::map;
 use super::reduce;
@@ -97,23 +99,39 @@ impl OperationHandler {
         operation_state.operation_status
     }
 
-    pub fn perform_map(&self, map_options: &pb::PerformMapRequest) -> Result<()> {
+    pub fn perform_map(
+        &self,
+        map_options: pb::PerformMapRequest,
+    ) -> impl Future<Item = (), Error = Error> {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
+        let output_dir_uuid = self.output_dir_uuid.clone();
 
-        map::perform_map(
-            map_options,
-            &operation_state_arc,
-            master_interface_arc,
-            &self.output_dir_uuid,
-        )
+        future::lazy(move || {
+            let result = map::perform_map(
+                &map_options,
+                &operation_state_arc,
+                master_interface_arc,
+                &output_dir_uuid,
+            );
+
+            future::result(result)
+        })
     }
 
-    pub fn perform_reduce(&self, reduce_request: &pb::PerformReduceRequest) -> Result<()> {
+    pub fn perform_reduce(
+        &self,
+        reduce_request: pb::PerformReduceRequest,
+    ) -> impl Future<Item = (), Error = Error> {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
 
-        reduce::perform_reduce(reduce_request, &operation_state_arc, master_interface_arc)
+        future::lazy(move || {
+            let result =
+                reduce::perform_reduce(&reduce_request, &operation_state_arc, master_interface_arc);
+
+            future::result(result)
+        })
     }
 
     pub fn update_worker_status(&self) -> Result<()> {

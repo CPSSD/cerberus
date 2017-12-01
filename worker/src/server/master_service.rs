@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
+use futures::Future;
 use grpc::{RequestOptions, SingleResponse, Error};
+
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use operations::OperationHandler;
-use std::sync::Arc;
 
 pub struct ScheduleOperationService {
     operation_handler: Arc<OperationHandler>,
@@ -20,7 +23,8 @@ impl grpc_pb::ScheduleOperationService for ScheduleOperationService {
         _o: RequestOptions,
         map_options: pb::PerformMapRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
-        match self.operation_handler.perform_map(&map_options) {
+        let perform_map_future = self.operation_handler.perform_map(map_options);
+        match perform_map_future.wait() {
             Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
             Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
         }
@@ -31,7 +35,8 @@ impl grpc_pb::ScheduleOperationService for ScheduleOperationService {
         _o: RequestOptions,
         reduce_options: pb::PerformReduceRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
-        match self.operation_handler.perform_reduce(&reduce_options) {
+        let perform_reduce_future = self.operation_handler.perform_reduce(reduce_options);
+        match perform_reduce_future.wait() {
             Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
             Err(err) => SingleResponse::err(Error::Panic(err.to_string())),
         }
