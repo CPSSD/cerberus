@@ -10,7 +10,6 @@ use std::thread;
 
 use bson;
 use serde_json;
-use serde_json::Value;
 use uuid::Uuid;
 
 use errors::*;
@@ -49,7 +48,7 @@ fn send_map_result(
 type ParsedMapResults = (HashMap<u64, String>, Vec<PathBuf>);
 
 fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<ParsedMapResults> {
-    let parse_value: Value = serde_json::from_str(map_result_string).chain_err(
+    let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 

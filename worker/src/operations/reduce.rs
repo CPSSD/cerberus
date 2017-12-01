@@ -9,8 +9,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use serde_json;
-use serde_json::Value;
-use serde_json::Value::Array;
 
 use errors::*;
 use cerberus_proto::worker as pb;
@@ -35,7 +33,7 @@ struct ReduceOperation {
 #[derive(Serialize)]
 struct ReduceInput {
     pub key: String,
-    pub values: Vec<Value>,
+    pub values: Vec<serde_json::Value>,
 }
 
 struct ReduceOptions {
@@ -70,7 +68,7 @@ fn run_reducer(
         || "Error accessing payload output.",
     )?;
 
-    let reduce_results: Value = serde_json::from_str(&output_str).chain_err(
+    let reduce_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
         || "Error parsing reduce results.",
     )?;
     let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
@@ -157,7 +155,7 @@ fn send_reduce_result(
 fn create_reduce_operations(
     reduce_request: &pb::PerformReduceRequest,
 ) -> Result<Vec<ReduceOperation>> {
-    let mut reduce_map: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
         let file = File::open(reduce_input_file).chain_err(
@@ -170,11 +168,11 @@ fn create_reduce_operations(
             || "Couldn't read map input file.",
         )?;
 
-        let parse_value: Value = serde_json::from_str(&reduce_input).chain_err(
+        let parse_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing map response.",
         )?;
 
-        if let Array(ref pairs) = parse_value {
+        if let serde_json::Value::Array(ref pairs) = parse_value {
             for pair in pairs {
                 let key = pair["key"].as_str().chain_err(
                     || "Error parsing reduce input.",
