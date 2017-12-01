@@ -119,20 +119,13 @@ message PerformReduceRequest {
 
 // IntermediateDataService allows reduce worker to get intemediate data from workers.
 service IntermediateDataService {
-  rpc GetIntermediateData (GetIntermediateDataRequest) returns (Partition);
+  rpc GetIntermediateData (IntermediateDataRequest) returns (IntermediateData);
 }
 
-message GetIntermediateDataRequest {
-  // Partition to load
-  uint64 partition = 1;
+message IntermediateDataRequest {
+  string path = 1;
 }
 
 message IntermediateData {
-  string key = 1;
-  string value = 2;
-}
-
-message Partition {
-  // Intermediate key and its corresponding value.
-  repeated IntermediateData data = 1;
+  bytes data = 1;
 }
