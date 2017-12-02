@@ -16,11 +16,15 @@ const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 /// `ClientService` recieves communication from a client.
 pub struct ClientService {
     scheduler: Arc<Mutex<Scheduler>>,
+    testing: bool,
 }
 
 impl ClientService {
     pub fn new(scheduler: Arc<Mutex<Scheduler>>) -> Self {
-        ClientService { scheduler: scheduler }
+        ClientService {
+            scheduler: scheduler,
+            testing: false,
+        }
     }
 }
 
@@ -33,7 +37,11 @@ impl grpc_pb::MapReduceService for ClientService {
         let mut scheduler = self.scheduler.lock().unwrap();
 
         let mut response = pb::MapReduceResponse::new();
-        let job = match Job::new(JobOptions::from(req)) {
+        let mut job_options = JobOptions::from(req);
+        if self.testing {
+            job_options.validate_paths = false;
+        }
+        let job = match Job::new(job_options) {
             Ok(job) => job,
             Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
         };
@@ -147,7 +155,10 @@ mod tests {
         let scheduler = create_scheduler();
         assert!(!scheduler.get_map_reduce_in_progress());
 
-        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService {
+            scheduler: Arc::new(Mutex::new(scheduler)),
+            testing: true,
+        };
 
         let _ = master_impl
             .perform_map_reduce(RequestOptions::new(), pb::MapReduceRequest::new())
@@ -171,7 +182,10 @@ mod tests {
         let result = scheduler.schedule_job(job);
         assert!(result.is_ok());
 
-        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService {
+            scheduler: Arc::new(Mutex::new(scheduler)),
+            testing: true,
+        };
         let response = master_impl.map_reduce_status(RequestOptions::new(), request);
 
         let (_, mut item, _) = response.wait().unwrap();
@@ -187,7 +201,10 @@ mod tests {
         let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
         let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
 
-        let master_impl = ClientService { scheduler: Arc::new(Mutex::new(scheduler)) };
+        let master_impl = ClientService {
+            scheduler: Arc::new(Mutex::new(scheduler)),
+            testing: true,
+        };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();
 

@@ -354,6 +354,7 @@ mod tests {
             binary_path: "/tmp/bin".to_owned(),
             input_directory: "/tmp/input".to_owned(),
             output_directory: Some("/tmp/output".to_owned()),
+            validate_paths: false,
         }).unwrap();
         scheduler.schedule_job(job).unwrap();
         scheduler
