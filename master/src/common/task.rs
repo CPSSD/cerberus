@@ -27,7 +27,7 @@ pub enum TaskType {
 
 /// The `Task` is a struct that represents a map or reduce task.
 /// This is the unit of work that is processed by a worker.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Task {
     pub task_type: TaskType,
     pub job_id: String,
@@ -43,6 +43,9 @@ pub struct Task {
 
     pub assigned_worker_id: String,
     pub status: TaskStatus,
+
+    // The cpu_time used by the task if it completes sucessfully.
+    pub cpu_time: u64,
 
     // Number of times this task has failed in the past.
     pub failure_count: u16,
@@ -67,6 +70,8 @@ impl Task {
 
             assigned_worker_id: String::new(),
             status: TaskStatus::Queued,
+
+            cpu_time: 0,
 
             failure_count: 0,
             failure_details: None,
@@ -120,6 +125,8 @@ impl Task {
 
             assigned_worker_id: String::new(),
             status: TaskStatus::Queued,
+
+            cpu_time: 0,
 
             failure_count: 0,
             failure_details: None,
