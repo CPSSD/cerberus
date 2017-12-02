@@ -209,8 +209,10 @@ fn do_perform_map(
 
         match result {
             Ok((mut map_result, intermediate_files)) => {
-                let mut operation_state = operation_state_arc.lock().unwrap();
-                operation_state.add_intermediate_files(intermediate_files);
+                {
+                    let mut operation_state = operation_state_arc.lock().unwrap();
+                    operation_state.add_intermediate_files(intermediate_files);
+                }
 
                 map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
                 if let Err(err) = send_map_result(&master_interface_arc, map_result) {
