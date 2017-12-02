@@ -1,5 +1,6 @@
 use errors::*;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
+use std::process::{Command, Stdio};
 
 use chrono::prelude::*;
 use serde_json;
@@ -20,6 +21,8 @@ pub struct JobOptions {
     pub input_directory: String,
     /// The path to which the output of the job should be written.
     pub output_directory: Option<String>,
+    /// Determines if paths should be validated. Should only be disabled during tests.
+    pub validate_paths: bool,
 }
 
 impl From<pb::MapReduceRequest> for JobOptions {
@@ -33,6 +36,7 @@ impl From<pb::MapReduceRequest> for JobOptions {
             } else {
                 None
             },
+            validate_paths: true,
         }
     }
 }
@@ -77,6 +81,7 @@ pub enum SerializableJobStatus {
 impl Job {
     pub fn new(options: JobOptions) -> Result<Self> {
         let input_directory = options.input_directory;
+
         let output_directory = match options.output_directory {
             Some(dir) => dir,
             None => {
@@ -90,7 +95,7 @@ impl Job {
             }
         };
 
-        Ok(Job {
+        let job = Job {
             client_id: options.client_id,
             id: Uuid::new_v4().to_string(),
             binary_path: options.binary_path,
@@ -111,7 +116,54 @@ impl Job {
             time_completed: None,
 
             cpu_time: 0,
-        })
+        };
+        if options.validate_paths {
+            job.validate_input().chain_err(|| "Error validating input")?;
+        }
+        Ok(job)
+    }
+
+    fn validate_input(&self) -> Result<()> {
+        // Validate the existence of the input directory and the binary file.
+        let input_path = Path::new(self.input_directory.as_str().clone());
+        if !(input_path.exists() && input_path.is_dir()) {
+            return Err(
+                format!("Input directory does not exist: {}", self.input_directory).into(),
+            );
+        }
+
+        let binary_path = Path::new(self.binary_path.as_str().clone());
+        if !(binary_path.exists() && binary_path.is_file()) {
+            return Err(
+                format!("Binary does not exist: {}", self.binary_path).into(),
+            );
+        }
+
+        // Binary exists, so run sanity-check on it to verify that it's a libcerberus binary.
+        self.run_sanity_check()
+    }
+
+    fn run_sanity_check(&self) -> Result<()> {
+        let binary_path = Path::new(self.binary_path.as_str());
+        let child = Command::new(binary_path)
+            .arg("sanity-check")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .chain_err(|| "Unable to run sanity-check on binary")?;
+        let output = child.wait_with_output().chain_err(
+            || "Error waiting for output from binary",
+        )?;
+        let output_str = String::from_utf8(output.stdout).chain_err(
+            || "Unable to read output from binary",
+        )?;
+
+        if output_str.contains("sanity located") {
+            Ok(())
+        } else {
+            Err("Binary failed sanity-check".into())
+        }
     }
 
     fn status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
@@ -146,6 +198,7 @@ impl StateHandling for Job {
                 .chain_err(|| "Unable to convert input_directory")?,
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
+            validate_paths: true,
         };
 
         let mut job = Job::new(options).chain_err(
@@ -295,6 +348,7 @@ mod tests {
             binary_path: "/tmp/binary".to_owned(),
             input_directory: "/tmp/input/".to_owned(),
             output_directory: Some("/tmp/output/".to_owned()),
+            validate_paths: false,
         }).unwrap();
 
         assert_eq!("/tmp/input/output/", job1.output_directory);
