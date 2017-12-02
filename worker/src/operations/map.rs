@@ -42,7 +42,7 @@ fn send_map_result(
     Ok(())
 }
 
-/// ParsedMapResults is a tuple containing a HashMap of parsed map results and a vector
+/// `ParsedMapResults` is a tuple containing a `HashMap` of parsed map results and a vector
 /// of intermediate files created by the worker.
 type ParsedMapResults = (HashMap<u64, String>, Vec<PathBuf>);
 
@@ -69,9 +69,8 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<Parsed
         file_path.push(output_dir);
         file_path.push(&file_name);
 
-        io::write(file_path.clone(), pairs.to_string().as_bytes()).chain_err(
-            || "failed to write map output",
-        )?;
+        io::write(file_path.clone(), pairs.to_string().as_bytes())
+            .chain_err(|| "failed to write map output")?;
         intermediate_files.push(file_path.clone());
 
         map_results.insert(partition, (*file_path.to_string_lossy()).to_owned());
@@ -80,8 +79,8 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<Parsed
     Ok((map_results, intermediate_files))
 }
 
-/// MapOperationResults is a tuple containing a pb::MapResult object and a vector of intermediate
-/// files created by the worker.
+/// `MapOperationResults` is a tuple containing a `pb::MapResult` object and a vector of
+/// intermediate files created by the worker.
 type MapOperationResults = (pb::MapResult, Vec<PathBuf>);
 
 fn map_operation_thread_impl(
@@ -236,4 +235,33 @@ fn do_perform_map(
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mocktopus::mocking::*;
+
+    #[test]
+    fn test_parse_map_results() {
+        io::write.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+
+        let map_results =
+        r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
+
+        let (map, vec) = parse_map_results(&map_results, "tmp/foo/bar").unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(vec.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_map_results_error() {
+        io::write.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+
+        let map_results =
+            r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
+
+        let result = parse_map_results(&map_results, "tmp/foo/bar");
+        assert!(result.is_err());
+    }
 }
