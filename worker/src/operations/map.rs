@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
-use std::io::BufReader;
 use std::io::prelude::*;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -15,6 +13,7 @@ use uuid::Uuid;
 use errors::*;
 use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
+use super::io;
 use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
@@ -70,11 +69,8 @@ fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<Parsed
         file_path.push(output_dir);
         file_path.push(&file_name);
 
-        let mut file = File::create(file_path.clone()).chain_err(
-            || "Failed to create map output file.",
-        )?;
-        file.write_all(pairs.to_string().as_bytes()).chain_err(
-            || "Failed to write to map output file.",
+        io::write(file_path.clone(), pairs.to_string().as_bytes()).chain_err(
+            || "failed to write map output",
         )?;
         intermediate_files.push(file_path.clone());
 
@@ -169,14 +165,8 @@ fn do_perform_map(
     master_interface_arc: Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
-    let file = File::open(map_options.get_input_file_path()).chain_err(
-        || "Couldn't open input file.",
-    )?;
-
-    let mut buf_reader = BufReader::new(file);
-    let mut map_input_value = String::new();
-    buf_reader.read_to_string(&mut map_input_value).chain_err(
-        || "Couldn't read map input file.",
+    let map_input_value = io::read(map_options.get_input_file_path()).chain_err(
+        || "unable to open input file",
     )?;
 
     let child = Command::new(map_options.get_mapper_file_path())
