@@ -19,5 +19,5 @@ install:
     - sudo mv protoc3/include/* /usr/local/include/
 
 script:
-    - cargo build --verbose --all
-    - cargo test --verbose --all
+    - make build
+    - make test
