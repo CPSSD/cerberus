@@ -158,9 +158,15 @@ fn create_reduce_operations(
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
-        let file = File::open(reduce_input_file).chain_err(
-            || "Couldn't open input file.",
-        )?;
+
+        // Stripping the address from the input_file_path until it's properly used by the worker.
+        // TODO: Remove this code and make use of the address.
+        let reduce_input_file_data: Vec<&str> = reduce_input_file.splitn(2, "/").collect();
+        let file_path = &format!("/{}", reduce_input_file_data[1].to_owned());
+
+        let file = File::open(file_path).chain_err(|| {
+            format!("Couldn't open input file: {}", file_path)
+        })?;
 
         let mut buf_reader = BufReader::new(file);
         let mut reduce_input = String::new();

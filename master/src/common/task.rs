@@ -149,6 +149,19 @@ impl Task {
 
         Ok(task)
     }
+
+    pub fn add_map_output_files(&mut self, map_response: &pb::MapResult, worker_address: String) {
+        for (partition, output_file) in map_response.get_map_results() {
+            self.map_output_files.insert(
+                *partition,
+                format!(
+                    "{}{}",
+                    worker_address,
+                    output_file
+                ),
+            );
+        }
+    }
 }
 
 impl StateHandling for Task {

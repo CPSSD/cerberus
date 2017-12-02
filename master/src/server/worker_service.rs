@@ -114,11 +114,12 @@ impl grpc_pb::WorkerService for WorkerService {
         // Scope for scheduler lock
         {
             let mut scheduler = self.scheduler.lock().unwrap();
-            let result = scheduler.process_map_task_response(&task_id, &request);
+            let result =
+                scheduler.process_map_task_response(&task_id, &request, worker.address.to_string());
             if let Err(err) = result {
                 error!("Could not process map response: {}", err);
                 return SingleResponse::err(Error::Panic(err.to_string()));
-            }
+            };
         }
 
         worker.status = pb::WorkerStatus::AVAILABLE;

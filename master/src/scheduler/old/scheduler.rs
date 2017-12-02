@@ -238,30 +238,14 @@ impl Scheduler {
         &mut self,
         map_task_id: &str,
         map_response: &pb::MapResult,
+        worker_address: String,
     ) -> Result<()> {
         if map_response.status == pb::ResultStatus::SUCCESS {
-            let job_id = {
-                let map_task = self.task_queue
-                    .get_work_by_id_mut(&map_task_id.to_owned())
-                    .chain_err(|| "Error marking map task as completed.")?;
-
-                // TODO(conor): When we add retrying for map tasks after reduce tasks have already
-                // been completed, add some logic here to update the input of those reduce jobs.
-                if map_task.status == TaskStatus::Complete {
-                    return Ok(());
-                }
-
-                map_task.status = TaskStatus::Complete;
-                for (partition, output_file) in map_response.get_map_results() {
-                    map_task.map_output_files.insert(
-                        *partition,
-                        output_file.to_owned(),
-                    );
-                }
-                map_task.job_id.to_owned()
-            };
-            self.increment_map_tasks_completed(&job_id, map_response.get_cpu_time())
-                .chain_err(|| "Error marking map task as completed.")?;
+            return self.process_succesful_map_task_response(
+                map_task_id,
+                map_response,
+                worker_address,
+            );
         } else {
             self.unschedule_task(map_task_id).chain_err(
                 || "Error marking map task as complete.",
@@ -271,6 +255,32 @@ impl Scheduler {
                 map_response.get_failure_details(),
             )?;
         }
+        Ok(())
+    }
+
+    fn process_succesful_map_task_response(
+        &mut self,
+        map_task_id: &str,
+        map_response: &pb::MapResult,
+        worker_address: String,
+    ) -> Result<()> {
+        let job_id = {
+            let map_task = self.task_queue
+                .get_work_by_id_mut(&map_task_id.to_owned())
+                .chain_err(|| "Error marking map task as completed.")?;
+
+            // TODO(conor): When we add retrying for map tasks after reduce tasks have already
+            // been completed, add some logic here to update the input of those reduce jobs.
+            if map_task.status == TaskStatus::Complete {
+                return Ok(());
+            }
+
+            map_task.status = TaskStatus::Complete;
+            map_task.add_map_output_files(map_response, worker_address);
+            map_task.job_id.to_owned()
+        };
+        self.increment_map_tasks_completed(&job_id, map_response.get_cpu_time())
+            .chain_err(|| "Error marking map task as completed.")?;
         Ok(())
     }
 
@@ -705,7 +715,7 @@ mod tests {
 
         // Process response for map task
         scheduler
-            .process_map_task_response(&map_task1.id, &map_response)
+            .process_map_task_response(&map_task1.id, &map_response, "".to_owned())
             .unwrap();
 
         {
