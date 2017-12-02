@@ -1,4 +1,4 @@
-mod io;
+pub mod io;
 mod map;
 mod reduce;
 mod state;
