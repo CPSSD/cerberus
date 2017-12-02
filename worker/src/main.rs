@@ -101,7 +101,7 @@ fn run() -> Result<()> {
     let operation_handler = Arc::new(OperationHandler::new(Arc::clone(&master_interface)));
 
     let scheduler_service = ScheduleOperationService::new(Arc::clone(&operation_handler));
-    let interm_data_service = IntermediateDataService::new();
+    let interm_data_service = IntermediateDataService;
     let srv = Server::new(port, scheduler_service, interm_data_service)
         .chain_err(|| "Can't create server")?;
 
