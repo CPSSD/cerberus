@@ -22,7 +22,7 @@ unit-test:
 	cargo test --all
 
 integration-test:
-	# TODO: Add the integration test
+	./tests/integration.sh
 
 #############################################################
 

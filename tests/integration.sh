@@ -2,7 +2,7 @@
 
 set -e
 
-cd ../target/debug
+cd ./target/debug
 
 # Setup directories.
 mkdir -p integration-test/logs
@@ -47,10 +47,11 @@ sleep 1
 echo "Launching CLI."
 while true
 do
+    ./cli -m "[::]:10008" status
     done_status=$(./cli -m "[::]:10008" status 2>&1 | tee | grep "DONE" -o);
     fail_status=$(./cli -m "[::]:10008" status 2>&1 | tee | grep "FAILED" -o);
     if [ "$done_status" == "DONE" ]; then break; fi
-    if [ "$fail_status" == "FAILED" ]; then exit 1; fi
+    if [ "$fail_status" == "FAILED" ]; then break; fi
 done
 
 # Kill any spawned processes.
