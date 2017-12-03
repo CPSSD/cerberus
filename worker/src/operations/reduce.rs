@@ -9,12 +9,14 @@ use std::thread;
 use serde_json;
 
 use errors::*;
-use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
 use super::io;
 use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
+use worker_interface::WorkerInterface;
+
+use cerberus_proto::worker as pb;
 
 #[cfg(test)]
 use mocktopus;
@@ -78,9 +80,8 @@ fn run_reducer(
     file_path.push(reduce_options.output_directory.clone());
     file_path.push(reduce_operation.intermediate_key.clone());
 
-    io::write(file_path, reduce_results_pretty.as_bytes()).chain_err(
-        || "failed to write reduce output",
-    )?;
+    io::write(file_path, reduce_results_pretty.as_bytes())
+        .chain_err(|| "Failed to write reduce output.")?;
     Ok(())
 }
 
@@ -148,18 +149,14 @@ fn send_reduce_result(
 
 fn create_reduce_operations(
     reduce_request: &pb::PerformReduceRequest,
+    output_uuid: String,
 ) -> Result<Vec<ReduceOperation>> {
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
-        // Stripping the address from the input_file_path until it's properly used by the worker.
-        // TODO: Remove this code and make use of the address.
-        let reduce_input_file_data: Vec<&str> = reduce_input_file.splitn(2, "/").collect();
-        let file_path = &format!("/{}", reduce_input_file_data[1].to_owned());
-
-        let reduce_input = io::read(file_path).chain_err(
-            || "couldn't read map input file",
-        )?;
+        // TODO: Run these operations in parallel as networks can be slow
+        let reduce_input = WorkerInterface::get_data(reduce_input_file, &output_uuid)
+            .chain_err(|| "Couldn't read map input file")?;
 
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing map response.",
@@ -205,6 +202,7 @@ pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
+    output_uuid: String,
 ) -> Result<()> {
     {
         let mut operation_state = operation_state_arc.lock().unwrap();
@@ -226,6 +224,7 @@ pub fn perform_reduce(
         reduce_request,
         Arc::clone(operation_state_arc),
         master_interface_arc,
+        output_uuid,
     );
     if let Err(err) = result {
         log_reduce_operation_err(err, operation_state_arc);
@@ -240,10 +239,10 @@ fn do_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
+    output_uuid: String,
 ) -> Result<()> {
-    let reduce_operations = create_reduce_operations(reduce_request).chain_err(
-        || "Error creating reduce operations from input.",
-    )?;
+    let reduce_operations = create_reduce_operations(reduce_request, output_uuid)
+        .chain_err(|| "Error creating reduce operations from input.")?;
 
     let reduce_options = ReduceOptions {
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),

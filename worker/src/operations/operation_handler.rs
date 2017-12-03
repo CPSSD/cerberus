@@ -126,9 +126,15 @@ impl OperationHandler {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
 
+        let output_dir_uuid = self.output_dir_uuid.clone();
+
         future::lazy(move || {
-            let result =
-                reduce::perform_reduce(&reduce_request, &operation_state_arc, master_interface_arc);
+            let result = reduce::perform_reduce(
+                &reduce_request,
+                &operation_state_arc,
+                master_interface_arc,
+                output_dir_uuid,
+            );
 
             future::result(result)
         })

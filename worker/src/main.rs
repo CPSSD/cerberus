@@ -42,6 +42,7 @@ mod master_interface;
 mod operations;
 mod server;
 mod parser;
+mod worker_interface;
 
 use std::{thread, time};
 use std::net::SocketAddr;

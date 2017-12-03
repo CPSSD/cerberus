@@ -17,6 +17,7 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
     ) -> SingleResponse<pb::IntermediateData> {
         // TODO: After the unnecessary stuff is removed from the request path, add the absolute
         //       path for this worker.
+        info!("Serving file {}", &req.get_path());
         if let Ok(data) = io::read(req.get_path()) {
             let mut res = pb::IntermediateData::new();
             res.set_data(data.into_bytes());
@@ -25,6 +26,5 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
         }
 
         SingleResponse::err(Error::Other(DATA_NOT_AVAILABLE))
-
     }
 }

@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "worker"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bson 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cerberus-proto 0.3.0",
