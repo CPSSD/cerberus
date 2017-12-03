@@ -1,12 +1,13 @@
 [package]
 name = "cli"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
+cerberus-proto = { path = "../proto" }
+chrono = "0.4.0"
 clap = "~2.26"
 error-chain = "0.11.0"
 grpc = "0.2.1"
-chrono = "0.4.0"
 prettytable-rs = "^0.6"
-cerberus-proto = { path = "../proto" }
+uuid = { version = "0.5", features = ["v4"] }

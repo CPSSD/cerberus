@@ -1,9 +1,13 @@
+#![feature(conservative_impl_trait)]
+#![cfg_attr(test, feature(proc_macro))]
+
 extern crate bson;
 extern crate cerberus_proto;
 #[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
+extern crate futures;
 extern crate grpc;
 extern crate local_ip;
 extern crate libc;
@@ -19,6 +23,9 @@ extern crate tls_api;
 extern crate util;
 extern crate uuid;
 
+#[cfg(test)]
+extern crate mocktopus;
+
 mod errors {
     error_chain! {
         foreign_links {
@@ -31,36 +38,36 @@ mod errors {
     }
 }
 
-mod operation_handler;
 mod master_interface;
-mod worker_interface;
-mod schedule_operation_service;
+mod operations;
+mod server;
 mod parser;
 
-use errors::*;
 use std::{thread, time};
 use std::net::SocketAddr;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use util::init_logger;
-use worker_interface::WorkerInterface;
+use std::sync::Arc;
+
+use errors::*;
 use master_interface::MasterInterface;
-use operation_handler::OperationHandler;
+use operations::OperationHandler;
+use server::{Server, ScheduleOperationService, IntermediateDataService};
+use util::init_logger;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
+const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
 const MAIN_LOOP_SLEEP_MS: u64 = 3000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
 const DEFAULT_PORT: &str = "0";
+const DEFAULT_MASTER_ADDR: &str = "[::]:8081";
 
-fn register_worker(
-    master_interface: &Arc<Mutex<MasterInterface>>,
-    address: &SocketAddr,
-) -> Result<()> {
+fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
-        let mut interface = master_interface.lock().unwrap();
-        match interface.register_worker(address) {
+        retries -= 1;
+
+        match master_interface.register_worker(address) {
             Ok(_) => break,
             Err(err) => {
                 if retries == 0 {
@@ -72,7 +79,6 @@ fn register_worker(
         thread::sleep(time::Duration::from_millis(
             WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS,
         ));
-        retries -= 1;
     }
 
     Ok(())
@@ -83,26 +89,28 @@ fn run() -> Result<()> {
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();
-    let master_addr = SocketAddr::from_str(matches.value_of("master").unwrap_or("[::]:8081"))
-        .chain_err(|| "Error parsing master address")?;
+    let master_addr = SocketAddr::from_str(
+        matches.value_of("master").unwrap_or(DEFAULT_MASTER_ADDR),
+    ).chain_err(|| "Error parsing master address")?;
     let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
         .chain_err(|| "Error parsing port")?;
 
-    let master_interface = Arc::new(Mutex::new(MasterInterface::new(master_addr).chain_err(
+    let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(
         || "Error creating master interface.",
-    )?));
-    let operation_handler = Arc::new(Mutex::new(
-        OperationHandler::new(Arc::clone(&master_interface)),
-    ));
-    let worker_interface = WorkerInterface::new(Arc::clone(&operation_handler), port)
-        .chain_err(|| "Error building worker interface.")?;
+    )?);
+    let operation_handler = Arc::new(OperationHandler::new(Arc::clone(&master_interface)));
+
+    let scheduler_service = ScheduleOperationService::new(Arc::clone(&operation_handler));
+    let interm_data_service = IntermediateDataService;
+    let srv = Server::new(port, scheduler_service, interm_data_service)
+        .chain_err(|| "Can't create server")?;
 
     let local_addr = SocketAddr::from_str(&format!(
         "{}:{}",
         local_ip::get().expect("Could not get IP"),
-        worker_interface.get_server().local_addr().port()
+        srv.addr().port(),
     )).chain_err(|| "Not a valid address of the worker")?;
-    register_worker(&master_interface, &local_addr).chain_err(
+    register_worker(&*master_interface, &local_addr).chain_err(
         || "Failed to register worker.",
     )?;
 
@@ -111,17 +119,29 @@ fn run() -> Result<()> {
         local_addr.to_string(),
         master_addr.to_string(),
     );
+
+    let mut current_health_check_failures = 0;
+
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        let handler = operation_handler.lock().unwrap();
-
-        if let Err(err) = handler.update_worker_status() {
+        if let Err(err) = operation_handler.update_worker_status() {
             error!("Could not send updated worker status to master: {}", err);
+            current_health_check_failures += 1;
+        } else {
+            current_health_check_failures = 0;
         }
 
-        let server = worker_interface.get_server();
-        if !server.is_alive() {
+        if current_health_check_failures >= MAX_HEALTH_CHECK_FAILURES {
+            if let Err(err) = register_worker(&*master_interface, &local_addr) {
+                error!("Failed to re-register worker after disconnecting: {}", err);
+            } else {
+                info!("Successfully re-registered with master after being disconnected.");
+                current_health_check_failures = 0;
+            }
+        }
+
+        if !srv.is_alive() {
             return Err("Worker interface server has unexpectingly died.".into());
         }
     }

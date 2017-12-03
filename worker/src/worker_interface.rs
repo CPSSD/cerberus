@@ -1,42 +1,47 @@
-use std::sync::{Arc, Mutex};
+use std::net::SocketAddr;
+use std::str::FromStr;
+use std::path::Path;
+
+use grpc::RequestOptions;
 
 use errors::*;
-use grpc::{Server, ServerBuilder};
 
+use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
-use schedule_operation_service::ScheduleOperationServiceImpl;
-use operation_handler::OperationHandler;
+use cerberus_proto::worker_grpc::IntermediateDataService; // For pub functions only
 
-const GRPC_THREAD_POOL_SIZE: usize = 1;
+/// 'WorkerInterface` is used to load data from other workers which have completed
+/// their map tasks.
+pub struct WorkerInterface;
 
-pub struct WorkerInterface {
-    server: Server,
-}
-
-/// `WorkerInterface` is the implementation of the interface used by the worker to recieve commands
-/// from the master.
-/// This will be used by the master to schedule `MapReduce` operations on the worker
 impl WorkerInterface {
-    pub fn new(operation_handler: Arc<Mutex<OperationHandler>>, serving_port: u16) -> Result<Self> {
-        let schedule_operation_service_impl = ScheduleOperationServiceImpl::new(operation_handler);
+    pub fn get_data<P: AsRef<Path>>(path: P) -> Result<String> {
+        let path_str = path.as_ref().to_string_lossy();
+        let split_path: Vec<&str> = path_str.splitn(2, "/").collect();
+        let worker_addr = SocketAddr::from_str(split_path[0]).chain_err(||"Unable to parse worker address")?;
 
-        let mut server_builder: ServerBuilder = ServerBuilder::new_plain();
-        server_builder.http.set_port(serving_port);
-        server_builder.add_service(grpc_pb::ScheduleOperationServiceServer::new_service_def(
-            schedule_operation_service_impl,
-        ));
-        server_builder.http.set_cpu_pool_threads(
-            GRPC_THREAD_POOL_SIZE,
-        );
+        // TODO: Add client store so we don't need to create a new client every time.
+        let client = grpc_pb::IntermediateDataServiceClient::new_plain(
+            &worker_addr.ip().to_string(),
+            worker_addr.port(),
+            Default::default(),
+        ).chain_err(|| {
+            format!("Error building client for worker {}", worker_addr)
+        })?;
 
-        Ok(WorkerInterface {
-            server: server_builder.build().chain_err(
-                || "Error building ScheduleOperationService server.",
-            )?,
-        })
-    }
+        let mut req = pb::IntermediateDataRequest::new();
+        req.set_path(format!("/{}",split_path[1]));
 
-    pub fn get_server(&self) -> &Server {
-        &self.server
+        let res = client
+            .get_intermediate_data(RequestOptions::new(), req)
+            .wait()
+            .chain_err(|| {
+                format!("Failed to get {} from {}", split_path[1], worker_addr)
+            })?
+            .1;
+
+        String::from_utf8(res.get_data().to_vec()).chain_err(
+            || "Unable to convert returned data to string",
+        )
     }
 }

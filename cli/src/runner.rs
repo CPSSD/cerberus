@@ -1,12 +1,22 @@
+use std::env;
+use std::fs;
+use std::io::prelude::{Read, Write};
+use std::path::Path;
+
 use chrono::Local;
 use clap::ArgMatches;
-use errors::*;
 use grpc::RequestOptions;
-use std::path::Path;
+use uuid::Uuid;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService; // do not use
+use errors::*;
+
+// Directory of client ID in the users home directory.
+const CLIENT_ID_DIR: &str = ".local/share/";
+// Client ID file name.
+const CLIENT_ID_FILE: &str = "cerberus";
 
 fn verify_valid_path(path_str: &str) -> Result<String> {
     let path = Path::new(path_str);
@@ -20,6 +30,52 @@ fn verify_valid_path(path_str: &str) -> Result<String> {
         Some(res) => Ok(res.to_owned()),
         None => Err("Invalid characters in path.".into()),
     }
+}
+
+fn create_new_client_id(dir: &str, file_path: &str) -> Result<String> {
+    // Create new client id as we do not have one saved.
+    fs::create_dir_all(dir).chain_err(
+        || "Error creating new client id.",
+    )?;
+
+    let client_id = Uuid::new_v4().to_string();
+    let mut file = fs::File::create(file_path).chain_err(
+        || "Error creating new client id.",
+    )?;
+
+    file.write_all(client_id.as_bytes()).chain_err(
+        || "Error creating new client id.",
+    )?;
+
+    Ok(client_id)
+}
+
+fn get_client_id() -> Result<String> {
+    let mut path_buf = env::home_dir().chain_err(|| "Error getting client id.")?;
+
+    path_buf.push(CLIENT_ID_DIR);
+    let dir = path_buf
+        .to_str()
+        .chain_err(|| "Error getting client id.")?
+        .to_owned();
+
+    path_buf.push(CLIENT_ID_FILE);
+    let file_path = path_buf.to_str().chain_err(|| "Error getting client id.")?;
+
+    if fs::metadata(file_path).is_ok() {
+        let mut file = fs::File::open(file_path).chain_err(
+            || "Error getting client id.",
+        )?;
+
+        let mut client_id = String::new();
+        file.read_to_string(&mut client_id).chain_err(
+            || "Error getting client id.",
+        )?;
+
+        return Ok(client_id);
+    }
+
+    create_new_client_id(&dir, file_path).chain_err(|| "Error getting client id.")
 }
 
 pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
@@ -51,8 +107,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
     let mut req = pb::MapReduceRequest::new();
     req.set_binary_path(binary.to_owned());
     req.set_input_directory(input.to_owned());
-    // TODO(voy): Replace it with generated ClientID.
-    req.set_client_id("abc".to_owned());
+    req.set_client_id(get_client_id()?);
     req.set_output_directory(output.to_owned());
 
     let res = client
@@ -83,7 +138,8 @@ pub fn cluster_status(client: &grpc_pb::MapReduceServiceClient) -> Result<()> {
 
 pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let mut req = pb::MapReduceStatusRequest::new();
-    req.set_client_id("abc".to_owned());
+    req.set_client_id(get_client_id()?);
+
     if let Some(id) = matches.value_of("job_id") {
         req.set_mapreduce_id(id.to_owned());
     }
@@ -123,7 +179,7 @@ fn print_table(rep: &pb::MapReduceReport) {
             )
         }
         pb::Status::IN_QUEUE => format!("IN_QUEUE ({})", rep.get_queue_length()),
-        pb::Status::FAILED => format!("FAILED ({})", rep.get_failure_details()).to_owned(),
+        pb::Status::FAILED => format!("FAILED\n{}", rep.get_failure_details()).to_owned(),
     };
 
     table!(["MRID", id], ["Status", status], ["Output", output]).printstd();

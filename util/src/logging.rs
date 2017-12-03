@@ -16,8 +16,8 @@ pub fn init_logger() -> Result<()> {
         format!(
             "{}:{}:{}: {}",
             record.level(),
-            record.location().module_path(),
             Utc::now().format("%T%.3f"),
+            record.location().module_path(),
             record.args()
         )
     };

@@ -19,6 +19,7 @@ fn get_bin_path() -> PathBuf {
     if path.ends_with("deps") {
         path.pop();
     }
+    path.push("examples");
     path.push(TEST_BIN_NAME);
     path
 }

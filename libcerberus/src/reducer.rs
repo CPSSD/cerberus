@@ -1,19 +1,26 @@
 use emitter::EmitFinal;
 use errors::*;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// The `ReduceInputKV` is a struct for passing input data to a `Reduce`.
 ///
-/// `ReduceInputKV` is a thin wrapper around a `(String, Vec<String>)`, used for creating a clearer API.
+/// `ReduceInputKV` is a thin wrapper around a `(String, Vec<Value>)`, used for creating a clearer API.
 /// It can be constructed normally or using `ReduceInputKV::new()`.
 #[derive(Debug, Default, Deserialize, PartialEq)]
-pub struct ReduceInputKV {
+pub struct ReduceInputKV<V>
+where
+    V: Default + Serialize,
+{
     pub key: String,
-    pub values: Vec<String>,
+    pub values: Vec<V>,
 }
 
-impl ReduceInputKV {
-    pub fn new(key: String, values: Vec<String>) -> Self {
+impl<V> ReduceInputKV<V>
+where
+    V: Default + Serialize,
+{
+    pub fn new(key: String, values: Vec<V>) -> Self {
         ReduceInputKV {
             key: key,
             values: values,
@@ -35,8 +42,8 @@ impl ReduceInputKV {
 /// An empty result used for returning an error. Outputs of the reduce operation are sent out
 /// through the `emitter`.
 pub trait Reduce {
-    type Value: Default + Serialize;
-    fn reduce<E>(&self, input: ReduceInputKV, emitter: E) -> Result<()>
+    type Value: Default + Serialize + DeserializeOwned;
+    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>;
 }
@@ -49,7 +56,7 @@ mod tests {
     struct TestReducer;
     impl Reduce for TestReducer {
         type Value = String;
-        fn reduce<E>(&self, input: ReduceInputKV, mut emitter: E) -> Result<()>
+        fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
         where
             E: EmitFinal<Self::Value>,
         {

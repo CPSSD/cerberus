@@ -3,9 +3,8 @@ use std::fs;
 use std::io::{Write, BufRead, BufReader};
 use std::path::PathBuf;
 
+use common::{Job, Task};
 use errors::*;
-use mapreduce_job::MapReduceJob;
-use mapreduce_tasks::MapReduceTask;
 
 const MEGA_BYTE: usize = 1000 * 1000;
 const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
@@ -20,16 +19,12 @@ struct MapTaskFile {
 
 /// `TaskProcessorTrait` describes an object that can be used to create map and reduce tasks.
 pub trait TaskProcessorTrait {
-    /// `create_map_tasks` creates a set of map tasks when given a `MapReduceJob`
-    fn create_map_tasks(&self, map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>>;
+    /// `create_map_tasks` creates a set of map tasks when given a `Job`
+    fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>>;
 
-    /// `create_reduce_tasks` creates reduce tasks from a `MapReduceJob` and a list of it's
+    /// `create_reduce_tasks` creates reduce tasks from a `Job` and a list of it's
     /// completed map tasks.
-    fn create_reduce_tasks(
-        &self,
-        map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &[&MapReduceTask],
-    ) -> Result<Vec<MapReduceTask>>;
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: &[&Task]) -> Result<Vec<Task>>;
 }
 
 pub struct TaskProcessor;
@@ -67,21 +62,17 @@ impl TaskProcessor {
     /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     fn read_input_file(
         &self,
-        map_reduce_job: &MapReduceJob,
+        job: &Job,
         map_task_file: &mut MapTaskFile,
         input_file: &fs::File,
         output_directory: &PathBuf,
-        map_tasks: &mut Vec<MapReduceTask>,
+        map_tasks: &mut Vec<Task>,
     ) -> Result<()> {
-        if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
-            map_task_file.file.write_all(b"\n").chain_err(
-                || "Error writing line break to file",
-            )?;
-        }
-
         let buf_reader = BufReader::new(input_file);
         for line in buf_reader.lines() {
-            let read_str = line.chain_err(|| "Error reading Map input.")?;
+            let mut read_str = line.chain_err(|| "Error reading Map input.")?;
+            read_str.push_str("\n");
+
             map_task_file
                 .file
                 .write_all(read_str.as_bytes())
@@ -89,9 +80,9 @@ impl TaskProcessor {
 
             let ammount_read: usize = read_str.len();
             if ammount_read > map_task_file.bytes_to_write {
-                map_tasks.push(MapReduceTask::new_map_task(
-                    map_reduce_job.map_reduce_id.as_str(),
-                    map_reduce_job.binary_path.as_str(),
+                map_tasks.push(Task::new_map_task(
+                    job.id.as_str(),
+                    job.binary_path.as_str(),
                     &map_task_file.file_path,
                 ));
 
@@ -107,12 +98,12 @@ impl TaskProcessor {
 }
 
 impl TaskProcessorTrait for TaskProcessor {
-    fn create_map_tasks(&self, map_reduce_job: &MapReduceJob) -> Result<Vec<MapReduceTask>> {
+    fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
         let mut map_tasks = Vec::new();
-        let input_directory = PathBuf::from(map_reduce_job.input_directory.as_str());
+        let input_directory = PathBuf::from(job.input_directory.as_str());
 
         let mut output_directory: PathBuf = input_directory.clone();
-        output_directory.push("MapReduceTasks");
+        output_directory.push(".MapReduceTasks");
         fs::create_dir_all(output_directory.clone()).chain_err(
             || "Error creating Map tasks output directory.",
         )?;
@@ -122,7 +113,7 @@ impl TaskProcessorTrait for TaskProcessor {
                 || "Error creating new Map input file chunk.",
             )?;
 
-        for entry in fs::read_dir(map_reduce_job.input_directory.as_str())? {
+        for entry in fs::read_dir(job.input_directory.as_str())? {
             let entry: fs::DirEntry = entry.chain_err(|| "Error reading input directory.")?;
             let path: PathBuf = entry.path();
             if path.is_file() {
@@ -130,7 +121,7 @@ impl TaskProcessorTrait for TaskProcessor {
                     || "Error opening input file.",
                 )?;
                 self.read_input_file(
-                    map_reduce_job,
+                    job,
                     &mut map_task_file,
                     &file,
                     &output_directory,
@@ -139,25 +130,21 @@ impl TaskProcessorTrait for TaskProcessor {
             }
         }
         if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
-            map_tasks.push(MapReduceTask::new_map_task(
-                map_reduce_job.map_reduce_id.as_str(),
-                map_reduce_job.binary_path.as_str(),
+            map_tasks.push(Task::new_map_task(
+                job.id.as_str(),
+                job.binary_path.as_str(),
                 &map_task_file.file_path,
             ));
         }
         Ok(map_tasks)
     }
 
-    fn create_reduce_tasks(
-        &self,
-        map_reduce_job: &MapReduceJob,
-        completed_map_tasks: &[&MapReduceTask],
-    ) -> Result<Vec<MapReduceTask>> {
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: &[&Task]) -> Result<Vec<Task>> {
         let mut reduce_tasks = Vec::new();
         let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
         for completed_map in completed_map_tasks {
-            for (partition, output_file) in completed_map.get_map_output_files() {
+            for (partition, output_file) in completed_map.map_output_files.iter() {
                 let map_results: &mut Vec<String> =
                     key_results_map.entry(*partition).or_insert_with(Vec::new);
                 map_results.push(output_file.to_owned());
@@ -165,12 +152,12 @@ impl TaskProcessorTrait for TaskProcessor {
         }
 
         for (reduce_partition, reduce_input) in key_results_map {
-            reduce_tasks.push(MapReduceTask::new_reduce_task(
-                map_reduce_job.map_reduce_id.as_str(),
-                map_reduce_job.binary_path.as_str(),
+            reduce_tasks.push(Task::new_reduce_task(
+                job.id.as_str(),
+                job.binary_path.as_str(),
                 reduce_partition,
                 reduce_input,
-                map_reduce_job.output_directory.as_str(),
+                job.output_directory.as_str(),
             ));
         }
 
@@ -184,8 +171,7 @@ mod tests {
     use std::path::Path;
     use std::io::Read;
     use std::collections::HashSet;
-    use mapreduce_job::MapReduceJobOptions;
-    use mapreduce_tasks::TaskType;
+    use common::{JobOptions, TaskType};
 
     #[test]
     fn test_create_map_tasks() {
@@ -207,29 +193,22 @@ mod tests {
             .write_all(b"this is the second test file")
             .unwrap();
 
-        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+        let job = Job::new(JobOptions {
             client_id: "test-client".to_owned(),
             binary_path: "/tmp/bin".to_owned(),
             input_directory: test_path.to_str().unwrap().to_owned(),
             ..Default::default()
         }).unwrap();
 
-        let map_tasks: Vec<MapReduceTask> =
-            task_processor.create_map_tasks(&map_reduce_job).unwrap();
+        let map_tasks: Vec<Task> = task_processor.create_map_tasks(&job).unwrap();
 
         assert_eq!(map_tasks.len(), 1);
-        assert_eq!(map_tasks[0].get_task_type(), TaskType::Map);
-        assert_eq!(
-            map_tasks[0].get_map_reduce_id(),
-            map_reduce_job.map_reduce_id
-        );
+        assert_eq!(map_tasks[0].task_type, TaskType::Map);
+        assert_eq!(map_tasks[0].job_id, job.id);
 
-        let perform_map_req = map_tasks[0].get_perform_map_request().unwrap();
+        let perform_map_req = map_tasks[0].map_request.clone().unwrap();
 
-        assert_eq!(
-            map_reduce_job.binary_path,
-            perform_map_req.get_mapper_file_path()
-        );
+        assert_eq!(job.binary_path, perform_map_req.get_mapper_file_path());
 
         // Read map task input and make sure it is as expected.
         let mut input_file = fs::File::open(perform_map_req.get_input_file_path().clone()).unwrap();
@@ -239,10 +218,10 @@ mod tests {
         // Either input file order is fine.
         let mut good_inputs = HashSet::new();
         good_inputs.insert(
-            "this is the first test file\nthis is the second test file".to_owned(),
+            "this is the first test file\nthis is the second test file\n".to_owned(),
         );
         good_inputs.insert(
-            "this is the second test file\nthis is the first test file".to_owned(),
+            "this is the second test file\nthis is the first test file\n".to_owned(),
         );
 
         assert!(good_inputs.contains(&map_input));
@@ -252,51 +231,52 @@ mod tests {
     fn test_create_reduce_tasks() {
         let task_processor = TaskProcessor;
 
-        let map_reduce_job = MapReduceJob::new(MapReduceJobOptions {
+        let job = Job::new(JobOptions {
             client_id: "test-client".to_owned(),
             binary_path: "/tmp/bin".to_owned(),
             input_directory: "/tmp/inputdir".to_owned(),
             ..Default::default()
         }).unwrap();
 
-        let mut map_task1 = MapReduceTask::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
-        map_task1.insert_map_output_file(0, "/tmp/output/1");
-        map_task1.insert_map_output_file(1, "/tmp/output/2");
+        let mut map_task1 = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        map_task1.map_output_files.insert(
+            0,
+            "/tmp/output/1".to_owned(),
+        );
+        map_task1.map_output_files.insert(
+            1,
+            "/tmp/output/2".to_owned(),
+        );
 
-        let mut map_task2 = MapReduceTask::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
-        map_task2.insert_map_output_file(0, "/tmp/output/3");
+        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
+        map_task2.map_output_files.insert(
+            0,
+            "/tmp/output/3".to_owned(),
+        );
 
-        let map_tasks: Vec<&MapReduceTask> = vec![&map_task1, &map_task2];
-        let mut reduce_tasks: Vec<MapReduceTask> = task_processor
-            .create_reduce_tasks(&map_reduce_job, &map_tasks)
+        let map_tasks: Vec<&Task> = vec![&map_task1, &map_task2];
+        let mut reduce_tasks: Vec<Task> = task_processor
+            .create_reduce_tasks(&job, &map_tasks)
             .unwrap();
 
-        reduce_tasks.sort_by_key(|task| {
-            task.get_perform_reduce_request().unwrap().get_partition()
-        });
+        reduce_tasks.sort_by_key(|task| task.reduce_request.clone().unwrap().get_partition());
 
         assert_eq!(2, reduce_tasks.len());
 
-        let reduce_req1 = reduce_tasks[0].get_perform_reduce_request().unwrap();
-        let reduce_req2 = reduce_tasks[1].get_perform_reduce_request().unwrap();
+        let reduce_req1 = reduce_tasks[0].reduce_request.clone().unwrap();
+        let reduce_req2 = reduce_tasks[1].reduce_request.clone().unwrap();
 
         assert_eq!(0, reduce_req1.get_partition());
-        assert_eq!(TaskType::Reduce, reduce_tasks[0].get_task_type());
-        assert_eq!(
-            map_reduce_job.map_reduce_id,
-            reduce_tasks[0].get_map_reduce_id()
-        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[0].task_type);
+        assert_eq!(job.id, reduce_tasks[0].job_id);
         assert_eq!(
             vec!["/tmp/output/1", "/tmp/output/3"],
             reduce_req1.get_input_file_paths()
         );
 
         assert_eq!(1, reduce_req2.get_partition());
-        assert_eq!(TaskType::Reduce, reduce_tasks[1].get_task_type());
-        assert_eq!(
-            map_reduce_job.map_reduce_id,
-            reduce_tasks[1].get_map_reduce_id()
-        );
+        assert_eq!(TaskType::Reduce, reduce_tasks[1].task_type);
+        assert_eq!(job.id, reduce_tasks[1].job_id);
         assert_eq!(vec!["/tmp/output/2"], reduce_req2.get_input_file_paths());
     }
 }
