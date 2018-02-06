@@ -105,10 +105,14 @@ impl StateHandler {
         if scheduler_json == json::Null {
             return Err("Unable to retrieve Scheduler state from JSON".into());
         }
-        let mut scheduler = self.scheduler.lock().unwrap();
-        scheduler.load_state(scheduler_json).chain_err(
-            || "Error reloading scheduler state",
-        )?;
+
+        {
+            // Hold scheduler lock for as short as possible to avoid deadlock.
+            let mut scheduler = self.scheduler.lock().unwrap();
+            scheduler.load_state(scheduler_json).chain_err(
+                || "Error reloading scheduler state",
+            )?;
+        }
 
         // Re-establish connections with workers and update worker_manager and worker state.
         let worker_manager_json = json["worker_manager"].clone();
