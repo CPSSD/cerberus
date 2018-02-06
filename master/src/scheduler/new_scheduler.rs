@@ -11,7 +11,6 @@ use scheduler::job_processing;
 use scheduler::state::{ScheduledJob, State};
 use scheduler::task_manager::TaskManager;
 use scheduler::worker_manager_adapter::WorkerManager;
-use state::StateStore;
 
 /// Serves as a lock to ensure that only one job is running at a time.
 /// A value of `true` means that a job is currently running.
@@ -24,7 +23,6 @@ type JobLock = (Mutex<bool>, Condvar);
 pub struct Scheduler {
     cpu_pool: futures_cpupool::CpuPool,
     state: Arc<State>,
-    shared_state: Arc<StateStore>,
 
     job_lock: Arc<JobLock>,
 
@@ -33,11 +31,11 @@ pub struct Scheduler {
 
 impl Scheduler {
     /// Construct a new `Scheduler`, using the default [`CpuPool`](futures_cpupool::CpuPool).
-    pub fn new(shared_state: Arc<StateStore>, worker_manager: Arc<WorkerManager>) -> Self {
+    pub fn new(worker_manager: Arc<WorkerManager>) -> Self {
         // The default number of threads in a CpuPool is the same as the number of CPUs on the
         // host.
         let mut builder = futures_cpupool::Builder::new();
-        Scheduler::from_cpu_pool_builder(&mut builder, shared_state, worker_manager)
+        Scheduler::from_cpu_pool_builder(&mut builder, worker_manager)
     }
 
     /// Construct a new `Scheduler` using a provided [`CpuPool builder`](futures_cpupool::Builder).
@@ -45,7 +43,6 @@ impl Scheduler {
     #[allow(mutex_atomic)]
     pub fn from_cpu_pool_builder(
         builder: &mut futures_cpupool::Builder,
-        shared_state: Arc<StateStore>,
         worker_manager: Arc<WorkerManager>,
     ) -> Self {
         let pool = builder.create();
@@ -54,7 +51,6 @@ impl Scheduler {
             // Cloning a CpuPool simply clones the reference to the underlying pool.
             cpu_pool: pool.clone(),
             state: state,
-            shared_state: shared_state,
 
             job_lock: Arc::new((Mutex::new(false), Condvar::new())),
 
