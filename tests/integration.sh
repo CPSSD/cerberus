@@ -45,29 +45,37 @@ sleep 1
 
 # Launch the CLI to monitor status.
 echo "Launching CLI."
+attempt_counter=0
 while true
 do
-    ./cli -m "[::]:10008" status
-    done_status=$(./cli -m "[::]:10008" status 2>&1 | tee | grep "DONE" -o);
-    fail_status=$(./cli -m "[::]:10008" status 2>&1 | tee | grep "FAILED" -o);
-    if [ "$done_status" == "DONE" ]; then break; fi
-    if [ "$fail_status" == "FAILED" ]; then break; fi
+    echo "Checking Status using CLI..."
+    status=$(./cli -m "[::]:10008" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS' -o)
+    echo "    - MapReduce Status: " $status
+    if [ "$status" == "DONE" ] || [ "$status" == "FAILED" ]; then break; fi
+
+    if [ $attempt_counter -gt 15 ]; then
+        echo "Error: Unable to reach an expected status after 15 iterations"
+        break;
+    fi
+    sleep 1
+    attempt_counter+=1
 done
 
 # Kill any spawned processes.
-kill -9 ${master_pid} ${worker_pids[*]}
+$(kill -9 ${master_pid} ${worker_pids[*]});
 
 # Verify that the output is correct.
 for key in "${!results[@]}"
 do
     count=$(grep "[0-9]*" -o integration-test/output/"${key}")
-    echo "${key}" "${count}"
     if [ "${count}" != "${results[${key}]}" ]
     then
         echo "Error. Expected ${key}=${results[${key}]}, but got: $count"
         exit 1
     fi
 done
+
+echo "Integration test passed succesfully"
 
 # Cleanup.
 rm -rf integration_test
