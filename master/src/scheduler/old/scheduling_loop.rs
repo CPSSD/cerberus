@@ -116,7 +116,10 @@ fn assign_worker_task<I>(
                 match task.map_request {
                     None => {
                         error!("Error assigning task: Map request not found.");
-                        handle_assign_task_failure(&scheduler_resources, &task_assignment);
+                        thread::spawn(move || {
+                            // Needs to be done in a new thread to avoid a deadlock.
+                            handle_assign_task_failure(&scheduler_resources, &task_assignment);
+                        });
                         return;
                     }
                     Some(ref req) => req.clone(),
@@ -129,7 +132,10 @@ fn assign_worker_task<I>(
                 match task.reduce_request {
                     None => {
                         error!("Error assigning task: Reduce request not found.");
-                        handle_assign_task_failure(&scheduler_resources, &task_assignment);
+                        thread::spawn(move || {
+                            // Needs to be done in a new thread to avoid a deadlock.
+                            handle_assign_task_failure(&scheduler_resources, &task_assignment);
+                        });
                         return;
                     }
                     Some(ref req) => req.clone(),
