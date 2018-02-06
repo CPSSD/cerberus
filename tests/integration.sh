@@ -78,4 +78,4 @@ done
 echo "Integration test passed succesfully"
 
 # Cleanup.
-rm -rf integration_test
+rm -rf integration-test
