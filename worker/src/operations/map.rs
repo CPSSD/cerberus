@@ -142,7 +142,7 @@ pub fn perform_map(
     }
     operation_handler::set_busy_status(operation_state_arc);
 
-    let result = do_perform_map(
+    let result = internal_perform_map(
         map_options,
         Arc::clone(operation_state_arc),
         master_interface_arc,
@@ -156,9 +156,43 @@ pub fn perform_map(
     Ok(())
 }
 
+fn process_map_result(
+    result: Result<MapOperationResults>,
+    operation_state_arc: Arc<Mutex<OperationState>>,
+    master_interface_arc: Arc<MasterInterface>,
+    initial_cpu_time: u64,
+) {
+    match result {
+        Ok((mut map_result, intermediate_files)) => {
+            {
+                let mut operation_state = operation_state_arc.lock().unwrap();
+                operation_state.add_intermediate_files(intermediate_files);
+            }
+
+            map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+            if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+                log_map_operation_err(err, &operation_state_arc);
+            } else {
+                info!("Map operation completed sucessfully.");
+                operation_handler::set_complete_status(&operation_state_arc);
+            }
+        }
+        Err(err) => {
+            let mut map_result = pb::MapResult::new();
+            map_result.set_status(pb::ResultStatus::FAILURE);
+            map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+            map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
+
+            if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+                error!("Could not send map operation failed: {}", err);
+            }
+            log_map_operation_err(err, &operation_state_arc);
+        }
+    }
+}
+
 // Internal implementation for performing a map task.
-// TODO: Split this function into smaller pieces (https://github.com/CPSSD/cerberus/issues/281)
-fn do_perform_map(
+fn internal_perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
@@ -207,33 +241,12 @@ fn do_perform_map(
         let result =
             map_operation_thread_impl(&map_input_document, &*output_path.to_string_lossy(), child);
 
-        match result {
-            Ok((mut map_result, intermediate_files)) => {
-                {
-                    let mut operation_state = operation_state_arc.lock().unwrap();
-                    operation_state.add_intermediate_files(intermediate_files);
-                }
-
-                map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-                if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-                    log_map_operation_err(err, &operation_state_arc);
-                } else {
-                    info!("Map operation completed sucessfully.");
-                    operation_handler::set_complete_status(&operation_state_arc);
-                }
-            }
-            Err(err) => {
-                let mut map_result = pb::MapResult::new();
-                map_result.set_status(pb::ResultStatus::FAILURE);
-                map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-                map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
-
-                if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-                    error!("Could not send map operation failed: {}", err);
-                }
-                log_map_operation_err(err, &operation_state_arc);
-            }
-        }
+        process_map_result(
+            result,
+            operation_state_arc,
+            master_interface_arc,
+            initial_cpu_time,
+        );
     });
 
     Ok(())
