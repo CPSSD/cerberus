@@ -5,7 +5,7 @@ use futures::prelude::*;
 
 use common::Task;
 use errors::*;
-use scheduler::worker_manager_adapter::WorkerManager;
+use worker_management::WorkerManager;
 
 /// The `TaskManager` is responsible for communicating with the
 /// [`WorkerManager`](worker_management::WorkerManager).

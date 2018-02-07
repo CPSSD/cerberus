@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
-use std::fs::File;
+use std::sync::Arc;
+// use std::fs::File;
 use std::fs;
-use std::io::{Read, Write};
+// use std::io::{Read, Write};
 
 use serde_json;
-use serde_json::Value as json;
+// use serde_json::Value as json;
 
 use errors::*;
 use scheduler::Scheduler;
@@ -27,16 +27,16 @@ pub trait StateHandling {
 
 pub struct StateHandler {
     port: u16,
-    scheduler: Arc<Mutex<Scheduler>>,
-    worker_manager: Arc<Mutex<WorkerManager>>,
+    scheduler: Arc<Scheduler>,
+    worker_manager: Arc<WorkerManager>,
     dump_dir: String,
 }
 
 impl StateHandler {
     pub fn new(
         port: u16,
-        scheduler: Arc<Mutex<Scheduler>>,
-        worker_manager: Arc<Mutex<WorkerManager>>,
+        scheduler: Arc<Scheduler>,
+        worker_manager: Arc<WorkerManager>,
         create_dir: bool,
         dir: &str,
     ) -> Result<Self> {
@@ -56,6 +56,9 @@ impl StateHandler {
 
     pub fn dump_state(&self) -> Result<()> {
         // Get Scheduler state as JSON.
+        // TODO(conor) Finish this.
+        /*
+         
         let scheduler = self.scheduler.lock().unwrap();
         let scheduler_json = scheduler.dump_state().chain_err(
             || "Unable to dump Scheduler state",
@@ -85,10 +88,14 @@ impl StateHandler {
             format!("{}/master.dump", self.dump_dir),
         ).chain_err(|| "Unable to rename file")?;
 
+        */
+
         Ok(())
     }
 
     pub fn load_state(&self) -> Result<()> {
+        // TODO(conor) Finish this.
+        /* 
         let mut file = File::open(format!("{}/master.dump", self.dump_dir))
             .chain_err(|| "Unable to open file")?;
         let mut data = String::new();
@@ -123,6 +130,8 @@ impl StateHandler {
         worker_manager.load_state(worker_manager_json).chain_err(
             || "Error reloading worker_manager state",
         )?;
+
+        */
 
         Ok(())
     }

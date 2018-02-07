@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use grpc::{SingleResponse, Error, RequestOptions};
 
@@ -15,12 +15,12 @@ const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 
 /// `ClientService` recieves communication from a client.
 pub struct ClientService {
-    scheduler: Arc<Mutex<Scheduler>>,
+    scheduler: Arc<Scheduler>,
     testing: bool,
 }
 
 impl ClientService {
-    pub fn new(scheduler: Arc<Mutex<Scheduler>>) -> Self {
+    pub fn new(scheduler: Arc<Scheduler>) -> Self {
         ClientService {
             scheduler: scheduler,
             testing: false,
@@ -34,19 +34,19 @@ impl grpc_pb::MapReduceService for ClientService {
         _: RequestOptions,
         req: pb::MapReduceRequest,
     ) -> SingleResponse<pb::MapReduceResponse> {
-        let mut scheduler = self.scheduler.lock().unwrap();
-
         let mut response = pb::MapReduceResponse::new();
         let mut job_options = JobOptions::from(req);
+
         if self.testing {
             job_options.validate_paths = false;
         }
+
         let job = match Job::new(job_options) {
             Ok(job) => job,
             Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
         };
         response.mapreduce_id = job.id.clone();
-        match scheduler.schedule_job(job) {
+        match self.scheduler.schedule_job(job) {
             Err(err) => {
                 output_error(&err.chain_err(|| "Error scheduling map reduce job."));
                 SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR))
@@ -60,13 +60,11 @@ impl grpc_pb::MapReduceService for ClientService {
         _: RequestOptions,
         req: pb::MapReduceStatusRequest,
     ) -> SingleResponse<pb::MapReduceStatusResponse> {
-        let scheduler = self.scheduler.lock().unwrap();
-
         let mut response = pb::MapReduceStatusResponse::new();
         let jobs: Vec<&Job>;
 
         if !req.client_id.is_empty() {
-            match scheduler.get_mapreduce_client_status(&req.client_id) {
+            match self.scheduler.get_mapreduce_client_status(&req.client_id) {
                 Err(err) => {
                     output_error(&err.chain_err(|| "Error getting mapreduces for client."));
                     return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
@@ -74,7 +72,7 @@ impl grpc_pb::MapReduceService for ClientService {
                 Ok(jbs) => jobs = jbs,
             }
         } else if !req.mapreduce_id.is_empty() {
-            match scheduler.get_mapreduce_status(&req.mapreduce_id) {
+            match self.scheduler.get_mapreduce_status(&req.mapreduce_id) {
                 Err(err) => {
                     output_error(&err.chain_err(|| "Error getting mapreduces status."));
                     return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
@@ -114,11 +112,9 @@ impl grpc_pb::MapReduceService for ClientService {
         _: RequestOptions,
         _: pb::EmptyMessage,
     ) -> SingleResponse<pb::ClusterStatusResponse> {
-        let scheduler = self.scheduler.lock().unwrap();
-
         let mut response = pb::ClusterStatusResponse::new();
-        response.workers = i64::from(scheduler.get_available_workers());
-        response.queue_size = scheduler.get_job_queue_size() as i64;
+        response.workers = i64::from(self.scheduler.get_available_workers());
+        response.queue_size = self.scheduler.get_job_queue_size() as i64;
 
         SingleResponse::completed(response)
     }
