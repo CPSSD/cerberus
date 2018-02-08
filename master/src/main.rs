@@ -33,7 +33,6 @@ mod errors {
 }
 
 mod common;
-mod queued_work_store;
 mod scheduler;
 mod state;
 mod worker_communication;
@@ -47,7 +46,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use errors::*;
-use scheduler::{TaskProcessorImpl, Scheduler};
+use scheduler::{TaskProcessorImpl, Scheduler, run_task_result_loop};
 use util::init_logger;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::{WorkerManager, run_health_check_loop, run_task_assigment_loop};
@@ -107,7 +106,13 @@ fn run() -> Result<()> {
 
     // Startup worker managment loops
     run_task_assigment_loop(Arc::clone(&worker_manager));
-    run_health_check_loop(worker_manager);
+    run_health_check_loop(Arc::clone(&worker_manager));
+
+    // Startup scheduler loop
+    run_task_result_loop(
+        Arc::clone(&map_reduce_scheduler),
+        Arc::clone(&worker_manager),
+    );
 
     let mut count = 0;
     loop {

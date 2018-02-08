@@ -1,29 +1,25 @@
-use std::sync::Arc;
-
-use futures::future;
-use futures::prelude::*;
-use futures::sync::oneshot;
-use futures_cpupool;
+use std::thread;
+use std::collections::HashMap;
+use std::sync::{Mutex, Arc};
 
 use chrono::Utc;
 
 use cerberus_proto::mapreduce::Status as JobStatus;
-use common::Job;
+use common::{Task, Job};
 use errors::*;
 use scheduler::state::{ScheduledJob, State};
-use scheduler::task_manager::TaskManager;
 use scheduler::task_processor::TaskProcessor;
 use worker_management::WorkerManager;
+use util::output_error;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
 ///
 /// It delegates work to several child modules, and to the
 /// [`WorkerManager`](worker_management::WorkerManager).
 pub struct Scheduler {
-    cpu_pool: futures_cpupool::CpuPool,
-    state: Arc<State>,
+    state: Arc<Mutex<State>>,
 
-    task_manager: Arc<TaskManager>,
+    worker_manager: Arc<WorkerManager>,
     task_processor: Arc<TaskProcessor + Send + Sync>,
 }
 
@@ -33,78 +29,81 @@ impl Scheduler {
         worker_manager: Arc<WorkerManager>,
         task_processor: Arc<TaskProcessor + Send + Sync>,
     ) -> Self {
-        // The default number of threads in a CpuPool is the same as the number of CPUs on the
-        // host.
-        let mut builder = futures_cpupool::Builder::new();
-        Scheduler::from_cpu_pool_builder(&mut builder, worker_manager, task_processor)
-    }
-
-    /// Construct a new `Scheduler` using a provided [`CpuPool builder`](futures_cpupool::Builder).
-    pub fn from_cpu_pool_builder(
-        builder: &mut futures_cpupool::Builder,
-        worker_manager: Arc<WorkerManager>,
-        task_processor: Arc<TaskProcessor + Send + Sync>,
-    ) -> Self {
-        let pool = builder.create();
-        let state = Arc::new(State::new());
+        let state = Arc::new(Mutex::new(State::new()));
         Scheduler {
-            // Cloning a CpuPool simply clones the reference to the underlying pool.
-            cpu_pool: pool.clone(),
             state: state,
 
-            task_manager: Arc::new(TaskManager::new(worker_manager)),
+            worker_manager: worker_manager,
             task_processor: task_processor,
         }
     }
 
+    fn process_completed_task(&self, task: Task) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+
+        state.add_completed_task(task.clone()).chain_err(
+            || "Error processing completed task result",
+        )?;
+
+        let reduce_tasks_required = state
+            .reduce_tasks_required(task.job_id.to_owned())
+            .chain_err(|| "Error processing completed task result")?;
+
+        if reduce_tasks_required {
+            // TODO: finish here
+            let job = state.get_job(task.job_id.clone()).chain_err(
+                || "Error processing completed task result.",
+            )?;
+
+            let map_tasks = state.get_map_tasks(task.job_id.clone()).chain_err(
+                || "Error processing completed task result.",
+            )?;
+
+            let reduce_tasks = self.task_processor
+                .create_reduce_tasks(&job, map_tasks)
+                .chain_err(|| "Error processing completed task results.")?;
+
+            state
+                .add_tasks_for_job(task.job_id.clone(), reduce_tasks)
+                .chain_err(|| "Error processing completed task results.")?;
+        }
+        Ok(())
+    }
+
+    /// Schedule a [`Task`](common::Task) to be executed.
+    fn schedule_task(&self, task: Task) {
+        let worker_manager = Arc::clone(&self.worker_manager);
+        thread::spawn(move || { worker_manager.run_task(task); });
+    }
+
     /// Schedule a [`Job`](common::Job) to be executed.
-    ///
-    /// Returns the ID of the `Job`.
-    ///
-    /// The mechanism for cancellation involves a [oneshot channel](futures::sync::mpsc::oneshot)
-    /// which always produces an error when complete. We select on the job's future and the
-    /// cancellation future, so that if the cancellation future fires we can drop the job future.
-    /// When it is dropped, all currently-running child futures will complete but no new ones will
-    /// be scheduled and the job will eventually halt.
-    pub fn schedule_job(&self, job: Job) -> Result<String> {
-        // Cancellation oneshot
-        let (send, recv) = oneshot::channel::<()>();
-        let failure = recv.then(|_| Err("Job cancelled.".into()));
+    /// This function creates the map tasks before returning.
+    pub fn schedule_job(&self, mut job: Job) -> Result<()> {
+        let map_tasks_vec = self.task_processor.create_map_tasks(&job).chain_err(
+            || "Error creating map tasks for job.",
+        )?;
 
-        let job_id = job.id.clone();
+        job.map_tasks_total = map_tasks_vec.len() as u32;
 
-        let map_task_manager = Arc::clone(&self.task_manager);
-        let reduce_task_manager = Arc::clone(&self.task_manager);
-        let map_task_processor = Arc::clone(&self.task_processor);
-        let reduce_task_processor = Arc::clone(&self.task_processor);
+        let mut map_tasks: HashMap<String, Task> = HashMap::new();
+        for task in map_tasks_vec {
+            self.schedule_task(task.clone());
+            map_tasks.insert(task.id.to_owned(), task);
+        }
 
-        let job_future = future::lazy(move || {
-            future::ok(activate_job(job))
-        }).and_then(move |job| {
-            future::result(map_task_processor.create_map_tasks(&job)).join(future::ok(job))
-        }).and_then(move |(map_tasks, job)| {
-            map_task_manager.run_tasks(map_tasks).join(future::ok(job))
-        }).and_then(move |(completed_map_tasks, job)| {
-            future::result(reduce_task_processor.create_reduce_tasks(&job, completed_map_tasks))
-                .join(future::ok(job))
-        }).and_then(move |(reduce_tasks, job)| {
-            reduce_task_manager.run_tasks(reduce_tasks).and_then(|_| future::ok(job))
-        }).and_then(|job| {
-            future::ok(complete_job(job))
-        }).select(failure)
-        // We only care about whichever future resolves first, so map the ok pair and the error
-        // pair to single values.
-            .map(|(win, _)| win)
-            .map_err(|(win, _)| win);
+        info!("Starting job with ID {}.", job.id);
+        job.status = JobStatus::IN_PROGRESS;
+        job.time_started = Some(Utc::now());
 
-        let job_cpu_future = self.cpu_pool.spawn(job_future);
         let scheduled_job = ScheduledJob {
-            cancellation_channel: send,
-            job_future: Box::new(job_cpu_future),
-            job_id: job_id.clone(),
+            job: job,
+            tasks: map_tasks,
         };
 
-        self.state.add_job(scheduled_job).and(Ok(job_id))
+        let mut state = self.state.lock().unwrap();
+        state.add_job(scheduled_job).chain_err(
+            || "Error adding scheduled job to state store",
+        )
     }
 
     // TODO(conor): Finish these functions
@@ -126,16 +125,18 @@ impl Scheduler {
     }
 }
 
-pub fn activate_job(mut job: Job) -> Job {
-    info!("Activating job with ID {}.", job.id);
-    job.status = JobStatus::IN_PROGRESS;
-    job.time_started = Some(Utc::now());
-    job
-}
-
-pub fn complete_job(mut job: Job) -> Job {
-    info!("Job with ID {} completed.", job.id);
-    job.status = JobStatus::DONE;
-    job.time_completed = Some(Utc::now());
-    job
+pub fn run_task_result_loop(scheduler: Arc<Scheduler>, worker_manager: Arc<WorkerManager>) {
+    let reciever = worker_manager.get_result_reciever();
+    thread::spawn(move || loop {
+        let receiver = reciever.lock().unwrap();
+        match receiver.recv() {
+            Err(e) => error!("Error processing task results: {}", e),
+            Ok(task) => {
+                let result = scheduler.process_completed_task(task);
+                if let Err(e) = result {
+                    output_error(&e);
+                }
+            }
+        }
+    });
 }

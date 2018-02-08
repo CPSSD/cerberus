@@ -8,7 +8,6 @@ use uuid::Uuid;
 
 use state::StateHandling;
 use cerberus_proto::mapreduce as pb;
-use queued_work_store::QueuedWork;
 
 /// `JobOptions` stores arguments used to construct a `Job`.
 #[derive(Default)]
@@ -291,18 +290,6 @@ impl StateHandling for Job {
         };
 
         Ok(())
-    }
-}
-
-impl QueuedWork for Job {
-    type Key = String;
-
-    fn get_work_bucket(&self) -> String {
-        self.client_id.clone()
-    }
-
-    fn get_work_id(&self) -> String {
-        self.id.clone()
     }
 }
 

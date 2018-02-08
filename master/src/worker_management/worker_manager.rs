@@ -4,15 +4,16 @@ use std::sync::{Arc, Mutex};
 use chrono::prelude::*;
 use futures::future;
 use futures::prelude::*;
-use futures::sync::oneshot;
 use futures_cpupool::CpuPool;
 
 use cerberus_proto::worker as pb;
-use common::{Task, TaskType, Worker};
+use common::{Task, TaskStatus, TaskType, Worker};
 use errors::*;
 use util::output_error;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::{Sender, Receiver};
 use worker_communication::WorkerInterface;
-use worker_management::state::{ScheduledTask, State};
+use worker_management::state::State;
 
 const HEALTH_CHECK_LOOP_MS: u64 = 100;
 const TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S: i64 = 60;
@@ -25,14 +26,25 @@ const ASSIGN_TASK_LOOP_MS: u64 = 100;
 pub struct WorkerManager {
     state: Arc<Mutex<State>>,
     worker_interface: Arc<WorkerInterface + Send>,
+
+    task_result_sender: Mutex<Sender<Task>>,
+    task_result_reciever: Arc<Mutex<Receiver<Task>>>,
 }
 
 impl WorkerManager {
     pub fn new(worker_interface: Arc<WorkerInterface + Send>) -> Self {
+        let (sender, receiver) = channel();
         WorkerManager {
             state: Arc::new(Mutex::new(State::new())),
             worker_interface: worker_interface,
+
+            task_result_sender: Mutex::new(sender),
+            task_result_reciever: Arc::new(Mutex::new(receiver)),
         }
+    }
+
+    pub fn get_result_reciever(&self) -> Arc<Mutex<Receiver<Task>>> {
+        Arc::clone(&self.task_result_reciever)
     }
 
     pub fn register_worker(&self, worker: Worker) -> Result<()> {
@@ -61,9 +73,16 @@ impl WorkerManager {
 
     pub fn process_reduce_task_result(&self, reduce_result: &pb::ReduceResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.process_reduce_task_result(reduce_result).chain_err(
+        let task = state.process_reduce_task_result(reduce_result).chain_err(
             || "Error processing reduce result.",
         )?;
+
+        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
+            let task_result_sender = self.task_result_sender.lock().unwrap();
+            task_result_sender.send(task).chain_err(
+                || "Error processing reduce result.",
+            )?;
+        }
 
         state
             .set_worker_operation_completed(
@@ -76,13 +95,21 @@ impl WorkerManager {
 
     pub fn process_map_task_result(&self, map_result: &pb::MapResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.process_map_task_result(map_result).chain_err(
+        let task = state.process_map_task_result(map_result).chain_err(
             || "Error processing map result.",
         )?;
+
+        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
+            let task_result_sender = self.task_result_sender.lock().unwrap();
+            task_result_sender.send(task).chain_err(
+                || "Error processing map result.",
+            )?;
+        }
 
         state
             .set_worker_operation_completed(map_result.get_worker_id(), map_result.get_status())
             .chain_err(|| "Error processing map result.")?;
+
         Ok(())
     }
 
@@ -234,26 +261,9 @@ impl WorkerManager {
         state.unassign_worker(worker_id)
     }
 
-    pub fn run_task(&self, task: Task) -> Box<Future<Item = Task, Error = Error> + Send> {
-        let (send, recv) = oneshot::channel::<(Result<Task>)>();
-
-        let scheduled_task = ScheduledTask {
-            task: task,
-            completed_channel: send,
-        };
-
-        let state = Arc::clone(&self.state);
-        Box::new(
-            future::lazy(move || {
-                let mut state = state.lock().unwrap();
-                state.add_task(scheduled_task);
-                future::ok(())
-            }).and_then(|_| {
-                recv.then(|future_result| {
-                    future_result.unwrap_or_else(|_| Err("Task was cancelled.".into()))
-                })
-            }),
-        )
+    pub fn run_task(&self, task: Task) {
+        let mut state = self.state.lock().unwrap();
+        state.add_task(task);
     }
 }
 

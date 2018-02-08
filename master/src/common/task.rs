@@ -4,7 +4,6 @@ use serde_json;
 use uuid::Uuid;
 
 use errors::*;
-use queued_work_store::QueuedWork;
 use state::StateHandling;
 
 use cerberus_proto::worker as pb;
@@ -156,19 +155,6 @@ impl Task {
 
         Ok(task)
     }
-
-    pub fn add_map_output_files(&mut self, map_response: &pb::MapResult, worker_address: String) {
-        for (partition, output_file) in map_response.get_map_results() {
-            self.map_output_files.insert(
-                *partition,
-                format!(
-                    "{}{}",
-                    worker_address,
-                    output_file
-                ),
-            );
-        }
-    }
 }
 
 impl StateHandling for Task {
@@ -241,18 +227,6 @@ impl StateHandling for Task {
             .chain_err(|| "Unable to convert failure_details")?;
 
         Ok(())
-    }
-}
-
-impl QueuedWork for Task {
-    type Key = String;
-
-    fn get_work_bucket(&self) -> String {
-        self.job_id.to_owned()
-    }
-
-    fn get_work_id(&self) -> String {
-        self.id.to_owned()
     }
 }
 
