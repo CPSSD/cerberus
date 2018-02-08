@@ -126,18 +126,18 @@ mod tests {
     use super::*;
     use common::{Job, Task};
     use errors::*;
-    use mapreduce_tasks::TaskProcessorTrait;
+    use scheduler::TaskProcessor;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
 
     struct NullTaskProcessor;
 
-    impl TaskProcessorTrait for NullTaskProcessor {
+    impl TaskProcessor for NullTaskProcessor {
         fn create_map_tasks(&self, _: &Job) -> Result<Vec<Task>> {
             Ok(Vec::new())
         }
 
-        fn create_reduce_tasks(&self, _: &Job, _: &[&Task]) -> Result<Vec<Task>> {
+        fn create_reduce_tasks(&self, _: &Job, _: Vec<Task>) -> Result<Vec<Task>> {
             Ok(Vec::new())
         }
     }
@@ -152,7 +152,7 @@ mod tests {
         assert!(!scheduler.get_map_reduce_in_progress());
 
         let master_impl = ClientService {
-            scheduler: Arc::new(Mutex::new(scheduler)),
+            scheduler: Arc::new(scheduler),
             testing: true,
         };
 
@@ -179,7 +179,7 @@ mod tests {
         assert!(result.is_ok());
 
         let master_impl = ClientService {
-            scheduler: Arc::new(Mutex::new(scheduler)),
+            scheduler: Arc::new(scheduler),
             testing: true,
         };
         let response = master_impl.map_reduce_status(RequestOptions::new(), request);
@@ -198,7 +198,7 @@ mod tests {
         let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
 
         let master_impl = ClientService {
-            scheduler: Arc::new(Mutex::new(scheduler)),
+            scheduler: Arc::new(scheduler),
             testing: true,
         };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());

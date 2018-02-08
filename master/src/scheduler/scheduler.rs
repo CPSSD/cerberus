@@ -5,11 +5,14 @@ use futures::prelude::*;
 use futures::sync::oneshot;
 use futures_cpupool;
 
+use chrono::Utc;
+
+use cerberus_proto::mapreduce::Status as JobStatus;
 use common::Job;
 use errors::*;
-use scheduler::job_processing;
 use scheduler::state::{ScheduledJob, State};
 use scheduler::task_manager::TaskManager;
+use scheduler::task_processor::TaskProcessor;
 use worker_management::WorkerManager;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
@@ -21,21 +24,26 @@ pub struct Scheduler {
     state: Arc<State>,
 
     task_manager: Arc<TaskManager>,
+    task_processor: Arc<TaskProcessor + Send + Sync>,
 }
 
 impl Scheduler {
     /// Construct a new `Scheduler`, using the default [`CpuPool`](futures_cpupool::CpuPool).
-    pub fn new(worker_manager: Arc<WorkerManager>) -> Self {
+    pub fn new(
+        worker_manager: Arc<WorkerManager>,
+        task_processor: Arc<TaskProcessor + Send + Sync>,
+    ) -> Self {
         // The default number of threads in a CpuPool is the same as the number of CPUs on the
         // host.
         let mut builder = futures_cpupool::Builder::new();
-        Scheduler::from_cpu_pool_builder(&mut builder, worker_manager)
+        Scheduler::from_cpu_pool_builder(&mut builder, worker_manager, task_processor)
     }
 
     /// Construct a new `Scheduler` using a provided [`CpuPool builder`](futures_cpupool::Builder).
     pub fn from_cpu_pool_builder(
         builder: &mut futures_cpupool::Builder,
         worker_manager: Arc<WorkerManager>,
+        task_processor: Arc<TaskProcessor + Send + Sync>,
     ) -> Self {
         let pool = builder.create();
         let state = Arc::new(State::new());
@@ -45,6 +53,7 @@ impl Scheduler {
             state: state,
 
             task_manager: Arc::new(TaskManager::new(worker_manager)),
+            task_processor: task_processor,
         }
     }
 
@@ -66,20 +75,22 @@ impl Scheduler {
 
         let map_task_manager = Arc::clone(&self.task_manager);
         let reduce_task_manager = Arc::clone(&self.task_manager);
+        let map_task_processor = Arc::clone(&self.task_processor);
+        let reduce_task_processor = Arc::clone(&self.task_processor);
 
         let job_future = future::lazy(move || {
-            future::ok(job_processing::activate_job(job))
-        }).and_then(|job| {
-            future::result(job_processing::create_map_tasks(&job)).join(future::ok(job))
+            future::ok(activate_job(job))
+        }).and_then(move |job| {
+            future::result(map_task_processor.create_map_tasks(&job)).join(future::ok(job))
         }).and_then(move |(map_tasks, job)| {
             map_task_manager.run_tasks(map_tasks).join(future::ok(job))
-        }).and_then(|(completed_map_tasks, job)| {
-            future::result(job_processing::create_reduce_tasks(&job, completed_map_tasks))
+        }).and_then(move |(completed_map_tasks, job)| {
+            future::result(reduce_task_processor.create_reduce_tasks(&job, completed_map_tasks))
                 .join(future::ok(job))
         }).and_then(move |(reduce_tasks, job)| {
             reduce_task_manager.run_tasks(reduce_tasks).and_then(|_| future::ok(job))
         }).and_then(|job| {
-            future::ok(job_processing::complete_job(job))
+            future::ok(complete_job(job))
         }).select(failure)
         // We only care about whichever future resolves first, so map the ok pair and the error
         // pair to single values.
@@ -113,4 +124,18 @@ impl Scheduler {
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Result<Vec<&Job>> {
         Ok(Vec::new())
     }
+}
+
+pub fn activate_job(mut job: Job) -> Job {
+    info!("Activating job with ID {}.", job.id);
+    job.status = JobStatus::IN_PROGRESS;
+    job.time_started = Some(Utc::now());
+    job
+}
+
+pub fn complete_job(mut job: Job) -> Job {
+    info!("Job with ID {} completed.", job.id);
+    job.status = JobStatus::DONE;
+    job.time_completed = Some(Utc::now());
+    job
 }

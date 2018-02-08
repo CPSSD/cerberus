@@ -33,7 +33,6 @@ mod errors {
 }
 
 mod common;
-mod mapreduce_tasks;
 mod queued_work_store;
 mod scheduler;
 mod state;
@@ -48,8 +47,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use errors::*;
-use mapreduce_tasks::TaskProcessor;
-use scheduler::Scheduler;
+use scheduler::{TaskProcessorImpl, Scheduler};
 use util::init_logger;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::{WorkerManager, run_health_check_loop, run_task_assigment_loop};
@@ -76,11 +74,12 @@ fn run() -> Result<()> {
         DEFAULT_DUMP_DIR,
     );
 
-    let task_processor = TaskProcessor;
+    let task_processor = Arc::new(TaskProcessorImpl);
     let worker_interface = Arc::new(WorkerInterfaceImpl::new());
     let worker_manager = Arc::new(WorkerManager::new(worker_interface));
 
-    let map_reduce_scheduler = Arc::new(Scheduler::new(Arc::clone(&worker_manager)));
+    let map_reduce_scheduler =
+        Arc::new(Scheduler::new(Arc::clone(&worker_manager), task_processor));
 
     let worker_service = WorkerService::new(Arc::clone(&worker_manager));
 

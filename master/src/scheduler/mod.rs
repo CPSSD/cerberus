@@ -1,6 +1,8 @@
 pub use self::scheduler::Scheduler;
+pub use self::task_processor::TaskProcessor;
+pub use self::task_processor::TaskProcessorImpl;
 
-mod job_processing;
 mod scheduler;
 mod state;
 mod task_manager;
+mod task_processor;

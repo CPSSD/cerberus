@@ -17,19 +17,19 @@ struct MapTaskFile {
     file_path: String,
 }
 
-/// `TaskProcessorTrait` describes an object that can be used to create map and reduce tasks.
-pub trait TaskProcessorTrait {
+/// `TaskProcessor` describes an object that can be used to create map and reduce tasks.
+pub trait TaskProcessor {
     /// `create_map_tasks` creates a set of map tasks when given a `Job`
     fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>>;
 
     /// `create_reduce_tasks` creates reduce tasks from a `Job` and a list of it's
     /// completed map tasks.
-    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: &[&Task]) -> Result<Vec<Task>>;
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<Task>) -> Result<Vec<Task>>;
 }
 
-pub struct TaskProcessor;
+pub struct TaskProcessorImpl;
 
-impl TaskProcessor {
+impl TaskProcessorImpl {
     /// `create_new_task_file` creates a new file that will contain one chunk of the map input.
     fn create_new_task_file(
         &self,
@@ -97,7 +97,7 @@ impl TaskProcessor {
     }
 }
 
-impl TaskProcessorTrait for TaskProcessor {
+impl TaskProcessor for TaskProcessorImpl {
     fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
         let mut map_tasks = Vec::new();
         let input_directory = PathBuf::from(job.input_directory.as_str());
@@ -139,7 +139,7 @@ impl TaskProcessorTrait for TaskProcessor {
         Ok(map_tasks)
     }
 
-    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: &[&Task]) -> Result<Vec<Task>> {
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<Task>) -> Result<Vec<Task>> {
         let mut reduce_tasks = Vec::new();
         let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_create_map_tasks() {
-        let task_processor = TaskProcessor;
+        let task_processor = TaskProcessorImpl;
 
         let test_path = Path::new("/tmp/cerberus/create_task_test/").to_path_buf();
         let mut input_path1 = test_path.clone();
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_create_reduce_tasks() {
-        let task_processor = TaskProcessor;
+        let task_processor = TaskProcessorImpl;
 
         let job = Job::new(JobOptions {
             client_id: "test-client".to_owned(),
