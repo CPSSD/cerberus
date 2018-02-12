@@ -48,6 +48,17 @@ impl State {
         }
     }
 
+    pub fn get_jobs(&self, client_id: String) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            if scheduled_job.job.client_id == client_id {
+                jobs.push(scheduled_job.job.clone());
+            }
+        }
+
+        jobs
+    }
+
     pub fn get_map_tasks(&self, job_id: String) -> Result<Vec<Task>> {
         let scheduled_job = match self.scheduled_jobs.get(&job_id) {
             Some(scheduled_job) => scheduled_job,
@@ -133,5 +144,15 @@ impl State {
         scheduled_job.tasks.insert(task.id.to_owned(), task);
 
         Ok(())
+    }
+
+    pub fn get_in_progress_job_count(&self) -> u32 {
+        let mut job_count = 0;
+        for scheduled_job in self.scheduled_jobs.values() {
+            if scheduled_job.job.status == pb::Status::IN_PROGRESS {
+                job_count += 1;
+            }
+        }
+        job_count
     }
 }

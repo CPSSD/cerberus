@@ -61,16 +61,10 @@ impl grpc_pb::MapReduceService for ClientService {
         req: pb::MapReduceStatusRequest,
     ) -> SingleResponse<pb::MapReduceStatusResponse> {
         let mut response = pb::MapReduceStatusResponse::new();
-        let jobs: Vec<&Job>;
+        let jobs: Vec<Job>;
 
         if !req.client_id.is_empty() {
-            match self.scheduler.get_mapreduce_client_status(&req.client_id) {
-                Err(err) => {
-                    output_error(&err.chain_err(|| "Error getting mapreduces for client."));
-                    return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
-                }
-                Ok(jbs) => jobs = jbs,
-            }
+            jobs = self.scheduler.get_mapreduce_client_status(&req.client_id);
         } else if !req.mapreduce_id.is_empty() {
             match self.scheduler.get_mapreduce_status(&req.mapreduce_id) {
                 Err(err) => {

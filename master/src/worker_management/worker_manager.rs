@@ -47,6 +47,18 @@ impl WorkerManager {
         Arc::clone(&self.task_result_reciever)
     }
 
+    // Returns a count of workers registered with the master.
+    pub fn get_available_workers(&self) -> u32 {
+        let state = self.state.lock().unwrap();
+        state.get_worker_count()
+    }
+
+    // Returns if a there are any tasks assigned to workers for a given job.
+    pub fn is_job_in_progress(&self, job_id: String) -> bool {
+        let state = self.state.lock().unwrap();
+        state.is_job_in_progress(job_id)
+    }
+
     pub fn register_worker(&self, worker: Worker) -> Result<()> {
         let mut state = self.state.lock().unwrap();
 

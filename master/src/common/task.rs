@@ -13,8 +13,6 @@ pub enum TaskStatus {
     Queued,
     InProgress,
     Complete,
-    //TODO(conor): Remove this when Failed is used.
-    #[allow(dead_code)]
     Failed,
 }
 

@@ -25,12 +25,25 @@ impl State {
         Default::default()
     }
 
+    pub fn get_worker_count(&self) -> u32 {
+        self.workers.len() as u32
+    }
+
     pub fn get_workers(&self) -> Vec<&Worker> {
         let mut workers = Vec::new();
         for worker in self.workers.values() {
             workers.push(worker)
         }
         workers
+    }
+
+    pub fn is_job_in_progress(&self, job_id: String) -> bool {
+        for task in self.assigned_tasks.values() {
+            if task.job_id == job_id {
+                return true;
+            }
+        }
+        false
     }
 
     // Returns a list of worker not currently assigned a task sorted by most recent health checks.
@@ -208,7 +221,6 @@ impl State {
     }
 
     pub fn add_task(&mut self, task: Task) {
-        // TODO(conor): Don't add tasks that we already have some info for.
         self.task_queue.push_back(task);
     }
 

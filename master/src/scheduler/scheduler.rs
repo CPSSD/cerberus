@@ -4,7 +4,7 @@ use std::sync::{Mutex, Arc};
 
 use chrono::Utc;
 
-use cerberus_proto::mapreduce::Status as JobStatus;
+use cerberus_proto::mapreduce as pb;
 use common::{Task, Job};
 use errors::*;
 use scheduler::state::{ScheduledJob, State};
@@ -50,7 +50,6 @@ impl Scheduler {
             .chain_err(|| "Error processing completed task result")?;
 
         if reduce_tasks_required {
-            // TODO: finish here
             let job = state.get_job(task.job_id.clone()).chain_err(
                 || "Error processing completed task result.",
             )?;
@@ -92,7 +91,7 @@ impl Scheduler {
         }
 
         info!("Starting job with ID {}.", job.id);
-        job.status = JobStatus::IN_PROGRESS;
+        job.status = pb::Status::IN_PROGRESS;
         job.time_started = Some(Utc::now());
 
         let scheduled_job = ScheduledJob {
@@ -106,22 +105,51 @@ impl Scheduler {
         )
     }
 
-    // TODO(conor): Finish these functions
-    pub fn get_job_queue_size(&self) -> usize {
-        0
+    pub fn get_job_queue_size(&self) -> u32 {
+        let state = self.state.lock().unwrap();
+        state.get_in_progress_job_count()
     }
 
+    // Returns a count of workers registered with the master.
     pub fn get_available_workers(&self) -> u32 {
-        0
+        self.worker_manager.get_available_workers()
     }
 
-    pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<&Job> {
-        Err("There was an error getting the result".into())
+    /// `modify_job_status` modifies a job status to IN_QUEUE if no progress has been made on it
+    /// yet.
+    fn modify_job_status(&self, job: &mut Job) {
+        if job.status == pb::Status::IN_PROGRESS {
+            if job.map_tasks_completed == 0 {
+                // If the job is not in progress, it's status should be queued.
+                // This check is needed because the scheduler activates all jobs immediately.
+                if !self.worker_manager.is_job_in_progress(job.id.to_owned()) {
+                    job.status = pb::Status::IN_QUEUE;
+                }
+            }
+        }
+    }
+
+    pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<Job> {
+        let state = self.state.lock().unwrap();
+        let mut job = state.get_job(mapreduce_id.to_owned()).chain_err(
+            || "Error getting map reduce status.",
+        )?;
+
+        self.modify_job_status(&mut job);
+
+        Ok(job)
     }
 
     /// `get_mapreduce_client_status` returns a vector of `Job`s for a given client.
-    pub fn get_mapreduce_client_status(&self, client_id: &str) -> Result<Vec<&Job>> {
-        Ok(Vec::new())
+    pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<Job> {
+        let state = self.state.lock().unwrap();
+        let mut jobs = state.get_jobs(client_id.to_owned());
+
+        for mut job in jobs.iter_mut() {
+            self.modify_job_status(&mut job);
+        }
+
+        jobs
     }
 }
 
