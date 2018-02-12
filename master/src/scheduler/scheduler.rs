@@ -39,6 +39,12 @@ impl Scheduler {
     }
 
     fn process_completed_task(&self, task: &Task) -> Result<()> {
+        info!(
+            "Processing completed task {} with status {:?}",
+            task.id,
+            task.status
+        );
+
         let mut state = self.state.lock().unwrap();
 
         state.add_completed_task(task.clone()).chain_err(
@@ -50,6 +56,8 @@ impl Scheduler {
         )?;
 
         if reduce_tasks_required {
+            info!("Creating reduce tasks for job {}", task.job_id);
+
             let job = state.get_job(&task.job_id).chain_err(
                 || "Error processing completed task result.",
             )?;
@@ -66,8 +74,12 @@ impl Scheduler {
             };
 
             state
-                .add_tasks_for_job(&task.job_id, reduce_tasks)
+                .add_tasks_for_job(&task.job_id, reduce_tasks.clone())
                 .chain_err(|| "Error processing completed task results.")?;
+
+            for task in reduce_tasks {
+                self.schedule_task(task);
+            }
         }
         Ok(())
     }

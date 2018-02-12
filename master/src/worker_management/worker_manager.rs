@@ -89,6 +89,12 @@ impl WorkerManager {
             || "Error processing reduce result.",
         )?;
 
+        info!(
+            "Got result for reduce task {} from {}",
+            task.id,
+            reduce_result.worker_id
+        );
+
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
             let task_result_sender = self.task_result_sender.lock().unwrap();
             task_result_sender.send(task).chain_err(
@@ -110,6 +116,12 @@ impl WorkerManager {
         let task = state.process_map_task_result(map_result).chain_err(
             || "Error processing map result.",
         )?;
+
+        info!(
+            "Got result for map task {} from {}",
+            task.id,
+            map_result.worker_id
+        );
 
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
             let task_result_sender = self.task_result_sender.lock().unwrap();
