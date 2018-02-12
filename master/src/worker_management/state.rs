@@ -132,18 +132,27 @@ impl State {
     pub fn process_map_task_result(&mut self, map_result: &pb::MapResult) -> Result<Task> {
         if map_result.status == pb::ResultStatus::SUCCESS {
             let mut scheduled_task = self.assigned_tasks
-                .remove(map_result.get_worker_id())
+                .remove(&map_result.worker_id)
                 .chain_err(|| {
                     format!(
                         "Task not found for Worker with ID {}.",
-                        map_result.get_worker_id(),
+                        map_result.worker_id,
                     )
                 })?;
+
+
+            let worker = self.workers.get_mut(&map_result.worker_id).chain_err(|| {
+                format!("Worker with ID {} not found.", map_result.worker_id)
+            })?;
 
             for (partition, output_file) in map_result.get_map_results() {
                 scheduled_task.map_output_files.insert(
                     *partition,
-                    output_file.to_owned(),
+                    format!(
+                        "{}{}",
+                        worker.address,
+                        output_file
+                    ),
                 );
             }
             scheduled_task.status = TaskStatus::Complete;
