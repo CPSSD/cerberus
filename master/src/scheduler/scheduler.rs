@@ -38,23 +38,23 @@ impl Scheduler {
         }
     }
 
-    fn process_completed_task(&self, task: Task) -> Result<()> {
+    fn process_completed_task(&self, task: &Task) -> Result<()> {
         let mut state = self.state.lock().unwrap();
 
         state.add_completed_task(task.clone()).chain_err(
             || "Error processing completed task result",
         )?;
 
-        let reduce_tasks_required = state
-            .reduce_tasks_required(task.job_id.to_owned())
-            .chain_err(|| "Error processing completed task result")?;
+        let reduce_tasks_required = state.reduce_tasks_required(&task.job_id).chain_err(
+            || "Error processing completed task result",
+        )?;
 
         if reduce_tasks_required {
-            let job = state.get_job(task.job_id.clone()).chain_err(
+            let job = state.get_job(&task.job_id).chain_err(
                 || "Error processing completed task result.",
             )?;
 
-            let map_tasks = state.get_map_tasks(task.job_id.clone()).chain_err(
+            let map_tasks = state.get_map_tasks(&task.job_id).chain_err(
                 || "Error processing completed task result.",
             )?;
 
@@ -63,7 +63,7 @@ impl Scheduler {
                 .chain_err(|| "Error processing completed task results.")?;
 
             state
-                .add_tasks_for_job(task.job_id.clone(), reduce_tasks)
+                .add_tasks_for_job(&task.job_id, reduce_tasks)
                 .chain_err(|| "Error processing completed task results.")?;
         }
         Ok(())
@@ -118,20 +118,18 @@ impl Scheduler {
     /// `modify_job_status` modifies a job status to IN_QUEUE if no progress has been made on it
     /// yet.
     fn modify_job_status(&self, job: &mut Job) {
-        if job.status == pb::Status::IN_PROGRESS {
-            if job.map_tasks_completed == 0 {
-                // If the job is not in progress, it's status should be queued.
-                // This check is needed because the scheduler activates all jobs immediately.
-                if !self.worker_manager.is_job_in_progress(job.id.to_owned()) {
-                    job.status = pb::Status::IN_QUEUE;
-                }
-            }
+        if job.status == pb::Status::IN_PROGRESS && job.map_tasks_completed == 0 &&
+            !self.worker_manager.is_job_in_progress(&job.id)
+        {
+            // If the job is not in progress, it's status should be queued.
+            // This check is needed because the scheduler activates all jobs immediately.
+            job.status = pb::Status::IN_QUEUE;
         }
     }
 
     pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<Job> {
         let state = self.state.lock().unwrap();
-        let mut job = state.get_job(mapreduce_id.to_owned()).chain_err(
+        let mut job = state.get_job(mapreduce_id).chain_err(
             || "Error getting map reduce status.",
         )?;
 
@@ -143,9 +141,9 @@ impl Scheduler {
     /// `get_mapreduce_client_status` returns a vector of `Job`s for a given client.
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<Job> {
         let state = self.state.lock().unwrap();
-        let mut jobs = state.get_jobs(client_id.to_owned());
+        let mut jobs = state.get_jobs(client_id);
 
-        for mut job in jobs.iter_mut() {
+        for mut job in &mut jobs {
             self.modify_job_status(&mut job);
         }
 
@@ -153,14 +151,14 @@ impl Scheduler {
     }
 }
 
-pub fn run_task_result_loop(scheduler: Arc<Scheduler>, worker_manager: Arc<WorkerManager>) {
+pub fn run_task_result_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
     let reciever = worker_manager.get_result_reciever();
     thread::spawn(move || loop {
         let receiver = reciever.lock().unwrap();
         match receiver.recv() {
             Err(e) => error!("Error processing task results: {}", e),
             Ok(task) => {
-                let result = scheduler.process_completed_task(task);
+                let result = scheduler.process_completed_task(&task);
                 if let Err(e) = result {
                     output_error(&e);
                 }

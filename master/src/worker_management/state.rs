@@ -37,7 +37,7 @@ impl State {
         workers
     }
 
-    pub fn is_job_in_progress(&self, job_id: String) -> bool {
+    pub fn is_job_in_progress(&self, job_id: &str) -> bool {
         for task in self.assigned_tasks.values() {
             if task.job_id == job_id {
                 return true;
@@ -121,12 +121,12 @@ impl State {
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.cpu_time = reduce_result.get_cpu_time();
             return Ok(scheduled_task);
-        } else {
-            return self.task_failed(
-                reduce_result.get_worker_id(),
-                reduce_result.get_failure_details(),
-            ).chain_err(|| "Error marking task as failed");
         }
+
+        self.task_failed(
+            reduce_result.get_worker_id(),
+            reduce_result.get_failure_details(),
+        ).chain_err(|| "Error marking task as failed")
     }
 
     pub fn process_map_task_result(&mut self, map_result: &pb::MapResult) -> Result<Task> {
@@ -148,11 +148,12 @@ impl State {
             }
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.cpu_time = map_result.get_cpu_time();
+
             return Ok(scheduled_task);
-        } else {
-            return self.task_failed(map_result.get_worker_id(), map_result.get_failure_details())
-                .chain_err(|| "Error marking task as failed");
         }
+
+        self.task_failed(map_result.get_worker_id(), map_result.get_failure_details())
+            .chain_err(|| "Error marking task as failed")
     }
 
     fn task_failed(&mut self, worker_id: &str, failure_details: &str) -> Result<(Task)> {
@@ -181,7 +182,7 @@ impl State {
             self.task_queue.push_front(assigned_task.clone());
         }
 
-        return Ok(assigned_task);
+        Ok(assigned_task)
     }
 
     // Mark that a given worker has returned a result for it's task.

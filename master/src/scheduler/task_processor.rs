@@ -144,7 +144,7 @@ impl TaskProcessor for TaskProcessorImpl {
         let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
         for completed_map in completed_map_tasks {
-            for (partition, output_file) in completed_map.map_output_files.iter() {
+            for (partition, output_file) in &completed_map.map_output_files {
                 let map_results: &mut Vec<String> =
                     key_results_map.entry(*partition).or_insert_with(Vec::new);
                 map_results.push(output_file.to_owned());

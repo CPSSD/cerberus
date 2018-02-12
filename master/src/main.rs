@@ -111,7 +111,7 @@ fn run() -> Result<()> {
     // Startup scheduler loop
     run_task_result_loop(
         Arc::clone(&map_reduce_scheduler),
-        Arc::clone(&worker_manager),
+        &Arc::clone(&worker_manager),
     );
 
     let mut count = 0;

@@ -41,14 +41,14 @@ impl State {
     }
 
 
-    pub fn get_job(&self, job_id: String) -> Result<Job> {
-        match self.scheduled_jobs.get(&job_id) {
+    pub fn get_job(&self, job_id: &str) -> Result<Job> {
+        match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => Ok(scheduled_job.job.clone()),
-            None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
+            None => Err(format!("Job with ID {} is not found.", &job_id).into()),
         }
     }
 
-    pub fn get_jobs(&self, client_id: String) -> Vec<Job> {
+    pub fn get_jobs(&self, client_id: &str) -> Vec<Job> {
         let mut jobs = Vec::new();
         for scheduled_job in self.scheduled_jobs.values() {
             if scheduled_job.job.client_id == client_id {
@@ -59,8 +59,8 @@ impl State {
         jobs
     }
 
-    pub fn get_map_tasks(&self, job_id: String) -> Result<Vec<Task>> {
-        let scheduled_job = match self.scheduled_jobs.get(&job_id) {
+    pub fn get_map_tasks(&self, job_id: &str) -> Result<Vec<Task>> {
+        let scheduled_job = match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => scheduled_job,
             None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
         };
@@ -76,10 +76,10 @@ impl State {
     }
 
     // Adds a Vector of newly created tasks for a given job.
-    pub fn add_tasks_for_job(&mut self, job_id: String, tasks: Vec<Task>) -> Result<()> {
-        let scheduled_job = match self.scheduled_jobs.get_mut(&job_id) {
+    pub fn add_tasks_for_job(&mut self, job_id: &str, tasks: Vec<Task>) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
             Some(scheduled_job) => scheduled_job,
-            None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
+            None => return Err(format!("Job with ID {} is not found.", job_id).into()),
         };
 
         for task in tasks {
@@ -100,8 +100,8 @@ impl State {
     }
 
     // Returns if reduce tasks are required for a given job.
-    pub fn reduce_tasks_required(&self, job_id: String) -> Result<bool> {
-        let scheduled_job = match self.scheduled_jobs.get(&job_id) {
+    pub fn reduce_tasks_required(&self, job_id: &str) -> Result<bool> {
+        let scheduled_job = match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => scheduled_job,
             None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
         };

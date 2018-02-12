@@ -54,7 +54,7 @@ impl WorkerManager {
     }
 
     // Returns if a there are any tasks assigned to workers for a given job.
-    pub fn is_job_in_progress(&self, job_id: String) -> bool {
+    pub fn is_job_in_progress(&self, job_id: &str) -> bool {
         let state = self.state.lock().unwrap();
         state.is_job_in_progress(job_id)
     }

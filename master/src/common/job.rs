@@ -124,14 +124,14 @@ impl Job {
 
     fn validate_input(&self) -> Result<()> {
         // Validate the existence of the input directory and the binary file.
-        let input_path = Path::new(self.input_directory.as_str().clone());
+        let input_path = Path::new(&self.input_directory);
         if !(input_path.exists() && input_path.is_dir()) {
             return Err(
                 format!("Input directory does not exist: {}", self.input_directory).into(),
             );
         }
 
-        let binary_path = Path::new(self.binary_path.as_str().clone());
+        let binary_path = Path::new(&self.binary_path);
         if !(binary_path.exists() && binary_path.is_file()) {
             return Err(
                 format!("Binary does not exist: {}", self.binary_path).into(),
@@ -143,7 +143,7 @@ impl Job {
     }
 
     fn run_sanity_check(&self) -> Result<()> {
-        let binary_path = Path::new(self.binary_path.as_str());
+        let binary_path = Path::new(&self.binary_path);
         let child = Command::new(binary_path)
             .arg("sanity-check")
             .stdin(Stdio::piped())

@@ -108,7 +108,7 @@ impl grpc_pb::MapReduceService for ClientService {
     ) -> SingleResponse<pb::ClusterStatusResponse> {
         let mut response = pb::ClusterStatusResponse::new();
         response.workers = i64::from(self.scheduler.get_available_workers());
-        response.queue_size = self.scheduler.get_job_queue_size() as i64;
+        response.queue_size = i64::from(self.scheduler.get_job_queue_size());
 
         SingleResponse::completed(response)
     }
