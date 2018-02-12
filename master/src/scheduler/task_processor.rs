@@ -24,7 +24,7 @@ pub trait TaskProcessor {
 
     /// `create_reduce_tasks` creates reduce tasks from a `Job` and a list of it's
     /// completed map tasks.
-    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<Task>) -> Result<Vec<Task>>;
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<&Task>) -> Result<Vec<Task>>;
 }
 
 pub struct TaskProcessorImpl;
@@ -139,7 +139,7 @@ impl TaskProcessor for TaskProcessorImpl {
         Ok(map_tasks)
     }
 
-    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<Task>) -> Result<Vec<Task>> {
+    fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<&Task>) -> Result<Vec<Task>> {
         let mut reduce_tasks = Vec::new();
         let mut key_results_map: HashMap<u64, Vec<String>> = HashMap::new();
 
@@ -255,9 +255,8 @@ mod tests {
         );
 
         let map_tasks: Vec<&Task> = vec![&map_task1, &map_task2];
-        let mut reduce_tasks: Vec<Task> = task_processor
-            .create_reduce_tasks(&job, &map_tasks)
-            .unwrap();
+        let mut reduce_tasks: Vec<Task> =
+            task_processor.create_reduce_tasks(&job, map_tasks).unwrap();
 
         reduce_tasks.sort_by_key(|task| task.reduce_request.clone().unwrap().get_partition());
 

@@ -335,20 +335,6 @@ mod tests {
     }
 
     #[test]
-    fn test_queued_work_impl() {
-        let reduce_task = Task::new_reduce_task(
-            "reduce-1",
-            "/tmp/bin",
-            0,
-            vec!["/tmp/input/inter_mediate".to_owned()],
-            "/tmp/output/",
-        );
-
-        assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
-        assert_eq!(reduce_task.get_work_id(), reduce_task.id);
-    }
-
-    #[test]
     fn test_send() {
         fn assert_send<T: Send>() {}
         assert_send::<Task>();

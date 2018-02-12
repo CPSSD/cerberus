@@ -320,14 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn test_queued_work_impl() {
-        let job = Job::new(get_test_job_options()).unwrap();
-
-        assert_eq!(job.get_work_bucket(), "client-1");
-        assert_eq!(job.get_work_id(), job.id);
-    }
-
-    #[test]
     fn test_output_directory() {
         let job1 = Job::new(get_test_job_options()).unwrap();
         let job2 = Job::new(JobOptions {

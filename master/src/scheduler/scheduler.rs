@@ -54,13 +54,16 @@ impl Scheduler {
                 || "Error processing completed task result.",
             )?;
 
-            let map_tasks = state.get_map_tasks(&task.job_id).chain_err(
-                || "Error processing completed task result.",
-            )?;
 
-            let reduce_tasks = self.task_processor
-                .create_reduce_tasks(&job, map_tasks)
-                .chain_err(|| "Error processing completed task results.")?;
+            let reduce_tasks = {
+                let map_tasks = state.get_map_tasks(&task.job_id).chain_err(
+                    || "Error processing completed task result.",
+                )?;
+
+                self.task_processor
+                    .create_reduce_tasks(&job, map_tasks)
+                    .chain_err(|| "Error processing completed task results.")?
+            };
 
             state
                 .add_tasks_for_job(&task.job_id, reduce_tasks)

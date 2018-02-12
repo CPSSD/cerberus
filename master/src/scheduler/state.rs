@@ -59,7 +59,7 @@ impl State {
         jobs
     }
 
-    pub fn get_map_tasks(&self, job_id: &str) -> Result<Vec<Task>> {
+    pub fn get_map_tasks(&self, job_id: &str) -> Result<Vec<&Task>> {
         let scheduled_job = match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => scheduled_job,
             None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
@@ -68,7 +68,7 @@ impl State {
         let mut map_tasks = Vec::new();
         for task in scheduled_job.tasks.values() {
             if task.task_type == TaskType::Map {
-                map_tasks.push(task.clone());
+                map_tasks.push(task);
             }
         }
 

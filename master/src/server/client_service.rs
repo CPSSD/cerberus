@@ -118,11 +118,14 @@ impl grpc_pb::MapReduceService for ClientService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::{Job, Task};
+    use common::{Job, Task, Worker};
     use errors::*;
     use scheduler::TaskProcessor;
+    use cerberus_proto::worker as wpb;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use worker_management::WorkerManager;
+    use worker_communication::WorkerInterface;
 
     struct NullTaskProcessor;
 
@@ -131,19 +134,46 @@ mod tests {
             Ok(Vec::new())
         }
 
-        fn create_reduce_tasks(&self, _: &Job, _: Vec<Task>) -> Result<Vec<Task>> {
+        fn create_reduce_tasks(&self, _: &Job, _: Vec<&Task>) -> Result<Vec<Task>> {
             Ok(Vec::new())
         }
     }
 
+    struct NullWorkerInterface;
+
+    impl WorkerInterface for NullWorkerInterface {
+        fn add_client(&self, _worker: &Worker) -> Result<()> {
+            Ok(())
+        }
+
+        fn remove_client(&self, _worker_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn schedule_map(&self, _request: wpb::PerformMapRequest, _worker_id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        fn schedule_reduce(
+            &self,
+            _request: wpb::PerformReduceRequest,
+            _worker_id: &str,
+        ) -> Result<()> {
+            Ok(())
+        }
+    }
+
     fn create_scheduler() -> Scheduler {
-        Scheduler::new(Box::new(NullTaskProcessor {}))
+        Scheduler::new(
+            Arc::new(WorkerManager::new(Arc::new(NullWorkerInterface {}))),
+            Arc::new(NullTaskProcessor {}),
+        )
     }
 
     #[test]
     fn queue_mapreduce() {
         let scheduler = create_scheduler();
-        assert!(!scheduler.get_map_reduce_in_progress());
+        assert_eq!(0, scheduler.get_job_queue_size());
 
         let master_impl = ClientService {
             scheduler: Arc::new(scheduler),
@@ -154,17 +184,12 @@ mod tests {
             .perform_map_reduce(RequestOptions::new(), pb::MapReduceRequest::new())
             .wait();
 
-        let map_reduce_in_progress = match master_impl.scheduler.lock() {
-            Ok(scheduler) => scheduler.get_map_reduce_in_progress(),
-            Err(_) => false,
-        };
-
-        assert!(map_reduce_in_progress);
+        assert_eq!(1, master_impl.scheduler.get_job_queue_size());
     }
 
     #[test]
     fn get_mapreduce_status() {
-        let mut scheduler = create_scheduler();
+        let scheduler = create_scheduler();
 
         let job = Job::new(JobOptions::default()).unwrap();
         let mut request = pb::MapReduceStatusRequest::new();
@@ -181,13 +206,19 @@ mod tests {
         let (_, mut item, _) = response.wait().unwrap();
         let status = item.reports.pop().unwrap().status;
 
-        assert_eq!(MapReduceStatus::IN_PROGRESS, status)
+        assert_eq!(MapReduceStatus::IN_QUEUE, status)
     }
 
     #[test]
     fn cluster_status() {
-        let mut scheduler = create_scheduler();
-        scheduler.set_available_workers(5);
+        let worker_manager = WorkerManager::new(Arc::new(NullWorkerInterface {}));
+        for _x in 0..10 {
+            let w = Worker::new("172.30.0.1:8008").unwrap();
+            worker_manager.register_worker(w).unwrap();
+        }
+
+        let scheduler = Scheduler::new(Arc::new(worker_manager), Arc::new(NullTaskProcessor {}));
+
         let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
         let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
 
@@ -198,7 +229,7 @@ mod tests {
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();
 
-        assert_eq!(5, item.workers);
+        assert_eq!(10, item.workers);
         assert_eq!(2, item.queue_size);
     }
 }
