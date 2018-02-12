@@ -24,7 +24,6 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    /// Construct a new `Scheduler`, using the default [`CpuPool`](futures_cpupool::CpuPool).
     pub fn new(
         worker_manager: Arc<WorkerManager>,
         task_processor: Arc<TaskProcessor + Send + Sync>,
