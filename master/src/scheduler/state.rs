@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::prelude::*;
 use cerberus_proto::mapreduce as pb;
 use common::{Task, TaskType, TaskStatus, Job};
 use errors::*;
@@ -131,6 +132,7 @@ impl State {
                         scheduled_job.job.reduce_tasks_total
                     {
                         scheduled_job.job.status = pb::Status::DONE;
+                        scheduled_job.job.time_completed = Some(Utc::now());
                     }
                 }
             }
