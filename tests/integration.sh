@@ -14,12 +14,14 @@ echo "Launching Master."
 ./master --fresh --nodump --port=10008 > integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
+local_ip="127.0.0.1"
+
 # Spin up 3 workers.
 worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
-    ./worker -m "[::]:10008" > integration-test/logs/worker-"${i}".log 2>&1 &
+    ./worker -m "${local_ip}:10008" > integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
 
@@ -36,12 +38,12 @@ results+=( [how]=1 [much]=1 [wood]=4 [would]=1 [a]=2 [chuck]=4 [could]=1 [if]=1 
 sleep 1
 
 # Launch a MapReduce using the above data.
-./cli -m "[::]:10008" run \
+./cli -m "${local_ip}:10008" run \
     -b "$PWD"/examples/word-counter \
     -i "$PWD"/integration-test/input \
     -o "$PWD"/integration-test/output
 
-./cli -m "[::]:10008" cluster_status
+./cli -m "${local_ip}:10008" cluster_status
 
 # Launch the CLI to monitor status.
 echo "Launching CLI."
@@ -49,7 +51,7 @@ attempt_counter=0
 while true
 do
     echo "Checking Status using CLI..."
-    status=$(./cli -m "[::]:10008" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS' -o)
+    status=$(./cli -m "${local_ip}:10008" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS' -o)
     echo "    - MapReduce Status: " $status
     if [ "$status" == "DONE" ] || [ "$status" == "FAILED" ]; then break; fi
 
