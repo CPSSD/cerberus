@@ -8,7 +8,7 @@ use grpc;
 use cerberus_proto::{mapreduce_grpc, worker_grpc};
 use errors::*;
 
-const GRPC_THREAD_POOL_SIZE: usize = 1;
+const GRPC_THREAD_POOL_SIZE: usize = 8;
 
 pub struct Server {
     server: grpc::Server,
