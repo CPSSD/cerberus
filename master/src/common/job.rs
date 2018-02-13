@@ -8,7 +8,6 @@ use uuid::Uuid;
 
 use state::StateHandling;
 use cerberus_proto::mapreduce as pb;
-use queued_work_store::QueuedWork;
 
 /// `JobOptions` stores arguments used to construct a `Job`.
 #[derive(Default)]
@@ -125,14 +124,14 @@ impl Job {
 
     fn validate_input(&self) -> Result<()> {
         // Validate the existence of the input directory and the binary file.
-        let input_path = Path::new(self.input_directory.as_str().clone());
+        let input_path = Path::new(&self.input_directory);
         if !(input_path.exists() && input_path.is_dir()) {
             return Err(
                 format!("Input directory does not exist: {}", self.input_directory).into(),
             );
         }
 
-        let binary_path = Path::new(self.binary_path.as_str().clone());
+        let binary_path = Path::new(&self.binary_path);
         if !(binary_path.exists() && binary_path.is_file()) {
             return Err(
                 format!("Binary does not exist: {}", self.binary_path).into(),
@@ -144,7 +143,7 @@ impl Job {
     }
 
     fn run_sanity_check(&self) -> Result<()> {
-        let binary_path = Path::new(self.binary_path.as_str());
+        let binary_path = Path::new(&self.binary_path);
         let child = Command::new(binary_path)
             .arg("sanity-check")
             .stdin(Stdio::piped())
@@ -294,18 +293,6 @@ impl StateHandling for Job {
     }
 }
 
-impl QueuedWork for Job {
-    type Key = String;
-
-    fn get_work_bucket(&self) -> String {
-        self.client_id.clone()
-    }
-
-    fn get_work_id(&self) -> String {
-        self.id.clone()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,14 +317,6 @@ mod tests {
         // Assert that total tasks starts at 0.
         assert_eq!(0, job.map_tasks_total);
         assert_eq!(0, job.reduce_tasks_total);
-    }
-
-    #[test]
-    fn test_queued_work_impl() {
-        let job = Job::new(get_test_job_options()).unwrap();
-
-        assert_eq!(job.get_work_bucket(), "client-1");
-        assert_eq!(job.get_work_id(), job.id);
     }
 
     #[test]

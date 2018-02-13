@@ -51,7 +51,7 @@ attempt_counter=0
 while true
 do
     echo "Checking Status using CLI..."
-    status=$(./cli -m "${local_ip}:10008" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS' -o)
+    status=$(./cli -m "${local_ip}:10008" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS\|IN_QUEUE' -o)
     echo "    - MapReduce Status: " $status
     if [ "$status" == "DONE" ] || [ "$status" == "FAILED" ]; then break; fi
 

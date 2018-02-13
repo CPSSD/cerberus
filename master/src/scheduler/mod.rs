@@ -1,13 +1,8 @@
-// TODO(tbolt): Remove these when the old scheduler is completely gone.
-// begin
-mod old;
+pub use self::scheduler::Scheduler;
+pub use self::scheduler::run_task_result_loop;
+pub use self::task_processor::TaskProcessor;
+pub use self::task_processor::TaskProcessorImpl;
 
-pub use self::old::scheduler::Scheduler;
-pub use self::old::scheduling_loop::run_scheduling_loop;
-// end
-
-mod job_processing;
-mod new_scheduler;
+mod scheduler;
 mod state;
-mod task_manager;
-mod worker_manager_adapter;
+mod task_processor;

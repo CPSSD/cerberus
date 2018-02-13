@@ -33,8 +33,6 @@ mod errors {
 }
 
 mod common;
-mod mapreduce_tasks;
-mod queued_work_store;
 mod scheduler;
 mod state;
 mod worker_communication;
@@ -42,17 +40,16 @@ mod worker_management;
 mod server;
 mod parser;
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::{thread, time};
 use std::path::Path;
 use std::str::FromStr;
 
 use errors::*;
-use mapreduce_tasks::TaskProcessor;
-use scheduler::{Scheduler, run_scheduling_loop};
+use scheduler::{TaskProcessorImpl, Scheduler, run_task_result_loop};
 use util::init_logger;
 use worker_communication::WorkerInterfaceImpl;
-use worker_management::WorkerManager;
+use worker_management::{WorkerManager, run_health_check_loop, run_task_assigment_loop};
 use server::{Server, ClientService, WorkerService};
 use state::StateHandler;
 
@@ -76,19 +73,14 @@ fn run() -> Result<()> {
         DEFAULT_DUMP_DIR,
     );
 
-    let task_processor = TaskProcessor;
-    let map_reduce_scheduler = Arc::new(Mutex::new(Scheduler::new(Box::new(task_processor))));
-    let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
-    let worker_manager = Arc::new(Mutex::new(WorkerManager::new(
-        Some(Arc::clone(&worker_interface)),
-        Some(Arc::clone(&map_reduce_scheduler)),
-    )));
+    let task_processor = Arc::new(TaskProcessorImpl);
+    let worker_interface = Arc::new(WorkerInterfaceImpl::new());
+    let worker_manager = Arc::new(WorkerManager::new(worker_interface));
 
-    let worker_service = WorkerService::new(
-        Arc::clone(&worker_manager),
-        Arc::clone(&worker_interface),
-        Arc::clone(&map_reduce_scheduler),
-    );
+    let map_reduce_scheduler =
+        Arc::new(Scheduler::new(Arc::clone(&worker_manager), task_processor));
+
+    let worker_service = WorkerService::new(Arc::clone(&worker_manager));
 
     // Cli to Master Communications
     let client_service = ClientService::new(Arc::clone(&map_reduce_scheduler));
@@ -111,10 +103,15 @@ fn run() -> Result<()> {
         )?;
     }
 
-    run_scheduling_loop(
-        Arc::clone(&worker_interface),
+
+    // Startup worker management loops
+    run_task_assigment_loop(Arc::clone(&worker_manager));
+    run_health_check_loop(Arc::clone(&worker_manager));
+
+    // Startup scheduler loop
+    run_task_result_loop(
         Arc::clone(&map_reduce_scheduler),
-        Arc::clone(&worker_manager),
+        &Arc::clone(&worker_manager),
     );
 
     let mut count = 0;

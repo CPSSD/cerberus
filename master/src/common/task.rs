@@ -4,7 +4,6 @@ use serde_json;
 use uuid::Uuid;
 
 use errors::*;
-use queued_work_store::QueuedWork;
 use state::StateHandling;
 
 use cerberus_proto::worker as pb;
@@ -14,8 +13,6 @@ pub enum TaskStatus {
     Queued,
     InProgress,
     Complete,
-    //TODO(conor): Remove this when Failed is used.
-    #[allow(dead_code)]
     Failed,
 }
 
@@ -156,19 +153,6 @@ impl Task {
 
         Ok(task)
     }
-
-    pub fn add_map_output_files(&mut self, map_response: &pb::MapResult, worker_address: String) {
-        for (partition, output_file) in map_response.get_map_results() {
-            self.map_output_files.insert(
-                *partition,
-                format!(
-                    "{}{}",
-                    worker_address,
-                    output_file
-                ),
-            );
-        }
-    }
 }
 
 impl StateHandling for Task {
@@ -241,18 +225,6 @@ impl StateHandling for Task {
             .chain_err(|| "Unable to convert failure_details")?;
 
         Ok(())
-    }
-}
-
-impl QueuedWork for Task {
-    type Key = String;
-
-    fn get_work_bucket(&self) -> String {
-        self.job_id.to_owned()
-    }
-
-    fn get_work_id(&self) -> String {
-        self.id.to_owned()
     }
 }
 
@@ -360,20 +332,6 @@ mod tests {
         // Set the status to Completed and assert success.
         reduce_task.status = TaskStatus::Complete;
         assert_eq!(reduce_task.status, TaskStatus::Complete);
-    }
-
-    #[test]
-    fn test_queued_work_impl() {
-        let reduce_task = Task::new_reduce_task(
-            "reduce-1",
-            "/tmp/bin",
-            0,
-            vec!["/tmp/input/inter_mediate".to_owned()],
-            "/tmp/output/",
-        );
-
-        assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
-        assert_eq!(reduce_task.get_work_id(), reduce_task.id);
     }
 
     #[test]
