@@ -43,8 +43,12 @@ impl grpc_pb::MapReduceService for ClientService {
 
         let job = match Job::new(job_options) {
             Ok(job) => job,
-            Err(_) => return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR)),
+            Err(err) => {
+                output_error(&err.chain_err(|| "Error processing map reduce request."));
+                return SingleResponse::err(Error::Other(JOB_SCHEDULE_ERROR));
+            }
         };
+
         response.mapreduce_id = job.id.clone();
         match self.scheduler.schedule_job(job) {
             Err(err) => {
@@ -74,6 +78,7 @@ impl grpc_pb::MapReduceService for ClientService {
                 Ok(job) => jobs = vec![job],
             }
         } else {
+            error!("Client requested job status without job id or client id.");
             return SingleResponse::err(Error::Other(MISSING_JOB_IDS));
         }
 
