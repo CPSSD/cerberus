@@ -104,7 +104,7 @@ fn run() -> Result<()> {
     }
 
 
-    // Startup worker managment loops
+    // Startup worker management loops
     run_task_assigment_loop(Arc::clone(&worker_manager));
     run_health_check_loop(Arc::clone(&worker_manager));
 
