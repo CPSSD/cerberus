@@ -21,6 +21,9 @@ local_ip="127.0.0.1"
 echo "how much wood would a wood chuck chuck if a wood chuck could chuck wood" \
     > state-integration-test/input/sample.txt
 
+# SLeep to allow the master time to start up.
+sleep 2
+
 declare -A results
 results+=( [how]=1 [much]=1 [wood]=4 [would]=1 [a]=2 [chuck]=4 [could]=1 [if]=1 )
 
@@ -48,7 +51,7 @@ sleep 1
 
 # Launch a worker.
 echo "Launching worker"
-./worker -m "${local_ip}:10009" > state-integration-test/logs/worker.log 2>&1 &
+./worker -m "${local_ip}:10009" -i "${local_ip}" > state-integration-test/logs/worker.log 2>&1 &
 worker_pid=$!
 
 # Launch the CLI to monitor status.

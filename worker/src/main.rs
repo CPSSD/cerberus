@@ -63,6 +63,7 @@ const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
 const DEFAULT_PORT: &str = "0";
 const DEFAULT_MASTER_ADDR: &str = "[::]:8081";
+const DEFAULT_WORKER_IP: &str = "[::]";
 
 fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
@@ -106,10 +107,11 @@ fn run() -> Result<()> {
     let interm_data_service = IntermediateDataService;
     let srv = Server::new(port, scheduler_service, interm_data_service)
         .chain_err(|| "Can't create server")?;
+    let local_ip_addr = matches.value_of("ip").unwrap_or(DEFAULT_WORKER_IP);
 
     let local_addr = SocketAddr::from_str(&format!(
         "{}:{}",
-        local_ip::get().expect("Could not get IP"),
+        local_ip_addr,
         srv.addr().port(),
     )).chain_err(|| "Not a valid address of the worker")?;
     register_worker(&*master_interface, &local_addr).chain_err(

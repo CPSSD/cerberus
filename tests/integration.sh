@@ -21,7 +21,7 @@ worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
-    ./worker -m "${local_ip}:10008" > integration-test/logs/worker-"${i}".log 2>&1 &
+    ./worker -m "${local_ip}:10008" -i "${local_ip}" > integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
 
