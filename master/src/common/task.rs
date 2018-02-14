@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use protobuf::repeated::RepeatedField;
 use serde_json;
 use uuid::Uuid;
 
@@ -20,6 +21,13 @@ pub enum TaskStatus {
 pub enum TaskType {
     Map,
     Reduce,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InputLocation {
+    input_path: String,
+    start_byte: u64,
+    end_byte: u64,
 }
 
 /// The `Task` is a struct that represents a map or reduce task.
@@ -50,9 +58,16 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new_map_task<S: Into<String>>(job_id: S, binary_path: S, input_file: S) -> Self {
+    pub fn new_map_task<S: Into<String>>(
+        job_id: S,
+        binary_path: S,
+        input_locations: Vec<pb::InputLocation>,
+    ) -> Self {
+        let mut map_task_input = pb::MapTaskInput::new();
+        map_task_input.set_input_locations(RepeatedField::from_vec(input_locations));
+
         let mut map_request = pb::PerformMapRequest::new();
-        map_request.set_input_file_path(input_file.into());
+        map_request.set_input(map_task_input);
         map_request.set_mapper_file_path(binary_path.into());
 
         Task {
@@ -83,9 +98,23 @@ impl Task {
             .chain_err(|| "Unable to convert map_reduce_id")?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
-        let input_file: String = serde_json::from_value(request_data["input_file"].clone())
-            .chain_err(|| "Unable to convert input_file")?;
-        let mut task = Task::new_map_task(id, binary_path, input_file);
+        let input_locations: Vec<InputLocation> = serde_json::from_value(
+            request_data["input_locations"].clone(),
+        ).chain_err(|| "Unable to convert input")?;
+
+        let input_locations_pb = input_locations
+            .into_iter()
+            .map(|loc| {
+                let mut loc_pb = pb::InputLocation::new();
+                loc_pb.set_input_path(loc.input_path.clone());
+                loc_pb.set_start_byte(loc.start_byte);
+                loc_pb.set_end_byte(loc.end_byte);
+
+                loc_pb
+            })
+            .collect();
+
+        let mut task = Task::new_map_task(id, binary_path, input_locations_pb);
 
         // Update the state.
         task.load_state(data).chain_err(
@@ -171,8 +200,22 @@ impl StateHandling for Task {
             TaskType::Map => {
                 match self.map_request {
                     Some(ref req) => {
+                        let input_locations: Vec<InputLocation> = req.get_input()
+                            .get_input_locations()
+                            .into_iter()
+                            .map(|loc| {
+                                InputLocation {
+                                    input_path: loc.input_path.clone(),
+                                    start_byte: loc.start_byte,
+                                    end_byte: loc.end_byte,
+                                }
+                            })
+                            .collect();
+
                         json!({
-                            "input_file": req.input_file_path,
+                            "input": json!({
+                                "input_locations": input_locations,
+                            }),
                             "binary_path":req.mapper_file_path,
                         })
                     }
@@ -234,7 +277,12 @@ mod tests {
 
     #[test]
     fn test_get_task_type() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
 
         let reduce_task = Task::new_reduce_task(
             "reduce-1",
@@ -250,17 +298,28 @@ mod tests {
 
     #[test]
     fn test_get_map_reduce_id() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
         assert_eq!(map_task.job_id, "map-1");
     }
 
     #[test]
     fn test_map_task_request() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/file1");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/file1".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
         let map_request = map_task.map_request.unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
-        assert_eq!("/tmp/input/file1", map_request.get_input_file_path());
+        assert_eq!("/tmp/input/file1", map_request.get_input().get_input_locations()[0]
+            .input_path);
         assert!(map_task.reduce_request.is_none());
     }
 
@@ -285,7 +344,12 @@ mod tests {
 
     #[test]
     fn test_set_output_files() {
-        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/bin/input");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
 
         map_task.map_output_files.insert(
             0,

@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Write, BufRead, BufReader};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
+use cerberus_proto::worker as pb;
 use common::{Job, Task};
 use errors::*;
 
 const MEGA_BYTE: usize = 1000 * 1000;
 const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
 
-struct MapTaskFile {
+struct MapTaskFileInformation {
     task_num: u32,
     bytes_to_write: usize,
 
-    file: fs::File,
-    file_path: String,
+    input_locations: Vec<pb::InputLocation>,
 }
 
 /// `TaskProcessor` describes an object that can be used to create map and reduce tasks.
@@ -30,69 +30,63 @@ pub trait TaskProcessor {
 pub struct TaskProcessorImpl;
 
 impl TaskProcessorImpl {
-    /// `create_new_task_file` creates a new file that will contain one chunk of the map input.
-    fn create_new_task_file(
-        &self,
-        task_num: u32,
-        output_directory: &PathBuf,
-    ) -> Result<(MapTaskFile)> {
-        let mut current_task_path: PathBuf = output_directory.clone();
-        current_task_path.push(format!("map_task_{}", task_num));
-        let current_task_file = fs::File::create(current_task_path.clone()).chain_err(
-            || "Error creating Map input chunk file.",
-        )?;
-
-        let current_task_path_str;
-        match current_task_path.to_str() {
-            Some(path_str) => {
-                current_task_path_str = path_str.to_owned();
-            }
-            None => return Err("Error getting output task path.".into()),
-        }
-
-        Ok(MapTaskFile {
-            task_num: task_num,
-            bytes_to_write: MAP_INPUT_SIZE,
-
-            file: current_task_file,
-            file_path: current_task_path_str,
-        })
-    }
-
     /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     fn read_input_file(
         &self,
         job: &Job,
-        map_task_file: &mut MapTaskFile,
-        input_file: &fs::File,
-        output_directory: &PathBuf,
+        map_task_file_info: &mut MapTaskFileInformation,
+        input_file_path: &PathBuf,
         map_tasks: &mut Vec<Task>,
     ) -> Result<()> {
+        let input_path_str = input_file_path.to_str().ok_or("Invalid input file path.")?;
+
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path(input_path_str.to_owned());
+        input_location.set_start_byte(0);
+
+        let input_file = fs::File::open(input_file_path).chain_err(
+            || "Error opening input file.",
+        )?;
+
+        let mut bytes_read: usize = 0;
+
         let buf_reader = BufReader::new(input_file);
         for line in buf_reader.lines() {
             let mut read_str = line.chain_err(|| "Error reading Map input.")?;
-            read_str.push_str("\n");
+            bytes_read += read_str.len() + 1; // Add one byte for newline character
 
-            map_task_file
-                .file
-                .write_all(read_str.as_bytes())
-                .chain_err(|| "Error writing to Map input chunk file.")?;
+            input_location.set_end_byte(bytes_read as u64);
 
             let ammount_read: usize = read_str.len();
-            if ammount_read > map_task_file.bytes_to_write {
+            if ammount_read > map_task_file_info.bytes_to_write {
+                map_task_file_info.input_locations.push(input_location);
+
+                input_location = pb::InputLocation::new();
+                input_location.set_input_path(input_path_str.to_owned());
+                input_location.set_start_byte(bytes_read as u64 + 1);
+                input_location.set_end_byte(bytes_read as u64 + 1);
+
                 map_tasks.push(Task::new_map_task(
                     job.id.as_str(),
                     job.binary_path.as_str(),
-                    &map_task_file.file_path,
+                    map_task_file_info.input_locations.clone(),
                 ));
 
-                *map_task_file =
-                    self.create_new_task_file(map_task_file.task_num + 1, output_directory)
-                        .chain_err(|| "Error creating Map input chunk file.")?;
+                *map_task_file_info = MapTaskFileInformation {
+                    task_num: map_task_file_info.task_num + 1,
+                    bytes_to_write: MAP_INPUT_SIZE,
+
+                    input_locations: Vec::new(),
+                };
             } else {
-                map_task_file.bytes_to_write -= ammount_read;
+                map_task_file_info.bytes_to_write -= ammount_read;
             }
         }
+
+        if input_location.start_byte != input_location.end_byte {
+            map_task_file_info.input_locations.push(input_location);
+        }
+
         Ok(())
     }
 }
@@ -100,42 +94,31 @@ impl TaskProcessorImpl {
 impl TaskProcessor for TaskProcessorImpl {
     fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
         let mut map_tasks = Vec::new();
-        let input_directory = PathBuf::from(job.input_directory.as_str());
 
-        let mut output_directory: PathBuf = input_directory.clone();
-        output_directory.push(".MapReduceTasks");
-        fs::create_dir_all(output_directory.clone()).chain_err(
-            || "Error creating Map tasks output directory.",
-        )?;
+        let mut map_task_file_info = MapTaskFileInformation {
+            task_num: 1,
+            bytes_to_write: MAP_INPUT_SIZE,
 
-        let mut map_task_file: MapTaskFile =
-            self.create_new_task_file(1, &output_directory).chain_err(
-                || "Error creating new Map input file chunk.",
-            )?;
+            input_locations: Vec::new(),
+        };
 
         for entry in fs::read_dir(job.input_directory.as_str())? {
             let entry: fs::DirEntry = entry.chain_err(|| "Error reading input directory.")?;
             let path: PathBuf = entry.path();
             if path.is_file() {
-                let file = fs::File::open(path).chain_err(
-                    || "Error opening input file.",
-                )?;
-                self.read_input_file(
-                    job,
-                    &mut map_task_file,
-                    &file,
-                    &output_directory,
-                    &mut map_tasks,
-                ).chain_err(|| "Error reading input file.")?;
+                self.read_input_file(job, &mut map_task_file_info, &path, &mut map_tasks)
+                    .chain_err(|| "Error reading input file.")?;
             }
         }
-        if map_task_file.bytes_to_write != MAP_INPUT_SIZE {
+
+        if map_task_file_info.bytes_to_write != MAP_INPUT_SIZE {
             map_tasks.push(Task::new_map_task(
                 job.id.as_str(),
                 job.binary_path.as_str(),
-                &map_task_file.file_path,
+                map_task_file_info.input_locations,
             ));
         }
+
         Ok(map_tasks)
     }
 
@@ -169,7 +152,7 @@ impl TaskProcessor for TaskProcessorImpl {
 mod tests {
     use super::*;
     use std::path::Path;
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::collections::HashSet;
     use common::{JobOptions, TaskType};
 
@@ -211,18 +194,34 @@ mod tests {
         assert_eq!(job.binary_path, perform_map_req.get_mapper_file_path());
 
         // Read map task input and make sure it is as expected.
-        let mut input_file = fs::File::open(perform_map_req.get_input_file_path().clone()).unwrap();
-        let mut map_input = String::new();
-        input_file.read_to_string(&mut map_input).unwrap();
+        let mut input_file0 = fs::File::open(
+            perform_map_req.get_input().get_input_locations()[0]
+                .input_path
+                .clone(),
+        ).unwrap();
+        let mut map_input0 = String::new();
+        input_file0.read_to_string(&mut map_input0).unwrap();
+
+        let mut input_file1 = fs::File::open(
+            perform_map_req.get_input().get_input_locations()[1]
+                .input_path
+                .clone(),
+        ).unwrap();
+        let mut map_input1 = String::new();
+        input_file1.read_to_string(&mut map_input1).unwrap();
+
+        let map_input = map_input0 + "\n" + &map_input1;
 
         // Either input file order is fine.
         let mut good_inputs = HashSet::new();
         good_inputs.insert(
-            "this is the first test file\nthis is the second test file\n".to_owned(),
+            "this is the first test file\nthis is the second test file".to_owned(),
         );
         good_inputs.insert(
-            "this is the second test file\nthis is the first test file\n".to_owned(),
+            "this is the second test file\nthis is the first test file".to_owned(),
         );
+
+        println!("{}", map_input.clone());
 
         assert!(good_inputs.contains(&map_input));
     }
@@ -238,7 +237,12 @@ mod tests {
             ..Default::default()
         }).unwrap();
 
-        let mut map_task1 = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let mut map_task1 = Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()]);
         map_task1.map_output_files.insert(
             0,
             "/tmp/output/1".to_owned(),
@@ -248,7 +252,7 @@ mod tests {
             "/tmp/output/2".to_owned(),
         );
 
-        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", "/tmp/input/");
+        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location]);
         map_task2.map_output_files.insert(
             0,
             "/tmp/output/3".to_owned(),
