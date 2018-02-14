@@ -3,12 +3,15 @@ use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
 
 use chrono::Utc;
+use serde_json;
 
 use cerberus_proto::mapreduce as pb;
 use common::{Task, Job};
 use errors::*;
 use scheduler::state::{ScheduledJob, State};
 use scheduler::task_processor::TaskProcessor;
+use state;
+use state::StateHandling;
 use worker_management::WorkerManager;
 use util::output_error;
 
@@ -60,7 +63,6 @@ impl Scheduler {
             let job = state.get_job(&task.job_id).chain_err(
                 || "Error processing completed task result.",
             )?;
-
 
             let reduce_tasks = {
                 let map_tasks = state.get_map_tasks(&task.job_id).chain_err(
@@ -164,6 +166,30 @@ impl Scheduler {
         jobs
     }
 }
+
+impl state::SimpleStateHandling for Scheduler {
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+        state.dump_state()
+    }
+
+    fn load_state(&self, data: serde_json::Value) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.load_state(data).chain_err(
+            || "Error loading scheduler state.",
+        )?;
+
+        let in_progress_tasks = state.get_in_progress_tasks();
+        for task in in_progress_tasks {
+            if !self.worker_manager.has_task(&task.id) {
+                self.schedule_task(task.clone());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 
 pub fn run_task_result_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
     let reciever = worker_manager.get_result_reciever();

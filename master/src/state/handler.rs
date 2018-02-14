@@ -1,10 +1,10 @@
 use std::sync::Arc;
-// use std::fs::File;
+use std::fs::File;
 use std::fs;
-// use std::io::{Read, Write};
+use std::io::{Read, Write};
 
 use serde_json;
-// use serde_json::Value as json;
+use serde_json::Value as json;
 
 use errors::*;
 use scheduler::Scheduler;
@@ -23,6 +23,17 @@ pub trait StateHandling {
 
     // Updates the object to match the JSON state provided.
     fn load_state(&mut self, data: serde_json::Value) -> Result<()>;
+}
+
+/// The `SimpleStateHandling` trait defines an object that can have it's state saved
+/// and subsequently loaded from a file but doesn't have a new from json method. A mutable
+/// reference is not needed to load it's state.
+pub trait SimpleStateHandling {
+    // Returns a JSON representation of the object.
+    fn dump_state(&self) -> Result<serde_json::Value>;
+
+    // Updates the object to match the JSON state provided.
+    fn load_state(&self, data: serde_json::Value) -> Result<()>;
 }
 
 pub struct StateHandler {
@@ -56,17 +67,12 @@ impl StateHandler {
 
     pub fn dump_state(&self) -> Result<()> {
         // Get Scheduler state as JSON.
-        // TODO(conor) Finish this.
-        /*
-         
-        let scheduler = self.scheduler.lock().unwrap();
-        let scheduler_json = scheduler.dump_state().chain_err(
+        let scheduler_json = self.scheduler.dump_state().chain_err(
             || "Unable to dump Scheduler state",
         )?;
 
         // Get WorkerManager state as JSON.
-        let worker_manager = self.worker_manager.lock().unwrap();
-        let worker_manager_json = worker_manager.dump_state().chain_err(
+        let worker_manager_json = self.worker_manager.dump_state().chain_err(
             || "Unable to dump WorkerManager state",
         )?;
 
@@ -88,14 +94,10 @@ impl StateHandler {
             format!("{}/master.dump", self.dump_dir),
         ).chain_err(|| "Unable to rename file")?;
 
-        */
-
         Ok(())
     }
 
     pub fn load_state(&self) -> Result<()> {
-        // TODO(conor) Finish this.
-        /* 
         let mut file = File::open(format!("{}/master.dump", self.dump_dir))
             .chain_err(|| "Unable to open file")?;
         let mut data = String::new();
@@ -107,31 +109,28 @@ impl StateHandler {
             || "Unable to parse string as JSON",
         )?;
 
+        // Worker manager state needs to be reset first so that the scheduler knows what tasks it
+        // doesn't need to reschedule.
+        // Re-establish connections with workers and update worker_manager and worker state.
+        let worker_manager_json = json["worker_manager"].clone();
+        if worker_manager_json == json::Null {
+            return Err("Unable to retrieve WorkerManager state from JSON".into());
+        }
+
+        self.worker_manager
+            .load_state(worker_manager_json)
+            .chain_err(|| "Error reloading worker_manager state")?;
+
         // Reset scheduler state (including Jobs and Tasks) to the dumped state.
         let scheduler_json = json["scheduler"].clone();
         if scheduler_json == json::Null {
             return Err("Unable to retrieve Scheduler state from JSON".into());
         }
 
-        {
-            // Hold scheduler lock for as short as possible to avoid deadlock.
-            let mut scheduler = self.scheduler.lock().unwrap();
-            scheduler.load_state(scheduler_json).chain_err(
-                || "Error reloading scheduler state",
-            )?;
-        }
-
-        // Re-establish connections with workers and update worker_manager and worker state.
-        let worker_manager_json = json["worker_manager"].clone();
-        if worker_manager_json == json::Null {
-            return Err("Unable to retrieve WorkerManager state from JSON".into());
-        }
-        let mut worker_manager = self.worker_manager.lock().unwrap();
-        worker_manager.load_state(worker_manager_json).chain_err(
-            || "Error reloading worker_manager state",
+        self.scheduler.load_state(scheduler_json).chain_err(
+            || "Error reloading scheduler state",
         )?;
 
-        */
 
         Ok(())
     }

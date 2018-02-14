@@ -79,8 +79,9 @@ impl Task {
         let request_data = data["request"].clone();
 
         // Create a basic Map task.
-        let id: String = serde_json::from_value(data["map_reduce_id"].clone())
-            .chain_err(|| "Unable to convert map_reduce_id")?;
+        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
+            || "Unable to convert job_id",
+        )?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
         let input_file: String = serde_json::from_value(request_data["input_file"].clone())
@@ -138,8 +139,9 @@ impl Task {
         let input_files: Vec<String> = serde_json::from_value(request_data["input_files"].clone())
             .chain_err(|| "Unable to convert input_files")?;
 
-        let id: String = serde_json::from_value(data["map_reduce_id"].clone())
-            .chain_err(|| "Unable to convert map_reduce_id")?;
+        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
+            || "Unable to convert job_id",
+        )?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
         let output_dir: String = serde_json::from_value(request_data["output_directory"].clone())

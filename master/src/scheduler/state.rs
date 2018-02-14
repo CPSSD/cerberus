@@ -1,15 +1,74 @@
 use std::collections::HashMap;
 
 use chrono::prelude::*;
+use serde_json;
+
 use cerberus_proto::mapreduce as pb;
 use common::{Task, TaskType, TaskStatus, Job};
 use errors::*;
+use state;
+use state::StateHandling;
 
 /// A `ScheduledJob` holds the information about a scheduled `Job` and the `Task`s that relate to
 /// that job.
 pub struct ScheduledJob {
     pub job: Job,
     pub tasks: HashMap<String, Task>,
+}
+
+impl ScheduledJob {
+    fn process_json(data: &serde_json::Value) -> Result<(Job, HashMap<String, Task>)> {
+        let job = Job::new_from_json(data["job"].clone()).chain_err(
+            || "Unable to create map reduce job from json.",
+        )?;
+
+        let mut tasks = HashMap::new();
+
+        if let serde_json::Value::Array(ref tasks_array) = data["tasks"] {
+            for task in tasks_array {
+                let task = Task::new_from_json(task.clone()).chain_err(
+                    || "Unable to create map reduce task from json.",
+                )?;
+                tasks.insert(task.id.to_owned(), task);
+            }
+        }
+
+        Ok((job, tasks))
+    }
+}
+
+impl state::StateHandling for ScheduledJob {
+    fn new_from_json(data: serde_json::Value) -> Result<Self> {
+        let (job, tasks) = ScheduledJob::process_json(&data)?;
+
+        Ok(ScheduledJob {
+            job: job,
+            tasks: tasks,
+        })
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let mut tasks_json: Vec<serde_json::Value> = Vec::new();
+        for task in self.tasks.values() {
+            tasks_json.push(task.dump_state().chain_err(
+                || "Error dumping scheduled job state.",
+            )?);
+        }
+
+        Ok(json!({
+            "job": self.job.dump_state().chain_err(|| "Error dumping scheduled job state.")?,
+            "tasks": json!(tasks_json),
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        let (job, tasks) = ScheduledJob::process_json(&data)?;
+
+        self.job = job;
+        self.tasks = tasks;
+
+        Ok(())
+    }
 }
 
 /// The `State` object holds all of the `ScheduledJob`s inside a `HashMap`, with the job IDs as
@@ -40,7 +99,6 @@ impl State {
         );
         Ok(())
     }
-
 
     pub fn get_job(&self, job_id: &str) -> Result<Job> {
         match self.scheduled_jobs.get(job_id) {
@@ -74,6 +132,19 @@ impl State {
         }
 
         Ok(map_tasks)
+    }
+
+    pub fn get_in_progress_tasks(&self) -> Vec<&Task> {
+        let mut in_progress_tasks = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            for task in scheduled_job.tasks.values() {
+                if task.status == TaskStatus::InProgress || task.status == TaskStatus::Queued {
+                    in_progress_tasks.push(task);
+                }
+            }
+        }
+
+        in_progress_tasks
     }
 
     // Adds a Vector of newly created tasks for a given job.
@@ -156,5 +227,41 @@ impl State {
             }
         }
         job_count
+    }
+}
+
+impl state::StateHandling for State {
+    fn new_from_json(_: serde_json::Value) -> Result<Self> {
+        Err("Unable to create Scheduler State from JSON.".into())
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let mut jobs_json: Vec<serde_json::Value> = Vec::new();
+        for job in self.scheduled_jobs.values() {
+            jobs_json.push(job.dump_state().chain_err(
+                || "Unable to dump ScheduledJob state",
+            )?);
+        }
+
+        Ok(json!({
+            "scheduled_jobs": json!(jobs_json),
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        if let serde_json::Value::Array(ref jobs_array) = data["scheduled_jobs"] {
+            for job in jobs_array {
+                let scheduled_job = ScheduledJob::new_from_json(job.clone()).chain_err(
+                    || "Unable to create ScheduledJob from json.",
+                )?;
+                self.scheduled_jobs.insert(
+                    scheduled_job.job.id.to_owned(),
+                    scheduled_job,
+                );
+            }
+        } else {
+            return Err("Error processing scheduled_jobs array.".into());
+        }
+        Ok(())
     }
 }

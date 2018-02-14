@@ -5,6 +5,7 @@ use chrono::prelude::*;
 use futures::future;
 use futures::prelude::*;
 use futures_cpupool::CpuPool;
+use serde_json;
 
 use cerberus_proto::worker as pb;
 use common::{Task, TaskStatus, TaskType, Worker};
@@ -12,6 +13,8 @@ use errors::*;
 use util::output_error;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
+use state;
+use state::StateHandling;
 use worker_communication::WorkerInterface;
 use worker_management::state::State;
 
@@ -288,6 +291,45 @@ impl WorkerManager {
     pub fn run_task(&self, task: Task) {
         let mut state = self.state.lock().unwrap();
         state.add_task(task);
+    }
+
+    pub fn has_task(&self, task_id: &str) -> bool {
+        let state = self.state.lock().unwrap();
+        state.has_task(task_id)
+    }
+}
+
+impl state::SimpleStateHandling for WorkerManager {
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+        state.dump_state()
+    }
+
+    fn load_state(&self, data: serde_json::Value) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.load_state(data).chain_err(
+            || "Error creating worker manager from state.",
+        )?;
+
+        let mut workers_to_remove = Vec::new();
+        {
+            let workers = state.get_workers();
+            for worker in workers {
+                let add_client_result = self.worker_interface.add_client(worker);
+                if let Err(e) = add_client_result {
+                    output_error(&e.chain_err(|| {
+                        format!("Unable to reconnect to worker {}", worker.worker_id)
+                    }));
+                    workers_to_remove.push(worker.worker_id.to_owned());
+                }
+            }
+        }
+        for worker_id in workers_to_remove {
+            state.remove_worker(&worker_id).chain_err(
+                || "Error creating worker manager from state.",
+            )?;
+        }
+        Ok(())
     }
 }
 
