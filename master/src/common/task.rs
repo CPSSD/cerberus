@@ -215,9 +215,7 @@ impl StateHandling for Task {
                             .collect();
 
                         json!({
-                            "input": json!({
-                                "input_locations": input_locations,
-                            }),
+                            "input_locations": input_locations,
                             "binary_path":req.mapper_file_path,
                         })
                     }
