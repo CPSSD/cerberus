@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use chrono::prelude::*;
+use serde_json;
 
 use cerberus_proto::worker as pb;
 use common::{Task, TaskStatus, Worker};
 use errors::*;
+use state;
 
 const MAX_TASK_FAILURE_COUNT: u16 = 10;
 
@@ -261,6 +263,7 @@ impl State {
         };
 
         scheduled_task.status = TaskStatus::InProgress;
+        scheduled_task.assigned_worker_id = worker.worker_id.to_owned();
 
         let task = scheduled_task.clone();
         worker.current_task_id = scheduled_task.id.to_owned();
@@ -270,5 +273,92 @@ impl State {
         );
 
         Ok(Some(task))
+    }
+
+    pub fn has_task(&self, task_id: &str) -> bool {
+        for task in self.assigned_tasks.values() {
+            if task.id == task_id {
+                return true;
+            }
+        }
+
+        for task in &self.task_queue {
+            if task.id == task_id {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+impl state::StateHandling for State {
+    fn new_from_json(_: serde_json::Value) -> Result<Self> {
+        Err("Unable to create WorkerManager State from JSON.".into())
+    }
+
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let mut workers_json: Vec<serde_json::Value> = Vec::new();
+        for worker in self.workers.values() {
+            workers_json.push(worker.dump_state().chain_err(
+                || "Error dumping worker state.",
+            )?);
+        }
+
+        let mut task_queue_json: Vec<serde_json::Value> = Vec::new();
+        for task in &self.task_queue {
+            task_queue_json.push(task.dump_state().chain_err(|| "Error dumping task state.")?);
+        }
+
+        let mut assigned_tasks_json: Vec<serde_json::Value> = Vec::new();
+        for task in self.assigned_tasks.values() {
+            assigned_tasks_json.push(task.dump_state().chain_err(|| "Error dumping task state.")?);
+        }
+
+        Ok(json!({
+            "workers": json!(workers_json),
+            "task_queue": json!(task_queue_json),
+            "assigned_tasks": json!(assigned_tasks_json),
+        }))
+    }
+
+    fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
+        if let serde_json::Value::Array(ref workers_array) = data["workers"] {
+            for worker in workers_array {
+                let worker = Worker::new_from_json(worker.clone()).chain_err(
+                    || "Unable to create ScheduledJob from json.",
+                )?;
+                self.workers.insert(worker.worker_id.to_owned(), worker);
+            }
+        } else {
+            return Err("Error processing workers array.".into());
+        }
+
+        if let serde_json::Value::Array(ref task_queue) = data["task_queue"] {
+            for task in task_queue {
+                let task = Task::new_from_json(task.clone()).chain_err(
+                    || "Unable to create Task from json.",
+                )?;
+                self.task_queue.push_back(task);
+            }
+        } else {
+            return Err("Error processing tasks queue.".into());
+        }
+
+        if let serde_json::Value::Array(ref tasks_array) = data["assigned_tasks"] {
+            for task in tasks_array {
+                let task = Task::new_from_json(task.clone()).chain_err(
+                    || "Unable to create Task from json.",
+                )?;
+                self.assigned_tasks.insert(
+                    task.assigned_worker_id.to_owned(),
+                    task,
+                );
+            }
+        } else {
+            return Err("Error processing assigned tasks array.".into());
+        }
+
+        Ok(())
     }
 }
