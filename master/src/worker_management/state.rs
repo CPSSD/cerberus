@@ -95,8 +95,7 @@ impl State {
         worker.status_last_updated = Utc::now();
 
         if !worker.current_task_id.is_empty() &&
-            (operation_status == pb::OperationStatus::FAILED ||
-                 operation_status == pb::OperationStatus::COMPLETE)
+            operation_status != pb::OperationStatus::IN_PROGRESS
         {
             if let Some(assigned_task) = self.assigned_tasks.remove(worker_id) {
                 self.task_queue.push_front(assigned_task);
