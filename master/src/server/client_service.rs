@@ -5,6 +5,7 @@ use grpc::{SingleResponse, Error, RequestOptions};
 use common::{Job, JobOptions};
 use scheduler::Scheduler;
 use util::output_error;
+use util::data_layer::AbstractionLayer;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
@@ -16,13 +17,18 @@ const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
 /// `ClientService` recieves communication from a client.
 pub struct ClientService {
     scheduler: Arc<Scheduler>,
+    data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
     testing: bool,
 }
 
 impl ClientService {
-    pub fn new(scheduler: Arc<Scheduler>) -> Self {
+    pub fn new(
+        scheduler: Arc<Scheduler>,
+        data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+    ) -> Self {
         ClientService {
             scheduler: scheduler,
+            data_abstraction_layer: data_abstraction_layer,
             testing: false,
         }
     }
@@ -41,7 +47,7 @@ impl grpc_pb::MapReduceService for ClientService {
             job_options.validate_paths = false;
         }
 
-        let job = match Job::new(job_options) {
+        let job = match Job::new(job_options, &self.data_abstraction_layer) {
             Ok(job) => job,
             Err(err) => {
                 output_error(&err.chain_err(|| "Error processing map reduce request."));
@@ -129,6 +135,7 @@ mod tests {
     use cerberus_proto::worker as wpb;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use util::data_layer::NullAbstractionLayer;
     use worker_management::WorkerManager;
     use worker_communication::WorkerInterface;
 
@@ -183,6 +190,7 @@ mod tests {
         let master_impl = ClientService {
             scheduler: Arc::new(scheduler),
             testing: true,
+            data_abstraction_layer: Arc::new(NullAbstractionLayer),
         };
 
         let _ = master_impl
@@ -196,7 +204,7 @@ mod tests {
     fn get_mapreduce_status() {
         let scheduler = create_scheduler();
 
-        let job = Job::new(JobOptions::default()).unwrap();
+        let job = Job::new_no_validate(JobOptions::default()).unwrap();
         let mut request = pb::MapReduceStatusRequest::new();
         request.mapreduce_id = job.id.clone();
         let result = scheduler.schedule_job(job);
@@ -205,6 +213,7 @@ mod tests {
         let master_impl = ClientService {
             scheduler: Arc::new(scheduler),
             testing: true,
+            data_abstraction_layer: Arc::new(NullAbstractionLayer),
         };
         let response = master_impl.map_reduce_status(RequestOptions::new(), request);
 
@@ -224,12 +233,15 @@ mod tests {
 
         let scheduler = Scheduler::new(Arc::new(worker_manager), Arc::new(NullTaskProcessor {}));
 
-        let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
-        let _ = scheduler.schedule_job(Job::new(JobOptions::default()).unwrap());
+        let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =
+            Arc::new(NullAbstractionLayer);
+        let _ = scheduler.schedule_job(Job::new_no_validate(JobOptions::default()).unwrap());
+        let _ = scheduler.schedule_job(Job::new_no_validate(JobOptions::default()).unwrap());
 
         let master_impl = ClientService {
             scheduler: Arc::new(scheduler),
             testing: true,
+            data_abstraction_layer: data_abstraction_layer,
         };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();

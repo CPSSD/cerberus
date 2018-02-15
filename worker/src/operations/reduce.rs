@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::io::prelude::*;
-use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,6 +13,7 @@ use super::io;
 use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
+use util::data_layer::AbstractionLayer;
 use worker_interface::WorkerInterface;
 
 use cerberus_proto::worker as pb;
@@ -51,6 +51,7 @@ pub struct ReduceOperationQueue {
 fn run_reducer(
     reduce_options: &ReduceOptions,
     reduce_operation: &ReduceOperation,
+    data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     mut child: Child,
 ) -> Result<()> {
     if let Some(stdin) = child.stdin.as_mut() {
@@ -80,8 +81,11 @@ fn run_reducer(
     file_path.push(reduce_options.output_directory.clone());
     file_path.push(reduce_operation.intermediate_key.clone());
 
-    io::write(file_path, reduce_results_pretty.as_bytes())
-        .chain_err(|| "Failed to write reduce output.")?;
+    io::write(
+        data_abstraction_layer_arc,
+        file_path,
+        reduce_results_pretty.as_bytes(),
+    ).chain_err(|| "Failed to write reduce output.")?;
     Ok(())
 }
 
@@ -95,8 +99,12 @@ impl ReduceOperationQueue {
         &mut self,
         reduce_options: &ReduceOptions,
         reduce_operation: &ReduceOperation,
+        data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<()> {
-        let child = Command::new(reduce_options.reducer_file_path.to_owned())
+        let absolute_path = data_abstraction_layer_arc
+            .absolute_path(Path::new(&reduce_options.reducer_file_path))
+            .chain_err(|| "Unable to get absolute path")?;
+        let child = Command::new(absolute_path)
             .arg("reduce")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -104,19 +112,35 @@ impl ReduceOperationQueue {
             .spawn()
             .chain_err(|| "Failed to start reduce operation process.")?;
 
-        fs::create_dir_all(reduce_options.output_directory.to_owned())
+        debug!(
+            "Attempting to create directory: {}",
+            reduce_options.output_directory.to_owned()
+        );
+        data_abstraction_layer_arc
+            .create_dir_all(Path::new(&reduce_options.output_directory))
             .chain_err(|| "Failed to create output directory")?;
 
-        run_reducer(reduce_options, reduce_operation, child)
-            .chain_err(|| "Error running reducer.")?;
+        run_reducer(
+            reduce_options,
+            reduce_operation,
+            data_abstraction_layer_arc,
+            child,
+        ).chain_err(|| "Error running reducer.")?;
 
         Ok(())
     }
 
-    fn perform_next_reduce_operation(&mut self, reduce_options: &ReduceOptions) -> Result<()> {
+    fn perform_next_reduce_operation(
+        &mut self,
+        reduce_options: &ReduceOptions,
+        data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
+    ) -> Result<()> {
         if let Some(reduce_operation) = self.queue.pop() {
-            self.perform_reduce_operation(reduce_options, &reduce_operation)
-                .chain_err(|| "Error performing reduce operation.")?;
+            self.perform_reduce_operation(
+                reduce_options,
+                &reduce_operation,
+                data_abstraction_layer_arc,
+            ).chain_err(|| "Error performing reduce operation.")?;
         } else {
             return Err("No reduce operations in queue".into());
         }
@@ -201,6 +225,7 @@ pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
+    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
     output_uuid: &str,
 ) -> Result<()> {
     {
@@ -223,6 +248,7 @@ pub fn perform_reduce(
         reduce_request,
         Arc::clone(operation_state_arc),
         master_interface_arc,
+        data_abstraction_layer_arc,
         output_uuid,
     );
     if let Err(err) = result {
@@ -238,6 +264,7 @@ fn internal_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
+    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
     output_uuid: &str,
 ) -> Result<()> {
     let reduce_operations = create_reduce_operations(reduce_request, output_uuid)
@@ -253,6 +280,7 @@ fn internal_perform_reduce(
         operation_state_arc,
         reduce_operations,
         master_interface_arc,
+        data_abstraction_layer_arc,
     );
 
     Ok(())
@@ -299,6 +327,7 @@ fn run_reduce_queue(
     operation_state_arc: Arc<Mutex<OperationState>>,
     reduce_operations: Vec<ReduceOperation>,
     master_interface_arc: Arc<MasterInterface>,
+    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
 ) {
     let initial_cpu_time = operation_state_arc.lock().unwrap().initial_cpu_time;
 
@@ -312,7 +341,10 @@ fn run_reduce_queue(
             if reduce_queue.is_queue_empty() {
                 break;
             } else {
-                let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+                let result = reduce_queue.perform_next_reduce_operation(
+                    &reduce_options,
+                    &data_abstraction_layer_arc,
+                );
                 if let Err(err) = result {
                     reduce_err = Some(err);
                     break;
@@ -334,10 +366,15 @@ mod tests {
     use super::*;
     use mocktopus::mocking::*;
 
+    use util::data_layer::NullAbstractionLayer;
+
     #[test]
     fn test_reduce_operation_queue() {
         ReduceOperationQueue::perform_reduce_operation.mock_safe(
-            |_, _, _| {
+            |_,
+             _,
+             _,
+             _| {
                 return MockResult::Return(Ok(()));
             },
         );
@@ -360,11 +397,16 @@ mod tests {
             reducer_file_path: "bar".to_owned(),
         };
 
-        let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+        let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =
+            Arc::new(NullAbstractionLayer);
+
+        let result =
+            reduce_queue.perform_next_reduce_operation(&reduce_options, &data_abstraction_layer);
         assert!(!result.is_err());
         assert!(reduce_queue.is_queue_empty());
 
-        let result = reduce_queue.perform_next_reduce_operation(&reduce_options);
+        let result =
+            reduce_queue.perform_next_reduce_operation(&reduce_options, &data_abstraction_layer);
         assert!(result.is_err());
     }
 }

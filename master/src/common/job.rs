@@ -1,4 +1,5 @@
 use errors::*;
+use std::sync::Arc;
 use std::path::{PathBuf, Path};
 use std::process::{Command, Stdio};
 
@@ -6,6 +7,7 @@ use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
+use util::data_layer::AbstractionLayer;
 use state::StateHandling;
 use cerberus_proto::mapreduce as pb;
 
@@ -78,7 +80,7 @@ pub enum SerializableJobStatus {
 }
 
 impl Job {
-    pub fn new(options: JobOptions) -> Result<Self> {
+    pub fn new_no_validate(options: JobOptions) -> Result<Self> {
         let input_directory = options.input_directory;
 
         let output_directory = match options.output_directory {
@@ -94,7 +96,7 @@ impl Job {
             }
         };
 
-        let job = Job {
+        Ok(Job {
             client_id: options.client_id,
             id: Uuid::new_v4().to_string(),
             binary_path: options.binary_path,
@@ -115,36 +117,70 @@ impl Job {
             time_completed: None,
 
             cpu_time: 0,
-        };
-        if options.validate_paths {
-            job.validate_input().chain_err(|| "Error validating input")?;
+        })
+    }
+
+    pub fn new(
+        options: JobOptions,
+        data_abstraction_layer: &Arc<AbstractionLayer + Send + Sync>,
+    ) -> Result<Self> {
+        let validate_paths = options.validate_paths;
+        let job = Job::new_no_validate(options).chain_err(
+            || "Unable to create job",
+        )?;
+
+        if validate_paths {
+            job.validate_input(data_abstraction_layer).chain_err(
+                || "Error validating input",
+            )?;
         }
         Ok(job)
     }
 
-    fn validate_input(&self) -> Result<()> {
+    fn validate_input(
+        &self,
+        data_abstraction_layer: &Arc<AbstractionLayer + Send + Sync>,
+    ) -> Result<()> {
         // Validate the existence of the input directory and the binary file.
         let input_path = Path::new(&self.input_directory);
-        if !(input_path.exists() && input_path.is_dir()) {
+        let is_dir = data_abstraction_layer.is_dir(input_path).chain_err(
+            || "Error checking if path is a directory",
+        )?;
+        if !is_dir {
             return Err(
-                format!("Input directory does not exist: {}", self.input_directory).into(),
+                format!(
+                    "Input directory does not exist: {:?}",
+                    data_abstraction_layer.absolute_path(input_path)
+                ).into(),
             );
         }
 
         let binary_path = Path::new(&self.binary_path);
-        if !(binary_path.exists() && binary_path.is_file()) {
+        let is_file = data_abstraction_layer.is_file(binary_path).chain_err(
+            || "Error checking if path is a file",
+        )?;
+        if !is_file {
             return Err(
-                format!("Binary does not exist: {}", self.binary_path).into(),
+                format!(
+                    "Binary does not exist: {:?}",
+                    data_abstraction_layer.absolute_path(binary_path)
+                ).into(),
             );
         }
 
         // Binary exists, so run sanity-check on it to verify that it's a libcerberus binary.
-        self.run_sanity_check()
+        self.run_sanity_check(data_abstraction_layer)
     }
 
-    fn run_sanity_check(&self) -> Result<()> {
+    fn run_sanity_check(
+        &self,
+        data_abstraction_layer: &Arc<AbstractionLayer + Send + Sync>,
+    ) -> Result<()> {
         let binary_path = Path::new(&self.binary_path);
-        let child = Command::new(binary_path)
+        let absolute_path = data_abstraction_layer
+            .absolute_path(binary_path)
+            .chain_err(|| "unable to get absolute path")?;
+        let child = Command::new(absolute_path)
             .arg("sanity-check")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -197,10 +233,10 @@ impl StateHandling for Job {
                 .chain_err(|| "Unable to convert input_directory")?,
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
-            validate_paths: true,
+            validate_paths: false,
         };
 
-        let mut job = Job::new(options).chain_err(
+        let mut job = Job::new_no_validate(options).chain_err(
             || "Unable to create map reduce job",
         )?;
 
@@ -308,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_defaults() {
-        let job = Job::new(get_test_job_options()).unwrap();
+        let job = Job::new_no_validate(get_test_job_options()).unwrap();
         // Assert that the default status for a map reduce job is Queued.
         assert_eq!(pb::Status::IN_QUEUE, job.status);
         // Assert that completed tasks starts at 0.
@@ -321,8 +357,8 @@ mod tests {
 
     #[test]
     fn test_output_directory() {
-        let job1 = Job::new(get_test_job_options()).unwrap();
-        let job2 = Job::new(JobOptions {
+        let job1 = Job::new_no_validate(get_test_job_options()).unwrap();
+        let job2 = Job::new_no_validate(JobOptions {
             client_id: "client-1".to_owned(),
             binary_path: "/tmp/binary".to_owned(),
             input_directory: "/tmp/input/".to_owned(),

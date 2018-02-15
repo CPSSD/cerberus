@@ -9,6 +9,7 @@ use uuid::Uuid;
 use cerberus_proto::worker as pb;
 use errors::*;
 use master_interface::MasterInterface;
+use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;
 use super::state::OperationState;
@@ -19,6 +20,8 @@ pub struct OperationHandler {
     master_interface: Arc<MasterInterface>,
 
     output_dir_uuid: String,
+
+    data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
 }
 
 pub fn get_worker_status(operation_state_arc: &Arc<Mutex<OperationState>>) -> pb::WorkerStatus {
@@ -78,12 +81,17 @@ pub fn get_cpu_time() -> u64 {
 }
 
 impl OperationHandler {
-    pub fn new(master_interface: Arc<MasterInterface>) -> Self {
+    pub fn new(
+        master_interface: Arc<MasterInterface>,
+        data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+    ) -> Self {
         OperationHandler {
             operation_state: Arc::new(Mutex::new(OperationState::new())),
-
             master_interface: master_interface,
+
             output_dir_uuid: Uuid::new_v4().to_string(),
+
+            data_abstraction_layer: data_abstraction_layer,
         }
     }
 
@@ -105,6 +113,7 @@ impl OperationHandler {
     ) -> impl Future<Item = (), Error = Error> {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
+        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
         let output_dir_uuid = self.output_dir_uuid.clone();
 
         future::lazy(move || {
@@ -112,6 +121,7 @@ impl OperationHandler {
                 &map_options,
                 &operation_state_arc,
                 &master_interface_arc,
+                &data_abstraction_layer_arc,
                 &output_dir_uuid,
             );
 
@@ -125,6 +135,7 @@ impl OperationHandler {
     ) -> impl Future<Item = (), Error = Error> {
         let operation_state_arc = Arc::clone(&self.operation_state);
         let master_interface_arc = Arc::clone(&self.master_interface);
+        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
 
         let output_dir_uuid = self.output_dir_uuid.clone();
 
@@ -133,6 +144,7 @@ impl OperationHandler {
                 &reduce_request,
                 &operation_state_arc,
                 master_interface_arc,
+                data_abstraction_layer_arc,
                 &output_dir_uuid,
             );
 
