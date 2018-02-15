@@ -42,52 +42,36 @@ fn send_map_result(
     Ok(())
 }
 
-/// `ParsedMapResults` is a tuple containing a `HashMap` of parsed map results and a vector
-/// of intermediate files created by the worker.
-type ParsedMapResults = (HashMap<u64, String>, Vec<PathBuf>);
+/// `IntermediateMapResults` is a HashMap mapping a partition to a JSON value containing
+/// the output for that partition.
+type IntermediateMapResults = HashMap<u64, serde_json::Value>;
 
-fn parse_map_results(map_result_string: &str, output_dir: &str) -> Result<ParsedMapResults> {
+fn parse_map_results(map_result_string: &str) -> Result<IntermediateMapResults> {
     let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 
-    let mut map_results: HashMap<u64, String> = HashMap::new();
+    let mut map_results: IntermediateMapResults = HashMap::new();
 
     let partition_map = match parse_value["partitions"].as_object() {
         None => return Err("Error parsing partition map.".into()),
         Some(map) => map,
     };
 
-    let mut intermediate_files = Vec::new();
     for (partition_str, pairs) in partition_map.iter() {
         let partition: u64 = partition_str.to_owned().parse().chain_err(
             || "Error parsing map response.",
         )?;
-
-        let file_name = Uuid::new_v4().to_string();
-        let mut file_path = PathBuf::new();
-        file_path.push(output_dir);
-        file_path.push(&file_name);
-
-        io::write(file_path.clone(), pairs.to_string().as_bytes())
-            .chain_err(|| "failed to write map output")?;
-        intermediate_files.push(file_path.clone());
-
-        map_results.insert(partition, (*file_path.to_string_lossy()).to_owned());
+        map_results.insert(partition, pairs.clone());
     }
 
-    Ok((map_results, intermediate_files))
+    Ok(map_results)
 }
-
-/// `MapOperationResults` is a tuple containing a `pb::MapResult` object and a vector of
-/// intermediate files created by the worker.
-type MapOperationResults = (pb::MapResult, Vec<PathBuf>);
 
 fn map_operation_thread_impl(
     map_input_value: &bson::Document,
-    output_dir: &str,
     mut child: Child,
-) -> Result<MapOperationResults> {
+) -> Result<IntermediateMapResults> {
     let mut input_buf = Vec::new();
     bson::encode_document(&mut input_buf, map_input_value)
         .chain_err(|| "Could not encode map_input as BSON.")?;
@@ -108,15 +92,11 @@ fn map_operation_thread_impl(
         || "Error accessing payload output.",
     )?;
 
-    let (map_results, intermediate_files) = parse_map_results(&output_str, output_dir).chain_err(
+    let map_results = parse_map_results(&output_str).chain_err(
         || "Error parsing map results.",
     )?;
 
-    let mut response = pb::MapResult::new();
-    response.set_status(pb::ResultStatus::SUCCESS);
-    response.set_map_results(map_results);
-
-    Ok((response, intermediate_files))
+    Ok(map_results)
 }
 
 pub fn perform_map(
@@ -131,9 +111,9 @@ pub fn perform_map(
     }
 
     info!(
-        "Performing map operation. mapper={} input={}",
+        "Performing map operation. mapper={} input={:?}",
         map_options.mapper_file_path,
-        map_options.input_file_path
+        map_options.input
     );
 
     if operation_handler::get_worker_status(operation_state_arc) == pb::WorkerStatus::BUSY {
@@ -156,37 +136,152 @@ pub fn perform_map(
     Ok(())
 }
 
-fn process_map_result(
-    result: Result<MapOperationResults>,
+fn combine_map_results(
+    operation_state_arc: Arc<Mutex<OperationState>>,
+    master_interface_arc: Arc<MasterInterface>,
+    initial_cpu_time: u64,
+    output_dir: String,
+) -> Result<()> {
+    let partition_map;
+    {
+        let operation_state = operation_state_arc.lock().unwrap();
+        partition_map = operation_state.intermediate_map_results.clone();
+    }
+
+    let mut map_results: HashMap<u64, String> = HashMap::new();
+    let mut intermediate_files = Vec::new();
+
+    for (partition, values) in partition_map.iter() {
+        let file_name = Uuid::new_v4().to_string();
+        let mut file_path = PathBuf::new();
+        file_path.push(output_dir.clone());
+        file_path.push(&file_name);
+
+        let json_values = json!(values);
+        io::write(file_path.clone(), json_values.to_string().as_bytes())
+            .chain_err(|| "failed to write map output")?;
+        intermediate_files.push(file_path.clone());
+
+        map_results.insert(*partition, (*file_path.to_string_lossy()).to_owned());
+    }
+
+    {
+        let mut operation_state = operation_state_arc.lock().unwrap();
+        operation_state.add_intermediate_files(intermediate_files);
+    }
+
+    let mut map_result = pb::MapResult::new();
+    map_result.set_map_results(map_results);
+    map_result.set_status(pb::ResultStatus::SUCCESS);
+    map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+
+    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+        log_map_operation_err(err, &operation_state_arc);
+    } else {
+        info!("Map operation completed sucessfully.");
+        operation_handler::set_complete_status(&operation_state_arc);
+    }
+
+    Ok(())
+}
+
+fn process_map_operation_error(
+    err: Error,
     operation_state_arc: Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
     initial_cpu_time: u64,
 ) {
-    match result {
-        Ok((mut map_result, intermediate_files)) => {
-            {
-                let mut operation_state = operation_state_arc.lock().unwrap();
-                operation_state.add_intermediate_files(intermediate_files);
-            }
+    {
+        let mut operation_state = operation_state_arc.lock().unwrap();
+        operation_state.waiting_map_operations = 0;
+    }
 
-            map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-            if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-                log_map_operation_err(err, &operation_state_arc);
-            } else {
-                info!("Map operation completed sucessfully.");
-                operation_handler::set_complete_status(&operation_state_arc);
+    let mut map_result = pb::MapResult::new();
+    map_result.set_status(pb::ResultStatus::FAILURE);
+    map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+    map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
+
+    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+        error!("Could not send map operation failed: {}", err);
+    }
+    log_map_operation_err(err, &operation_state_arc);
+}
+
+fn process_map_result(
+    result: Result<IntermediateMapResults>,
+    operation_state_arc: Arc<Mutex<OperationState>>,
+    master_interface_arc: Arc<MasterInterface>,
+    initial_cpu_time: u64,
+    output_dir: String,
+) {
+    {
+        // The number of operations waiting will be 0 if we have already processed one
+        // that has failed.
+        let operation_state = operation_state_arc.lock().unwrap();
+        if operation_state.waiting_map_operations == 0 {
+            return;
+        }
+    }
+
+    match result {
+        Ok(map_result) => {
+            let (finished, parse_failed) = {
+                let mut parse_failed = false;
+
+                let mut operation_state = operation_state_arc.lock().unwrap();
+                for (partition, value) in map_result {
+                    let vec = operation_state
+                        .intermediate_map_results
+                        .entry(partition)
+                        .or_insert(Vec::new());
+
+                    if let serde_json::Value::Array(ref pairs) = value {
+                        for pair in pairs {
+                            vec.push(pair.clone());
+                        }
+                    } else {
+                        parse_failed = true;
+                    }
+                }
+
+                operation_state.waiting_map_operations -= 1;
+                (operation_state.waiting_map_operations == 0, parse_failed)
+            };
+
+            if parse_failed {
+                process_map_operation_error(
+                    Error::from_kind(ErrorKind::Msg(
+                        "Failed to parse map operation output".to_owned(),
+                    )),
+                    operation_state_arc,
+                    master_interface_arc,
+                    initial_cpu_time,
+                );
+            } else if finished {
+                let result = combine_map_results(
+                    Arc::clone(&operation_state_arc),
+                    Arc::clone(&master_interface_arc),
+                    initial_cpu_time,
+                    output_dir,
+                );
+
+                if let Err(err) = result {
+                    process_map_operation_error(
+                        err,
+                        operation_state_arc,
+                        master_interface_arc,
+                        initial_cpu_time,
+                    );
+                }
             }
         }
         Err(err) => {
-            let mut map_result = pb::MapResult::new();
-            map_result.set_status(pb::ResultStatus::FAILURE);
-            map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-            map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
-
-            if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-                error!("Could not send map operation failed: {}", err);
-            }
-            log_map_operation_err(err, &operation_state_arc);
+            process_map_operation_error(
+                err,
+                operation_state_arc,
+                master_interface_arc,
+                initial_cpu_time,
+            );
         }
     }
 }
@@ -198,34 +293,6 @@ fn internal_perform_map(
     master_interface_arc: Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
-    let map_input_value = io::read(map_options.get_input_file_path()).chain_err(
-        || "unable to open input file",
-    )?;
-
-    let child = Command::new(map_options.get_mapper_file_path())
-        .arg("map")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .chain_err(|| "Failed to start map operation process.")?;
-
-    let map_input = MapInput {
-        key: map_options.get_input_file_path().to_string(),
-        value: map_input_value,
-    };
-
-    let serialized_map_input = bson::to_bson(&map_input).chain_err(
-        || "Could not serialize map input to bson.",
-    )?;
-
-    let map_input_document;
-    if let bson::Bson::Document(document) = serialized_map_input {
-        map_input_document = document;
-    } else {
-        return Err("Could not convert map input to bson::Document.".into());
-    }
-
     let mut output_path = PathBuf::new();
     output_path.push(WORKER_OUTPUT_DIRECTORY);
     output_path.push(output_dir_uuid);
@@ -235,19 +302,62 @@ fn internal_perform_map(
         || "Failed to create output directory",
     )?;
 
-    let initial_cpu_time = operation_state_arc.lock().unwrap().initial_cpu_time;
+    let input_locations = map_options.get_input().get_input_locations();
+    let initial_cpu_time;
 
-    thread::spawn(move || {
-        let result =
-            map_operation_thread_impl(&map_input_document, &*output_path.to_string_lossy(), child);
+    {
+        let mut operation_state = operation_state_arc.lock().unwrap();
+        operation_state.waiting_map_operations = input_locations.len();
+        operation_state.intermediate_map_results = HashMap::new();
 
-        process_map_result(
-            result,
-            operation_state_arc,
-            master_interface_arc,
-            initial_cpu_time,
-        );
-    });
+        initial_cpu_time = operation_state.initial_cpu_time;
+    }
+
+    for input_location in input_locations {
+        let map_input_value = io::read_location(input_location).chain_err(
+            || "unable to open input file",
+        )?;
+
+        let child = Command::new(map_options.get_mapper_file_path())
+            .arg("map")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .chain_err(|| "Failed to start map operation process.")?;
+
+        let map_input = MapInput {
+            key: input_location.get_input_path().clone().to_owned(),
+            value: map_input_value,
+        };
+
+        let serialized_map_input = bson::to_bson(&map_input).chain_err(
+            || "Could not serialize map input to bson.",
+        )?;
+
+        let map_input_document;
+        if let bson::Bson::Document(document) = serialized_map_input {
+            map_input_document = document;
+        } else {
+            return Err("Could not convert map input to bson::Document.".into());
+        }
+
+        let operation_state_arc_clone = Arc::clone(&operation_state_arc);
+        let master_interface_arc_clone = Arc::clone(&master_interface_arc);
+        let output_path_str: String = (*output_path.to_string_lossy()).to_owned();
+
+        thread::spawn(move || {
+            let result = map_operation_thread_impl(&map_input_document, child);
+
+            process_map_result(
+                result,
+                operation_state_arc_clone,
+                master_interface_arc_clone,
+                initial_cpu_time,
+                output_path_str,
+            );
+        });
+    }
 
     Ok(())
 }
@@ -264,9 +374,8 @@ mod tests {
         let map_results =
         r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
 
-        let (map, vec) = parse_map_results(&map_results, "tmp/foo/bar").unwrap();
+        let map = parse_map_results(&map_results).unwrap();
         assert_eq!(map.len(), 2);
-        assert_eq!(vec.len(), 2);
     }
 
     #[test]
@@ -276,7 +385,7 @@ mod tests {
         let map_results =
             r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
 
-        let result = parse_map_results(&map_results, "tmp/foo/bar");
+        let result = parse_map_results(&map_results);
         assert!(result.is_err());
     }
 }

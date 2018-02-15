@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+use serde_json;
 
 use cerberus_proto::worker as pb;
 
@@ -13,6 +16,9 @@ pub struct OperationState {
     pub initial_cpu_time: u64,
 
     pub intermediate_file_store: Vec<PathBuf>,
+
+    pub waiting_map_operations: usize,
+    pub intermediate_map_results: HashMap<u64, Vec<serde_json::Value>>,
 }
 
 impl OperationState {
@@ -22,6 +28,8 @@ impl OperationState {
             operation_status: pb::OperationStatus::UNKNOWN,
             initial_cpu_time: 0,
             intermediate_file_store: Vec::new(),
+            waiting_map_operations: 0,
+            intermediate_map_results: HashMap::new(),
         }
     }
 

@@ -12,6 +12,7 @@ extern crate futures_cpupool;
 extern crate grpc;
 #[macro_use]
 extern crate log;
+extern crate protobuf;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
