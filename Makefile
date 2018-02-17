@@ -23,6 +23,7 @@ unit-test:
 
 integration-test:
 	./tests/integration.sh
+	./tests/state_saving.sh
 
 #############################################################
 

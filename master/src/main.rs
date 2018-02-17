@@ -98,7 +98,7 @@ fn run() -> Result<()> {
 
     // If our state dump file exists and we aren't running a fresh copy of master we
     // should load from state.
-    if !fresh && Path::new("/var/lib/cerberus/master.dump").exists() {
+    if !fresh && Path::new(&format!("{}/master.dump", dump_dir)).exists() {
         state_handler.load_state().chain_err(
             || "Unable to load state from file",
         )?;
