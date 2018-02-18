@@ -7,7 +7,7 @@ use serde_json;
 use serde_json::Value as json;
 
 use errors::*;
-use scheduler::Scheduler;
+use scheduling::Scheduler;
 use worker_management::WorkerManager;
 
 /// The `StateHandling` trait defines an object that can have it's state saved
