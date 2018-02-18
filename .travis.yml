@@ -4,7 +4,10 @@ sudo: true
 language: rust
 rust:
     - nightly
-cache: cargo
+
+cache:
+    - cargo: true
+    - timeout: 1000
 
 addons:
     apt:
