@@ -89,7 +89,6 @@ fn run() -> Result<()> {
         .chain_err(|| "Error building grpc server.")?;
 
     let state_handler = StateHandler::new(
-        port,
         Arc::clone(&map_reduce_scheduler),
         Arc::clone(&worker_manager),
         create_dump_dir,

@@ -37,7 +37,6 @@ pub trait SimpleStateHandling {
 }
 
 pub struct StateHandler {
-    port: u16,
     scheduler: Arc<Scheduler>,
     worker_manager: Arc<WorkerManager>,
     dump_dir: String,
@@ -45,7 +44,6 @@ pub struct StateHandler {
 
 impl StateHandler {
     pub fn new(
-        port: u16,
         scheduler: Arc<Scheduler>,
         worker_manager: Arc<WorkerManager>,
         create_dir: bool,
@@ -58,7 +56,6 @@ impl StateHandler {
         }
 
         Ok(StateHandler {
-            port: port,
             scheduler: scheduler,
             worker_manager: worker_manager,
             dump_dir: dir.into(),
@@ -77,7 +74,6 @@ impl StateHandler {
         )?;
 
         let json = json!({
-            "port": self.port,
             "scheduler": scheduler_json,
             "worker_manager": worker_manager_json,
         });
