@@ -43,6 +43,12 @@ impl WorkerInterface for WorkerInterfaceImpl {
             );
         }
 
+        info!(
+            "Worker is getting added: IP={} PORT={}",
+            worker.address.ip().to_string(),
+            worker.address.port(),
+        );
+
         let client = grpc_pb::ScheduleOperationServiceClient::new_plain(
             &worker.address.ip().to_string(),
             worker.address.port(),
