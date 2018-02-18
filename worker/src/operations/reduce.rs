@@ -149,13 +149,13 @@ fn send_reduce_result(
 
 fn create_reduce_operations(
     reduce_request: &pb::PerformReduceRequest,
-    output_uuid: String,
+    output_uuid: &str,
 ) -> Result<Vec<ReduceOperation>> {
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
         // TODO: Run these operations in parallel as networks can be slow
-        let reduce_input = WorkerInterface::get_data(reduce_input_file, &output_uuid)
+        let reduce_input = WorkerInterface::get_data(reduce_input_file, output_uuid)
             .chain_err(|| "Couldn't read map input file")?;
 
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
@@ -197,12 +197,11 @@ fn create_reduce_operations(
 }
 
 // Public api for performing a reduce task.
-// TODO(#287): Refactor the perform_reduce and do_perform_reduce functions into more logical pieces
 pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
-    output_uuid: String,
+    output_uuid: &str,
 ) -> Result<()> {
     {
         let mut operation_state = operation_state_arc.lock().unwrap();
@@ -220,7 +219,7 @@ pub fn perform_reduce(
     }
     operation_handler::set_busy_status(operation_state_arc);
 
-    let result = do_perform_reduce(
+    let result = internal_perform_reduce(
         reduce_request,
         Arc::clone(operation_state_arc),
         master_interface_arc,
@@ -235,11 +234,11 @@ pub fn perform_reduce(
 }
 
 // Internal implementation for performing a reduce task.
-fn do_perform_reduce(
+fn internal_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
     operation_state_arc: Arc<Mutex<OperationState>>,
     master_interface_arc: Arc<MasterInterface>,
-    output_uuid: String,
+    output_uuid: &str,
 ) -> Result<()> {
     let reduce_operations = create_reduce_operations(reduce_request, output_uuid)
         .chain_err(|| "Error creating reduce operations from input.")?;
@@ -257,6 +256,42 @@ fn do_perform_reduce(
     );
 
     Ok(())
+}
+
+fn handle_reduce_queue_finished(
+    reduce_err: Option<Error>,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    master_interface_arc: &Arc<MasterInterface>,
+    initial_cpu_time: u64,
+) {
+    if let Some(err) = reduce_err {
+        let mut response = pb::ReduceResult::new();
+        response.set_status(pb::ResultStatus::FAILURE);
+        response.set_failure_details(operation_handler::failure_details_from_error(&err));
+
+        let result = send_reduce_result(master_interface_arc, response);
+        if let Err(err) = result {
+            error!("Error sending reduce failed: {}", err);
+        }
+
+        log_reduce_operation_err(err, operation_state_arc);
+    } else {
+        let mut response = pb::ReduceResult::new();
+        response.set_status(pb::ResultStatus::SUCCESS);
+        response.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+        let result = send_reduce_result(master_interface_arc, response);
+
+        match result {
+            Ok(_) => {
+                operation_handler::set_complete_status(operation_state_arc);
+                info!("Reduce operation completed sucessfully.");
+            }
+            Err(err) => {
+                error!("Error sending reduce result: {}", err);
+                operation_handler::set_failed_status(operation_state_arc);
+            }
+        }
+    }
 }
 
 fn run_reduce_queue(
@@ -285,34 +320,12 @@ fn run_reduce_queue(
             }
         }
 
-        if let Some(err) = reduce_err {
-            let mut response = pb::ReduceResult::new();
-            response.set_status(pb::ResultStatus::FAILURE);
-            response.set_failure_details(operation_handler::failure_details_from_error(&err));
-
-            let result = send_reduce_result(&master_interface_arc, response);
-            if let Err(err) = result {
-                error!("Error sending reduce failed: {}", err);
-            }
-
-            log_reduce_operation_err(err, &operation_state_arc);
-        } else {
-            let mut response = pb::ReduceResult::new();
-            response.set_status(pb::ResultStatus::SUCCESS);
-            response.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-            let result = send_reduce_result(&master_interface_arc, response);
-
-            match result {
-                Ok(_) => {
-                    operation_handler::set_complete_status(&operation_state_arc);
-                    info!("Reduce operation completed sucessfully.");
-                }
-                Err(err) => {
-                    error!("Error sending reduce result: {}", err);
-                    operation_handler::set_failed_status(&operation_state_arc);
-                }
-            }
-        }
+        handle_reduce_queue_finished(
+            reduce_err,
+            &operation_state_arc,
+            &master_interface_arc,
+            initial_cpu_time,
+        );
     });
 }
 
