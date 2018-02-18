@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -17,6 +17,7 @@ use super::io;
 use super::operation_handler;
 use super::state::OperationState;
 use util::output_error;
+use util::data_layer::AbstractionLayer;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
 
@@ -103,6 +104,7 @@ pub fn perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: &Arc<MasterInterface>,
+    data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     {
@@ -126,6 +128,7 @@ pub fn perform_map(
         map_options,
         operation_state_arc,
         master_interface_arc,
+        data_abstraction_layer_arc,
         output_dir_uuid,
     );
     if let Err(err) = result {
@@ -158,7 +161,7 @@ fn combine_map_results(
         file_path.push(&file_name);
 
         let json_values = json!(values);
-        io::write(file_path.clone(), json_values.to_string().as_bytes())
+        io::write_local(file_path.clone(), json_values.to_string().as_bytes())
             .chain_err(|| "failed to write map output")?;
         intermediate_files.push(file_path.clone());
 
@@ -291,6 +294,7 @@ fn internal_perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: &Arc<MasterInterface>,
+    data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     let mut output_path = PathBuf::new();
@@ -298,7 +302,11 @@ fn internal_perform_map(
     output_path.push(output_dir_uuid);
     output_path.push("map");
 
-    fs::create_dir_all(output_path.clone()).chain_err(
+    debug!(
+        "Attempting to create directory: {}",
+        output_path.clone().to_string_lossy()
+    );
+    fs::create_dir_all(&output_path).chain_err(
         || "Failed to create output directory",
     )?;
 
@@ -314,11 +322,13 @@ fn internal_perform_map(
     }
 
     for input_location in input_locations {
-        let map_input_value = io::read_location(input_location).chain_err(
-            || "unable to open input file",
-        )?;
+        let map_input_value = io::read_location(data_abstraction_layer_arc, input_location)
+            .chain_err(|| "unable to open input file")?;
 
-        let child = Command::new(map_options.get_mapper_file_path())
+        let absolute_path = data_abstraction_layer_arc
+            .absolute_path(Path::new(map_options.get_mapper_file_path()))
+            .chain_err(|| "Unable to get absolute path")?;
+        let child = Command::new(absolute_path)
             .arg("map")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -369,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_parse_map_results() {
-        io::write.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
 
         let map_results =
         r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
@@ -380,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_parse_map_results_error() {
-        io::write.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
 
         let map_results =
             r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;

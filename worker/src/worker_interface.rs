@@ -27,7 +27,7 @@ impl WorkerInterface {
 
         if file.contains(output_dir_uuid) {
             info!("file {} is local, loading from disk", file);
-            return io::read(file).chain_err(|| "Unable to read from local disk");
+            return io::read_local(file).chain_err(|| "Unable to read from local disk");
         }
 
         // TODO: Add client store so we don't need to create a new client every time.

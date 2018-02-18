@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use cerberus_proto::worker as pb;
 use common::{Job, Task};
+use util::data_layer::AbstractionLayer;
 use errors::*;
 
 const MEGA_BYTE: usize = 1000 * 1000;
@@ -27,9 +28,15 @@ pub trait TaskProcessor {
     fn create_reduce_tasks(&self, job: &Job, completed_map_tasks: Vec<&Task>) -> Result<Vec<Task>>;
 }
 
-pub struct TaskProcessorImpl;
+pub struct TaskProcessorImpl {
+    data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+}
 
 impl TaskProcessorImpl {
+    pub fn new(data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>) -> Self {
+        TaskProcessorImpl { data_abstraction_layer: data_abstraction_layer }
+    }
+
     /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     fn read_input_file(
         &self,
@@ -44,9 +51,9 @@ impl TaskProcessorImpl {
         input_location.set_input_path(input_path_str.to_owned());
         input_location.set_start_byte(0);
 
-        let input_file = fs::File::open(input_file_path).chain_err(
-            || "Error opening input file.",
-        )?;
+        let input_file = self.data_abstraction_layer
+            .open_file(input_file_path)
+            .chain_err(|| "Error opening input file.")?;
 
         let mut bytes_read: usize = 0;
 
@@ -102,10 +109,14 @@ impl TaskProcessor for TaskProcessorImpl {
             input_locations: Vec::new(),
         };
 
-        for entry in fs::read_dir(job.input_directory.as_str())? {
-            let entry: fs::DirEntry = entry.chain_err(|| "Error reading input directory.")?;
-            let path: PathBuf = entry.path();
-            if path.is_file() {
+        let paths = self.data_abstraction_layer
+            .read_dir(Path::new(&job.input_directory))
+            .chain_err(|| "Unable to read directory")?;
+        for path in paths {
+            if self.data_abstraction_layer
+                .is_file(path.as_path())
+                .chain_err(|| "Failed to check if path is a file")?
+            {
                 self.read_input_file(job, &mut map_task_file_info, &path, &mut map_tasks)
                     .chain_err(|| "Error reading input file.")?;
             }
@@ -154,11 +165,15 @@ mod tests {
     use std::path::Path;
     use std::io::{Read, Write};
     use std::collections::HashSet;
+    use std::fs;
     use common::{JobOptions, TaskType};
+    use util::data_layer::NullAbstractionLayer;
 
     #[test]
     fn test_create_map_tasks() {
-        let task_processor = TaskProcessorImpl;
+        let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =
+            Arc::new(NullAbstractionLayer);
+        let task_processor = TaskProcessorImpl::new(Arc::clone(&data_abstraction_layer));
 
         let test_path = Path::new("/tmp/cerberus/create_task_test/").to_path_buf();
         let mut input_path1 = test_path.clone();
@@ -167,21 +182,30 @@ mod tests {
         input_path2.push("input-2");
 
         fs::create_dir_all(test_path.clone()).unwrap();
-        let mut input_file1 = fs::File::create(input_path1.clone()).unwrap();
+        let mut input_file1 = task_processor
+            .data_abstraction_layer
+            .create_file(input_path1.as_path().clone())
+            .unwrap();
         input_file1
             .write_all(b"this is the first test file")
             .unwrap();
-        let mut input_file2 = fs::File::create(input_path2.clone()).unwrap();
+        let mut input_file2 = task_processor
+            .data_abstraction_layer
+            .create_file(input_path2.as_path().clone())
+            .unwrap();
         input_file2
             .write_all(b"this is the second test file")
             .unwrap();
 
-        let job = Job::new(JobOptions {
-            client_id: "test-client".to_owned(),
-            binary_path: "/tmp/bin".to_owned(),
-            input_directory: test_path.to_str().unwrap().to_owned(),
-            ..Default::default()
-        }).unwrap();
+        let job = Job::new(
+            JobOptions {
+                client_id: "test-client".to_owned(),
+                binary_path: "/tmp/bin".to_owned(),
+                input_directory: test_path.to_str().unwrap().to_owned(),
+                ..Default::default()
+            },
+            &data_abstraction_layer,
+        ).unwrap();
 
         let map_tasks: Vec<Task> = task_processor.create_map_tasks(&job).unwrap();
 
@@ -194,19 +218,23 @@ mod tests {
         assert_eq!(job.binary_path, perform_map_req.get_mapper_file_path());
 
         // Read map task input and make sure it is as expected.
-        let mut input_file0 = fs::File::open(
-            perform_map_req.get_input().get_input_locations()[0]
-                .input_path
-                .clone(),
-        ).unwrap();
+        let path = perform_map_req.get_input().get_input_locations()[0]
+            .input_path
+            .clone();
+        let mut input_file0 = task_processor
+            .data_abstraction_layer
+            .open_file(&Path::new(&path))
+            .unwrap();
         let mut map_input0 = String::new();
         input_file0.read_to_string(&mut map_input0).unwrap();
 
-        let mut input_file1 = fs::File::open(
-            perform_map_req.get_input().get_input_locations()[1]
-                .input_path
-                .clone(),
-        ).unwrap();
+        let path = perform_map_req.get_input().get_input_locations()[1]
+            .input_path
+            .clone();
+        let mut input_file1 = task_processor
+            .data_abstraction_layer
+            .open_file(&Path::new(&path))
+            .unwrap();
         let mut map_input1 = String::new();
         input_file1.read_to_string(&mut map_input1).unwrap();
 
@@ -228,14 +256,21 @@ mod tests {
 
     #[test]
     fn test_create_reduce_tasks() {
-        let task_processor = TaskProcessorImpl;
+        let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =
+            Arc::new(NullAbstractionLayer);
+        let task_processor = TaskProcessorImpl::new(data_abstraction_layer);
 
-        let job = Job::new(JobOptions {
-            client_id: "test-client".to_owned(),
-            binary_path: "/tmp/bin".to_owned(),
-            input_directory: "/tmp/inputdir".to_owned(),
-            ..Default::default()
-        }).unwrap();
+        let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =
+            Arc::new(NullAbstractionLayer);
+        let job = Job::new(
+            JobOptions {
+                client_id: "test-client".to_owned(),
+                binary_path: "/tmp/bin".to_owned(),
+                input_directory: "/tmp/inputdir".to_owned(),
+                ..Default::default()
+            },
+            &data_abstraction_layer,
+        ).unwrap();
 
         let mut input_location = pb::InputLocation::new();
         input_location.set_input_path("/tmp/input/".to_owned());

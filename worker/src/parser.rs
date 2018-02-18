@@ -31,5 +31,13 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("nfs")
+                .long("nfs")
+                .short("n")
+                .help("Sets the NFS path for the given worker.")
+                .takes_value(true)
+                .required(false),
+        )
         .get_matches()
 }

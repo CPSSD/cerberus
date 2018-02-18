@@ -49,12 +49,14 @@ use std::{thread, time};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::path::Path;
 
 use errors::*;
 use master_interface::MasterInterface;
 use operations::OperationHandler;
 use server::{Server, ScheduleOperationService, IntermediateDataService};
 use util::init_logger;
+use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
@@ -101,7 +103,17 @@ fn run() -> Result<()> {
     let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(
         || "Error creating master interface.",
     )?);
-    let operation_handler = Arc::new(OperationHandler::new(Arc::clone(&master_interface)));
+
+    let nfs_path = matches.value_of("nfs");
+    let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> = match nfs_path {
+        Some(path) => Arc::new(NFSAbstractionLayer::new(Path::new(path))),
+        None => Arc::new(NullAbstractionLayer::new()),
+    };
+
+    let operation_handler = Arc::new(OperationHandler::new(
+        Arc::clone(&master_interface),
+        Arc::clone(&data_abstraction_layer),
+    ));
 
     let scheduler_service = ScheduleOperationService::new(Arc::clone(&operation_handler));
     let interm_data_service = IntermediateDataService;

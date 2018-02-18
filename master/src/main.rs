@@ -49,6 +49,7 @@ use std::str::FromStr;
 use errors::*;
 use scheduler::{TaskProcessorImpl, Scheduler, run_task_result_loop};
 use util::init_logger;
+use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::{WorkerManager, run_health_check_loop, run_task_assigment_loop};
 use server::{Server, ClientService, WorkerService};
@@ -74,7 +75,15 @@ fn run() -> Result<()> {
         DEFAULT_DUMP_DIR,
     );
 
-    let task_processor = Arc::new(TaskProcessorImpl);
+    let nfs_path = matches.value_of("nfs");
+    let data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync> = match nfs_path {
+        Some(path) => Arc::new(NFSAbstractionLayer::new(Path::new(path))),
+        None => Arc::new(NullAbstractionLayer::new()),
+    };
+
+    let task_processor = Arc::new(TaskProcessorImpl::new(
+        Arc::clone(&data_abstraction_layer_arc),
+    ));
     let worker_interface = Arc::new(WorkerInterfaceImpl::new());
     let worker_manager = Arc::new(WorkerManager::new(worker_interface));
 
@@ -84,7 +93,10 @@ fn run() -> Result<()> {
     let worker_service = WorkerService::new(Arc::clone(&worker_manager));
 
     // Cli to Master Communications
-    let client_service = ClientService::new(Arc::clone(&map_reduce_scheduler));
+    let client_service = ClientService::new(
+        Arc::clone(&map_reduce_scheduler),
+        data_abstraction_layer_arc,
+    );
     let srv = Server::new(port, client_service, worker_service)
         .chain_err(|| "Error building grpc server.")?;
 
