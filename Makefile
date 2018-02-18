@@ -25,6 +25,9 @@ integration-test:
 	./tests/integration.sh
 	./tests/state_saving.sh
 
+multi-machine:
+	./tests/multi_machine.sh
+
 #############################################################
 
 build-docker-images: release
