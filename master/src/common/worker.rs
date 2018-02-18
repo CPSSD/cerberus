@@ -37,6 +37,8 @@ pub struct Worker {
 
     pub current_task_id: String,
     pub worker_id: String,
+
+    pub task_assignments_failed: u16,
 }
 
 impl Worker {
@@ -54,6 +56,8 @@ impl Worker {
 
             current_task_id: String::new(),
             worker_id: Uuid::new_v4().to_string(),
+
+            task_assignments_failed: 0,
         })
     }
 
@@ -119,6 +123,7 @@ impl StateHandling for Worker {
             "operation_status": self.get_serializable_operation_status(),
             "current_task_id": self.current_task_id,
             "worker_id": self.worker_id,
+            "task_assignments_failed": self.task_assignments_failed,
         }))
     }
 
@@ -139,6 +144,10 @@ impl StateHandling for Worker {
             .chain_err(|| "Unable to convert current_task_id")?;
         self.worker_id = serde_json::from_value(data["worker_id"].clone())
             .chain_err(|| "Unable to convert worker_id")?;
+
+        self.task_assignments_failed = serde_json::from_value(
+            data["task_assignments_failed"].clone(),
+        ).chain_err(|| "Unable to convert task_assignments_failed")?;
 
         Ok(())
     }

@@ -285,7 +285,19 @@ impl WorkerManager {
 
     pub fn handle_task_assignment_failure(&self, worker_id: &str) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.unassign_worker(worker_id)
+        state.unassign_worker(worker_id).chain_err(|| {
+            format!("Failed to unassign task from worker {}", worker_id)
+        })?;
+        state
+            .increment_failed_task_assignments(worker_id)
+            .chain_err(|| "Error when incrementing task assignment failures")
+    }
+
+    pub fn handle_task_assignment_success(&self, worker_id: &str) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.reset_failed_task_assignments(worker_id).chain_err(
+            || "Error when recording task assignment success",
+        )
     }
 
     pub fn run_task(&self, task: Task) {
@@ -357,6 +369,11 @@ fn handle_task_assignment_result(
         let result = worker_manager.handle_task_assignment_failure(&worker_id);
         if let Err(err) = result {
             output_error(&err.chain_err(|| "Error handling task assignment failure."));
+        }
+    } else {
+        let result = worker_manager.handle_task_assignment_success(&worker_id);
+        if let Err(err) = result {
+            output_error(&err.chain_err(|| "Error handling task assignment success."));
         }
     }
 }

@@ -10,6 +10,7 @@ use errors::*;
 use state;
 
 const MAX_TASK_FAILURE_COUNT: u16 = 10;
+const MAX_TASK_ASSIGNMENT_FAILURE: u16 = 5;
 
 #[derive(Default)]
 pub struct State {
@@ -289,6 +290,37 @@ impl State {
         }
 
         false
+    }
+
+    pub fn increment_failed_task_assignments(&mut self, worker_id: &str) -> Result<()> {
+        let should_remove_worker = {
+            let worker = self.workers.get_mut(worker_id).chain_err(|| {
+                format!("Worker with ID {} not found.", worker_id)
+            })?;
+
+            worker.task_assignments_failed += 1;
+            worker.task_assignments_failed == MAX_TASK_ASSIGNMENT_FAILURE
+        };
+
+        if should_remove_worker {
+            self.remove_worker(worker_id).chain_err(|| {
+                format!(
+                    "Error removing Worker with id {} because of task assignment failure.",
+                    worker_id
+                )
+            })?;
+        }
+
+        Ok(())
+    }
+
+    pub fn reset_failed_task_assignments(&mut self, worker_id: &str) -> Result<()> {
+        let worker = self.workers.get_mut(worker_id).chain_err(|| {
+            format!("Worker with ID {} not found.", worker_id)
+        })?;
+        worker.task_assignments_failed = 0;
+
+        Ok(())
     }
 }
 
