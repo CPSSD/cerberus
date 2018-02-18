@@ -11,14 +11,14 @@ use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::IntermediateDataService; // For pub functions only
 
-/// 'WorkerInterface` is used to load data from other workers which have completed
+/// `WorkerInterface` is used to load data from other workers which have completed
 /// their map tasks.
 pub struct WorkerInterface;
 
 impl WorkerInterface {
-    pub fn get_data<P: AsRef<Path>>(path: P, output_dir_uuid: &String) -> Result<String> {
+    pub fn get_data<P: AsRef<Path>>(path: P, output_dir_uuid: &str) -> Result<String> {
         let path_str = path.as_ref().to_string_lossy();
-        let split_path: Vec<&str> = path_str.splitn(2, "/").collect();
+        let split_path: Vec<&str> = path_str.splitn(2, '/').collect();
         let worker_addr = SocketAddr::from_str(split_path[0]).chain_err(
             || "Unable to parse worker address",
         )?;

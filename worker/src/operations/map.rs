@@ -42,7 +42,7 @@ fn send_map_result(
     Ok(())
 }
 
-/// `IntermediateMapResults` is a HashMap mapping a partition to a JSON value containing
+/// `IntermediateMapResults` is a `HashMap` mapping a partition to a JSON value containing
 /// the output for that partition.
 type IntermediateMapResults = HashMap<u64, serde_json::Value>;
 
@@ -102,7 +102,7 @@ fn map_operation_thread_impl(
 pub fn perform_map(
     map_options: &pb::PerformMapRequest,
     operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
+    master_interface_arc: &Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     {
@@ -124,7 +124,7 @@ pub fn perform_map(
 
     let result = internal_perform_map(
         map_options,
-        Arc::clone(operation_state_arc),
+        operation_state_arc,
         master_interface_arc,
         output_dir_uuid,
     );
@@ -137,10 +137,10 @@ pub fn perform_map(
 }
 
 fn combine_map_results(
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
-    output_dir: String,
+    output_dir: &str,
 ) -> Result<()> {
     let partition_map;
     {
@@ -151,10 +151,10 @@ fn combine_map_results(
     let mut map_results: HashMap<u64, String> = HashMap::new();
     let mut intermediate_files = Vec::new();
 
-    for (partition, values) in partition_map.iter() {
+    for (partition, values) in (&partition_map).iter() {
         let file_name = Uuid::new_v4().to_string();
         let mut file_path = PathBuf::new();
-        file_path.push(output_dir.clone());
+        file_path.push(output_dir);
         file_path.push(&file_name);
 
         let json_values = json!(values);
@@ -175,11 +175,11 @@ fn combine_map_results(
     map_result.set_status(pb::ResultStatus::SUCCESS);
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
 
-    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
-        log_map_operation_err(err, &operation_state_arc);
+    if let Err(err) = send_map_result(master_interface_arc, map_result) {
+        log_map_operation_err(err, operation_state_arc);
     } else {
         info!("Map operation completed sucessfully.");
-        operation_handler::set_complete_status(&operation_state_arc);
+        operation_handler::set_complete_status(operation_state_arc);
     }
 
     Ok(())
@@ -187,8 +187,8 @@ fn combine_map_results(
 
 fn process_map_operation_error(
     err: Error,
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
 ) {
     {
@@ -201,18 +201,18 @@ fn process_map_operation_error(
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
     map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
 
-    if let Err(err) = send_map_result(&master_interface_arc, map_result) {
+    if let Err(err) = send_map_result(master_interface_arc, map_result) {
         error!("Could not send map operation failed: {}", err);
     }
-    log_map_operation_err(err, &operation_state_arc);
+    log_map_operation_err(err, operation_state_arc);
 }
 
 fn process_map_result(
     result: Result<IntermediateMapResults>,
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
-    output_dir: String,
+    output_dir: &str,
 ) {
     {
         // The number of operations waiting will be 0 if we have already processed one
@@ -233,7 +233,7 @@ fn process_map_result(
                     let vec = operation_state
                         .intermediate_map_results
                         .entry(partition)
-                        .or_insert(Vec::new());
+                        .or_insert_with(Vec::new);
 
                     if let serde_json::Value::Array(ref pairs) = value {
                         for pair in pairs {
@@ -259,8 +259,8 @@ fn process_map_result(
                 );
             } else if finished {
                 let result = combine_map_results(
-                    Arc::clone(&operation_state_arc),
-                    Arc::clone(&master_interface_arc),
+                    operation_state_arc,
+                    master_interface_arc,
                     initial_cpu_time,
                     output_dir,
                 );
@@ -289,8 +289,8 @@ fn process_map_result(
 // Internal implementation for performing a map task.
 fn internal_perform_map(
     map_options: &pb::PerformMapRequest,
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    master_interface_arc: &Arc<MasterInterface>,
     output_dir_uuid: &str,
 ) -> Result<()> {
     let mut output_path = PathBuf::new();
@@ -327,7 +327,7 @@ fn internal_perform_map(
             .chain_err(|| "Failed to start map operation process.")?;
 
         let map_input = MapInput {
-            key: input_location.get_input_path().clone().to_owned(),
+            key: input_location.get_input_path().to_owned(),
             value: map_input_value,
         };
 
@@ -342,8 +342,8 @@ fn internal_perform_map(
             return Err("Could not convert map input to bson::Document.".into());
         }
 
-        let operation_state_arc_clone = Arc::clone(&operation_state_arc);
-        let master_interface_arc_clone = Arc::clone(&master_interface_arc);
+        let operation_state_arc_clone = Arc::clone(operation_state_arc);
+        let master_interface_arc_clone = Arc::clone(master_interface_arc);
         let output_path_str: String = (*output_path.to_string_lossy()).to_owned();
 
         thread::spawn(move || {
@@ -351,10 +351,10 @@ fn internal_perform_map(
 
             process_map_result(
                 result,
-                operation_state_arc_clone,
-                master_interface_arc_clone,
+                &operation_state_arc_clone,
+                &master_interface_arc_clone,
                 initial_cpu_time,
-                output_path_str,
+                &output_path_str,
             );
         });
     }
