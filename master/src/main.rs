@@ -34,7 +34,7 @@ mod errors {
 }
 
 mod common;
-mod scheduler;
+mod scheduling;
 mod state;
 mod worker_communication;
 mod worker_management;
@@ -47,7 +47,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use errors::*;
-use scheduler::{TaskProcessorImpl, Scheduler, run_task_result_loop};
+use scheduling::{TaskProcessorImpl, Scheduler, run_task_result_loop};
 use util::init_logger;
 use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 use worker_communication::WorkerInterfaceImpl;

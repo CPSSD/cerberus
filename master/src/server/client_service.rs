@@ -3,7 +3,7 @@ use std::sync::Arc;
 use grpc::{SingleResponse, Error, RequestOptions};
 
 use common::{Job, JobOptions};
-use scheduler::Scheduler;
+use scheduling::Scheduler;
 use util::output_error;
 use util::data_layer::AbstractionLayer;
 
@@ -131,7 +131,7 @@ mod tests {
     use super::*;
     use common::{Job, Task, Worker};
     use errors::*;
-    use scheduler::TaskProcessor;
+    use scheduling::TaskProcessor;
     use cerberus_proto::worker as wpb;
     use cerberus_proto::mapreduce::Status as MapReduceStatus;
     use cerberus_proto::mapreduce_grpc::MapReduceService;
