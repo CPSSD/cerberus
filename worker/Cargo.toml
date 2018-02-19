@@ -1,6 +1,6 @@
 [package]
 name = "worker"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
@@ -23,4 +23,4 @@ uuid = { version = "0.5", features = ["v4"] }
 cerberus-proto = { path = "../proto" }
 
 [dev-dependencies]
-mocktopus = "0.1.0"
+mocktopus = "=0.1.1"
