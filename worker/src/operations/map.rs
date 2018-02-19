@@ -112,11 +112,21 @@ pub fn perform_map(
         operation_state.initial_cpu_time = operation_handler::get_cpu_time();
     }
 
+    let input_files: Vec<String> = map_options
+        .get_input()
+        .get_input_locations()
+        .into_iter()
+        .map(|loc| loc.input_path.clone())
+        .collect();
+
+
     info!(
-        "Performing map operation. mapper={} input={:?}",
+        "Performing map operation. mapper={} number of inputs={}",
         map_options.mapper_file_path,
-        map_options.input
+        map_options.get_input().get_input_locations().len()
     );
+
+    debug!("Input files: {:?}", input_files);
 
     if operation_handler::get_worker_status(operation_state_arc) == pb::WorkerStatus::BUSY {
         warn!("Map operation requested while worker is busy");
