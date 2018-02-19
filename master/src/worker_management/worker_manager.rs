@@ -188,7 +188,9 @@ impl WorkerManager {
                     worker.status_last_updated.timestamp();
                 if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S {
                     workers_to_remove.push(worker.worker_id.to_owned());
-                } else if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S {
+                } else if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S &&
+                           worker.current_task_id != ""
+                {
                     workers_to_reassign.push(worker.worker_id.to_owned());
                 }
             }
