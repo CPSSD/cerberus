@@ -52,6 +52,7 @@ pub fn read_location(
 }
 
 pub fn read_local<P: AsRef<Path>>(path: P) -> Result<String> {
+    debug!("Attempting to read local file: {:?}", path.as_ref());
     let file = File::open(&path).chain_err(|| {
         format!("unable to open file {}", path.as_ref().to_string_lossy())
     })?;
@@ -91,6 +92,7 @@ pub fn write<P: AsRef<Path>>(
 
 #[cfg_attr(test, mockable)]
 pub fn write_local<P: AsRef<Path>>(path: P, data: &[u8]) -> Result<()> {
+    debug!("Attempting to write to local file: {:?}", path.as_ref());
     let mut file = File::create(&path).chain_err(|| {
         format!("unable to create file {}", path.as_ref().to_string_lossy())
     })?;

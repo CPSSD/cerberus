@@ -70,11 +70,13 @@ const DEFAULT_WORKER_IP: &str = "[::]";
 fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
+        info!("Attempting to register with the master");
         retries -= 1;
 
         match master_interface.register_worker(address) {
             Ok(_) => break,
             Err(err) => {
+                debug!("Error registering worker with master: {:?}", err);
                 if retries == 0 {
                     return Err(err.chain_err(|| "Error registering worker with master"));
                 }

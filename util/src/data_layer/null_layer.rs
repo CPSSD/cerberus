@@ -60,6 +60,7 @@ impl AbstractionLayer for NullAbstractionLayer {
     }
 
     fn create_dir_all(&self, path: &Path) -> Result<()> {
+        debug!("Creating directory: {:?}", path);
         fs::create_dir_all(path).chain_err(|| "Unable to create directories")
     }
 }

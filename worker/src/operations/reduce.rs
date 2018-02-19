@@ -112,10 +112,6 @@ impl ReduceOperationQueue {
             .spawn()
             .chain_err(|| "Failed to start reduce operation process.")?;
 
-        debug!(
-            "Attempting to create directory: {}",
-            reduce_options.output_directory.to_owned()
-        );
         data_abstraction_layer_arc
             .create_dir_all(Path::new(&reduce_options.output_directory))
             .chain_err(|| "Failed to create output directory")?;
@@ -180,7 +176,7 @@ fn create_reduce_operations(
     for reduce_input_file in reduce_request.get_input_file_paths() {
         // TODO: Run these operations in parallel as networks can be slow
         let reduce_input = WorkerInterface::get_data(reduce_input_file, output_uuid)
-            .chain_err(|| "Couldn't read map input file")?;
+            .chain_err(|| "Couldn't read reduce input file")?;
 
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing map response.",

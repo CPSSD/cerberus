@@ -6,6 +6,7 @@ use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use common::Worker;
 use worker_management::WorkerManager;
+use util;
 
 pub struct WorkerService {
     worker_manager: Arc<WorkerManager>,
@@ -25,13 +26,19 @@ impl grpc_pb::WorkerService for WorkerService {
     ) -> SingleResponse<pb::RegisterWorkerResponse> {
         let worker = match Worker::new(request.get_worker_address().to_string()) {
             Ok(worker) => worker,
-            Err(err) => return SingleResponse::err(Error::Panic(err.to_string())),
+            Err(err) => {
+                let response = SingleResponse::err(Error::Panic(err.to_string()));
+                util::output_error(&err.chain_err(|| "Unable to create new worker"));
+                return response;
+            }
         };
 
         let worker_id = worker.worker_id.to_owned();
         let result = self.worker_manager.register_worker(worker);
         if let Err(err) = result {
-            return SingleResponse::err(Error::Panic(err.to_string()));
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to register worker"));
+            return response;
         }
 
         let mut response = pb::RegisterWorkerResponse::new();
@@ -51,7 +58,9 @@ impl grpc_pb::WorkerService for WorkerService {
         );
 
         if let Err(err) = result {
-            return SingleResponse::err(Error::Panic(err.to_string()));
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to update worker status"));
+            return response;
         }
 
         let response = pb::EmptyMessage::new();
@@ -65,7 +74,9 @@ impl grpc_pb::WorkerService for WorkerService {
     ) -> SingleResponse<pb::EmptyMessage> {
         let result = self.worker_manager.process_map_task_result(&request);
         if let Err(err) = result {
-            return SingleResponse::err(Error::Panic(err.to_string()));
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to return map results"));
+            return response;
         }
 
         let response = pb::EmptyMessage::new();
@@ -79,7 +90,9 @@ impl grpc_pb::WorkerService for WorkerService {
     ) -> SingleResponse<pb::EmptyMessage> {
         let result = self.worker_manager.process_reduce_task_result(&request);
         if let Err(err) = result {
-            return SingleResponse::err(Error::Panic(err.to_string()));
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to return reduce results"));
+            return response;
         }
 
         let response = pb::EmptyMessage::new();
