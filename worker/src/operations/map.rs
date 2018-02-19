@@ -312,10 +312,6 @@ fn internal_perform_map(
     output_path.push(output_dir_uuid);
     output_path.push("map");
 
-    debug!(
-        "Attempting to create directory: {}",
-        output_path.clone().to_string_lossy()
-    );
     fs::create_dir_all(&output_path).chain_err(
         || "Failed to create output directory",
     )?;

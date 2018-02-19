@@ -94,6 +94,7 @@ impl StateHandler {
     }
 
     pub fn load_state(&self) -> Result<()> {
+        info!("Loading master from state!");
         let mut file = File::open(format!("{}/master.dump", self.dump_dir))
             .chain_err(|| "Unable to open file")?;
         let mut data = String::new();
@@ -128,6 +129,7 @@ impl StateHandler {
         )?;
 
 
+        info!("Succesfully loaded from state!");
         Ok(())
     }
 }
