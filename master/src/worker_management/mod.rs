@@ -1,10 +1,6 @@
-mod worker_manager;
-
-// TODO(conor) Remove this when the refactor is completed.
 pub use self::worker_manager::WorkerManager;
+pub use self::worker_manager::run_health_check_loop;
+pub use self::worker_manager::run_task_assigment_loop;
 
-// TODO(conor) Rename this when the refactor is completed.
-pub use self::new_worker_manager::WorkerManager as NewWorkerManager;
-
-mod new_worker_manager;
+mod worker_manager;
 mod state;

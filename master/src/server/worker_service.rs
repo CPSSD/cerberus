@@ -1,36 +1,20 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 
 use grpc::{RequestOptions, SingleResponse, Error};
-use chrono::prelude::*;
-
-use common::Worker;
-use worker_communication::{WorkerInterface, WorkerInterfaceImpl};
-use worker_management::WorkerManager;
-use scheduler::Scheduler;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
-
-const INVALID_TASK_ID: &str = "No valid Task ID for this worker.";
-const INVALID_WORKER_ID: &str = "No worker found for provided id.";
+use common::Worker;
+use worker_management::WorkerManager;
+use util;
 
 pub struct WorkerService {
-    worker_manager: Arc<Mutex<WorkerManager>>,
-    worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-    scheduler: Arc<Mutex<Scheduler>>,
+    worker_manager: Arc<WorkerManager>,
 }
 
 impl WorkerService {
-    pub fn new(
-        worker_manager: Arc<Mutex<WorkerManager>>,
-        worker_interface: Arc<RwLock<WorkerInterfaceImpl>>,
-        scheduler: Arc<Mutex<Scheduler>>,
-    ) -> Self {
-        WorkerService {
-            worker_manager,
-            worker_interface,
-            scheduler,
-        }
+    pub fn new(worker_manager: Arc<WorkerManager>) -> Self {
+        WorkerService { worker_manager }
     }
 }
 
@@ -42,20 +26,20 @@ impl grpc_pb::WorkerService for WorkerService {
     ) -> SingleResponse<pb::RegisterWorkerResponse> {
         let worker = match Worker::new(request.get_worker_address().to_string()) {
             Ok(worker) => worker,
-            Err(err) => return SingleResponse::err(Error::Panic(err.to_string())),
+            Err(err) => {
+                let response = SingleResponse::err(Error::Panic(err.to_string()));
+                util::output_error(&err.chain_err(|| "Unable to create new worker"));
+                return response;
+            }
         };
 
-        // Add client for worker to worker interface.
-        let interface = self.worker_interface.write().unwrap();
-        let result = interface.add_client(&worker);
-        if let Err(err) = result {
-            return SingleResponse::err(Error::Panic(err.to_string()));
-        }
-
-        // Add worker to worker manager.
-        let mut manager = self.worker_manager.lock().unwrap();
         let worker_id = worker.worker_id.to_owned();
-        manager.add_worker(worker);
+        let result = self.worker_manager.register_worker(worker);
+        if let Err(err) = result {
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to register worker"));
+            return response;
+        }
 
         let mut response = pb::RegisterWorkerResponse::new();
         response.set_worker_id(worker_id);
@@ -67,31 +51,20 @@ impl grpc_pb::WorkerService for WorkerService {
         _o: RequestOptions,
         request: pb::UpdateStatusRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
-        let mut manager = self.worker_manager.lock().unwrap();
-        match manager.get_worker(request.get_worker_id()) {
-            Some(ref mut worker) => {
-                worker.status = request.get_worker_status();
-                worker.operation_status = request.get_operation_status();
-                worker.status_last_updated = Utc::now();
+        let result = self.worker_manager.update_worker_status(
+            request.get_worker_id(),
+            request.get_worker_status(),
+            request.get_operation_status(),
+        );
 
-                if !worker.current_task_id.is_empty() &&
-                    (request.get_operation_status() == pb::OperationStatus::FAILED ||
-                         request.get_operation_status() == pb::OperationStatus::COMPLETE)
-                {
-                    // No result has been received for this operation
-                    // We need to reschedule it
-                    let mut scheduler = self.scheduler.lock().unwrap();
-                    match scheduler.unschedule_task(&worker.current_task_id) {
-                        Ok(_) => worker.current_task_id = String::new(),
-                        Err(err) => error!("Could not unschedule task for worker, error: {}", err),
-                    }
-                }
-
-                let response = pb::EmptyMessage::new();
-                SingleResponse::completed(response)
-            }
-            None => SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
+        if let Err(err) = result {
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to update worker status"));
+            return response;
         }
+
+        let response = pb::EmptyMessage::new();
+        SingleResponse::completed(response)
     }
 
     fn return_map_result(
@@ -99,37 +72,12 @@ impl grpc_pb::WorkerService for WorkerService {
         _o: RequestOptions,
         request: pb::MapResult,
     ) -> SingleResponse<pb::EmptyMessage> {
-        let mut manager = self.worker_manager.lock().unwrap();
-
-        let worker = match manager.get_worker(request.get_worker_id()) {
-            Some(worker) => worker,
-            None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
-        };
-
-        let task_id = worker.current_task_id.to_owned();
-        if task_id.is_empty() {
-            return SingleResponse::err(Error::Other(INVALID_TASK_ID));
+        let result = self.worker_manager.process_map_task_result(&request);
+        if let Err(err) = result {
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to return map results"));
+            return response;
         }
-
-        // Scope for scheduler lock
-        {
-            let mut scheduler = self.scheduler.lock().unwrap();
-            let result =
-                scheduler.process_map_task_response(&task_id, &request, worker.address.to_string());
-            if let Err(err) = result {
-                error!("Could not process map response: {}", err);
-                return SingleResponse::err(Error::Panic(err.to_string()));
-            };
-        }
-
-        worker.status = pb::WorkerStatus::AVAILABLE;
-        if request.get_status() == pb::ResultStatus::SUCCESS {
-            worker.operation_status = pb::OperationStatus::COMPLETE;
-        } else {
-            worker.operation_status = pb::OperationStatus::FAILED;
-        }
-        worker.status_last_updated = Utc::now();
-        worker.current_task_id = String::new();
 
         let response = pb::EmptyMessage::new();
         SingleResponse::completed(response)
@@ -140,64 +88,14 @@ impl grpc_pb::WorkerService for WorkerService {
         _o: RequestOptions,
         request: pb::ReduceResult,
     ) -> SingleResponse<pb::EmptyMessage> {
-        let mut manager = self.worker_manager.lock().unwrap();
-        let worker = match manager.get_worker(request.get_worker_id()) {
-            Some(worker) => worker,
-            None => return SingleResponse::err(Error::Other(INVALID_WORKER_ID)),
-        };
-
-        let task_id = worker.current_task_id.to_owned();
-        if task_id.is_empty() {
-            return SingleResponse::err(Error::Other(INVALID_TASK_ID));
+        let result = self.worker_manager.process_reduce_task_result(&request);
+        if let Err(err) = result {
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to return reduce results"));
+            return response;
         }
-
-        // Scope for scheduler lock
-        {
-            let mut scheduler = self.scheduler.lock().unwrap();
-            let result = scheduler.process_reduce_task_response(&task_id, &request);
-            if let Err(err) = result {
-                error!("Could not process reduce response: {}", err);
-                return SingleResponse::err(Error::Panic(err.to_string()));
-            }
-        }
-
-        worker.status = pb::WorkerStatus::AVAILABLE;
-        if request.get_status() == pb::ResultStatus::SUCCESS {
-            worker.operation_status = pb::OperationStatus::COMPLETE;
-        } else {
-            worker.operation_status = pb::OperationStatus::FAILED;
-        }
-        worker.status_last_updated = Utc::now();
-        worker.current_task_id = String::new();
 
         let response = pb::EmptyMessage::new();
         SingleResponse::completed(response)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cerberus_proto::worker_grpc::WorkerService as WS;
-    use mapreduce_tasks::TaskProcessor;
-
-    #[test]
-    fn test_register_worker() {
-        let worker_manager = Arc::new(Mutex::new(WorkerManager::new(None, None)));
-        let worker_interface = Arc::new(RwLock::new(WorkerInterfaceImpl::new()));
-        let task_processor = TaskProcessor;
-        let scheduler = Arc::new(Mutex::new(Scheduler::new(Box::new(task_processor))));
-
-        let worker_service =
-            WorkerService::new(worker_manager.clone(), worker_interface, scheduler);
-
-        let mut register_worker_request = pb::RegisterWorkerRequest::new();
-        register_worker_request.set_worker_address(String::from("127.0.0.1:8080"));
-
-        // Register worker
-        worker_service.register_worker(RequestOptions::new(), register_worker_request);
-
-        let locked_worker_manager = worker_manager.lock().unwrap();
-        assert_eq!(locked_worker_manager.get_workers().len(), 1);
     }
 }

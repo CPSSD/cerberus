@@ -95,9 +95,27 @@ service ScheduleOperationService {
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
 }
 
+// Message specifying where one part of the input for a map task is located.
+message InputLocation {
+    // Location of the input file on an accessible filesystem.
+    string input_path = 1;
+
+    // The index of the first byte to read from the file.
+    uint64 start_byte = 2;
+
+    // The index of the last byte to read from the file.
+    uint64 end_byte = 3;
+}
+
+// Message specifying the input for given a map request.
+message MapTaskInput {
+    // An array of InputLocations which make up the Input for this Map Task.
+    repeated InputLocation input_locations = 1;
+}
+
 message PerformMapRequest {
-    // The path of the input file.
-    string input_file_path = 1;
+    // Message specifying the input for this map request.
+    MapTaskInput input = 1;
     // The path to the binary that performs the map operation.
     string mapper_file_path = 2;
 }

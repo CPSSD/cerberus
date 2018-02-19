@@ -10,6 +10,7 @@ pub mod errors {
 }
 
 pub mod logging;
+pub mod data_layer;
 
 pub use logging::init_logger;
 pub use logging::output_error;

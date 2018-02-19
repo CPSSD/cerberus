@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use protobuf::repeated::RepeatedField;
 use serde_json;
 use uuid::Uuid;
 
 use errors::*;
-use queued_work_store::QueuedWork;
 use state::StateHandling;
 
 use cerberus_proto::worker as pb;
@@ -14,8 +14,6 @@ pub enum TaskStatus {
     Queued,
     InProgress,
     Complete,
-    //TODO(conor): Remove this when Failed is used.
-    #[allow(dead_code)]
     Failed,
 }
 
@@ -23,6 +21,13 @@ pub enum TaskStatus {
 pub enum TaskType {
     Map,
     Reduce,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InputLocation {
+    input_path: String,
+    start_byte: u64,
+    end_byte: u64,
 }
 
 /// The `Task` is a struct that represents a map or reduce task.
@@ -53,9 +58,16 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new_map_task<S: Into<String>>(job_id: S, binary_path: S, input_file: S) -> Self {
+    pub fn new_map_task<S: Into<String>>(
+        job_id: S,
+        binary_path: S,
+        input_locations: Vec<pb::InputLocation>,
+    ) -> Self {
+        let mut map_task_input = pb::MapTaskInput::new();
+        map_task_input.set_input_locations(RepeatedField::from_vec(input_locations));
+
         let mut map_request = pb::PerformMapRequest::new();
-        map_request.set_input_file_path(input_file.into());
+        map_request.set_input(map_task_input);
         map_request.set_mapper_file_path(binary_path.into());
 
         Task {
@@ -82,13 +94,28 @@ impl Task {
         let request_data = data["request"].clone();
 
         // Create a basic Map task.
-        let id: String = serde_json::from_value(data["map_reduce_id"].clone())
-            .chain_err(|| "Unable to convert map_reduce_id")?;
+        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
+            || "Unable to convert job_id",
+        )?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
-        let input_file: String = serde_json::from_value(request_data["input_file"].clone())
-            .chain_err(|| "Unable to convert input_file")?;
-        let mut task = Task::new_map_task(id, binary_path, input_file);
+        let input_locations: Vec<InputLocation> = serde_json::from_value(
+            request_data["input_locations"].clone(),
+        ).chain_err(|| "Unable to convert input")?;
+
+        let input_locations_pb = input_locations
+            .into_iter()
+            .map(|loc| {
+                let mut loc_pb = pb::InputLocation::new();
+                loc_pb.set_input_path(loc.input_path.clone());
+                loc_pb.set_start_byte(loc.start_byte);
+                loc_pb.set_end_byte(loc.end_byte);
+
+                loc_pb
+            })
+            .collect();
+
+        let mut task = Task::new_map_task(id, binary_path, input_locations_pb);
 
         // Update the state.
         task.load_state(data).chain_err(
@@ -141,8 +168,9 @@ impl Task {
         let input_files: Vec<String> = serde_json::from_value(request_data["input_files"].clone())
             .chain_err(|| "Unable to convert input_files")?;
 
-        let id: String = serde_json::from_value(data["map_reduce_id"].clone())
-            .chain_err(|| "Unable to convert map_reduce_id")?;
+        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
+            || "Unable to convert job_id",
+        )?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
         let output_dir: String = serde_json::from_value(request_data["output_directory"].clone())
@@ -155,19 +183,6 @@ impl Task {
         )?;
 
         Ok(task)
-    }
-
-    pub fn add_map_output_files(&mut self, map_response: &pb::MapResult, worker_address: String) {
-        for (partition, output_file) in map_response.get_map_results() {
-            self.map_output_files.insert(
-                *partition,
-                format!(
-                    "{}{}",
-                    worker_address,
-                    output_file
-                ),
-            );
-        }
     }
 }
 
@@ -187,8 +202,20 @@ impl StateHandling for Task {
             TaskType::Map => {
                 match self.map_request {
                     Some(ref req) => {
+                        let input_locations: Vec<InputLocation> = req.get_input()
+                            .get_input_locations()
+                            .into_iter()
+                            .map(|loc| {
+                                InputLocation {
+                                    input_path: loc.input_path.clone(),
+                                    start_byte: loc.start_byte,
+                                    end_byte: loc.end_byte,
+                                }
+                            })
+                            .collect();
+
                         json!({
-                            "input_file": req.input_file_path,
+                            "input_locations": input_locations,
                             "binary_path":req.mapper_file_path,
                         })
                     }
@@ -244,25 +271,18 @@ impl StateHandling for Task {
     }
 }
 
-impl QueuedWork for Task {
-    type Key = String;
-
-    fn get_work_bucket(&self) -> String {
-        self.job_id.to_owned()
-    }
-
-    fn get_work_id(&self) -> String {
-        self.id.to_owned()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_get_task_type() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
 
         let reduce_task = Task::new_reduce_task(
             "reduce-1",
@@ -278,17 +298,28 @@ mod tests {
 
     #[test]
     fn test_get_map_reduce_id() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
         assert_eq!(map_task.job_id, "map-1");
     }
 
     #[test]
     fn test_map_task_request() {
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/input/file1");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/file1".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
         let map_request = map_task.map_request.unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
-        assert_eq!("/tmp/input/file1", map_request.get_input_file_path());
+        assert_eq!("/tmp/input/file1", map_request.get_input().get_input_locations()[0]
+            .input_path);
         assert!(map_task.reduce_request.is_none());
     }
 
@@ -313,7 +344,12 @@ mod tests {
 
     #[test]
     fn test_set_output_files() {
-        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", "/tmp/bin/input");
+        let mut input_location = pb::InputLocation::new();
+        input_location.set_input_path("/tmp/input/".to_owned());
+        input_location.set_start_byte(0);
+        input_location.set_end_byte(0);
+
+        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
 
         map_task.map_output_files.insert(
             0,
@@ -360,20 +396,6 @@ mod tests {
         // Set the status to Completed and assert success.
         reduce_task.status = TaskStatus::Complete;
         assert_eq!(reduce_task.status, TaskStatus::Complete);
-    }
-
-    #[test]
-    fn test_queued_work_impl() {
-        let reduce_task = Task::new_reduce_task(
-            "reduce-1",
-            "/tmp/bin",
-            0,
-            vec!["/tmp/input/inter_mediate".to_owned()],
-            "/tmp/output/",
-        );
-
-        assert_eq!(reduce_task.get_work_bucket(), "reduce-1");
-        assert_eq!(reduce_task.get_work_id(), reduce_task.id);
     }
 
     #[test]

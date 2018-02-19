@@ -1,6 +1,6 @@
 [package]
 name = "master"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
@@ -13,6 +13,7 @@ futures = "0.1"
 futures-cpupool = "0.1"
 grpc = "0.2.1"
 log = "0.3"
+protobuf = "1.4.1"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"

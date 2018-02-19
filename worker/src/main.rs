@@ -18,6 +18,7 @@ extern crate protobuf;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
 extern crate serde_json;
 extern crate tls_api;
 extern crate util;
@@ -48,12 +49,14 @@ use std::{thread, time};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::path::Path;
 
 use errors::*;
 use master_interface::MasterInterface;
 use operations::OperationHandler;
 use server::{Server, ScheduleOperationService, IntermediateDataService};
 use util::init_logger;
+use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
@@ -62,15 +65,18 @@ const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
 const DEFAULT_PORT: &str = "0";
 const DEFAULT_MASTER_ADDR: &str = "[::]:8081";
+const DEFAULT_WORKER_IP: &str = "[::]";
 
 fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
     while retries > 0 {
+        info!("Attempting to register with the master");
         retries -= 1;
 
         match master_interface.register_worker(address) {
             Ok(_) => break,
             Err(err) => {
+                debug!("Error registering worker with master: {:?}", err);
                 if retries == 0 {
                     return Err(err.chain_err(|| "Error registering worker with master"));
                 }
@@ -99,16 +105,27 @@ fn run() -> Result<()> {
     let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(
         || "Error creating master interface.",
     )?);
-    let operation_handler = Arc::new(OperationHandler::new(Arc::clone(&master_interface)));
+
+    let nfs_path = matches.value_of("nfs");
+    let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> = match nfs_path {
+        Some(path) => Arc::new(NFSAbstractionLayer::new(Path::new(path))),
+        None => Arc::new(NullAbstractionLayer::new()),
+    };
+
+    let operation_handler = Arc::new(OperationHandler::new(
+        Arc::clone(&master_interface),
+        Arc::clone(&data_abstraction_layer),
+    ));
 
     let scheduler_service = ScheduleOperationService::new(Arc::clone(&operation_handler));
     let interm_data_service = IntermediateDataService;
     let srv = Server::new(port, scheduler_service, interm_data_service)
         .chain_err(|| "Can't create server")?;
+    let local_ip_addr = matches.value_of("ip").unwrap_or(DEFAULT_WORKER_IP);
 
     let local_addr = SocketAddr::from_str(&format!(
         "{}:{}",
-        local_ip::get().expect("Could not get IP"),
+        local_ip_addr,
         srv.addr().port(),
     )).chain_err(|| "Not a valid address of the worker")?;
     register_worker(&*master_interface, &local_addr).chain_err(

@@ -1,0 +1,34 @@
+version: '3'
+
+networks:
+  cerberus:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  master:
+    image: cpssd/cerberus-master
+    networks:
+      cerberus:
+        ipv4_address: 172.30.0.2
+    ports:
+      - "8081:8081"
+    volumes:
+      - /tmp/cerberus-docker:/var/cerberus
+    entrypoint:
+      - 'master'
+      - '--nfs=/var/cerberus'
+  worker:
+    image: cpssd/cerberus-worker
+    networks:
+      - cerberus
+    expose:
+      - '3000'
+    depends_on:
+      - master
+    volumes:
+      - /tmp/cerberus-docker:/mnt/nfs/cerberus
+    entrypoint:
+      - '/mnt/nfs/cerberus/executables/worker-startup.sh'

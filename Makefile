@@ -4,11 +4,11 @@ all: build
 
 # Bulds the debug version of cerberus
 build:
-	cargo build --all
+	cargo build --verbose --all
 
 # Create the release version
 release:
-	cargo build --all --release
+	cargo build --verbose --all --release
 
 clean:
 	cargo clean
@@ -19,10 +19,14 @@ clean:
 test: unit-test integration-test
 
 unit-test:
-	cargo test --all
+	cargo test --verbose --all
 
 integration-test:
-	# TODO: Add the integration test
+	./tests/integration.sh
+	./tests/state_saving.sh
+
+multi-machine:
+	./tests/multi_machine.sh
 
 #############################################################
 

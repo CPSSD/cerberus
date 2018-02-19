@@ -30,7 +30,11 @@ $ cargo build --all
 
 ## Running benchmarks
 
-The following is required to run the benchmarking script:
+The following dependancies are required to run the benchmarking script:
+- python3-tk
+- matplotlib
+
+Ubuntu dependancy installation:
 ```
 apt-get install python3-pip python3-tk
 pip3 install numpy matplotlib
