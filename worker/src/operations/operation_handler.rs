@@ -14,6 +14,14 @@ use super::map;
 use super::reduce;
 use super::state::OperationState;
 
+/// `OperationResources` is used to hold resources passed to map and reduce operation functions.
+#[derive(Clone)]
+pub struct OperationResources {
+    pub operation_state: Arc<Mutex<OperationState>>,
+    pub master_interface: Arc<MasterInterface>,
+    pub data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+}
+
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
 pub struct OperationHandler {
     operation_state: Arc<Mutex<OperationState>>,
@@ -111,19 +119,16 @@ impl OperationHandler {
         &self,
         map_options: pb::PerformMapRequest,
     ) -> impl Future<Item = (), Error = Error> {
-        let operation_state_arc = Arc::clone(&self.operation_state);
-        let master_interface_arc = Arc::clone(&self.master_interface);
-        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
+        let resources = OperationResources {
+            operation_state: Arc::clone(&self.operation_state),
+            master_interface: Arc::clone(&self.master_interface),
+            data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+        };
+
         let output_dir_uuid = self.output_dir_uuid.clone();
 
         future::lazy(move || {
-            let result = map::perform_map(
-                &map_options,
-                &operation_state_arc,
-                &master_interface_arc,
-                &data_abstraction_layer_arc,
-                &output_dir_uuid,
-            );
+            let result = map::perform_map(&map_options, &resources, &output_dir_uuid);
 
             future::result(result)
         })
@@ -133,20 +138,16 @@ impl OperationHandler {
         &self,
         reduce_request: pb::PerformReduceRequest,
     ) -> impl Future<Item = (), Error = Error> {
-        let operation_state_arc = Arc::clone(&self.operation_state);
-        let master_interface_arc = Arc::clone(&self.master_interface);
-        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
+        let resources = OperationResources {
+            operation_state: Arc::clone(&self.operation_state),
+            master_interface: Arc::clone(&self.master_interface),
+            data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+        };
 
         let output_dir_uuid = self.output_dir_uuid.clone();
 
         future::lazy(move || {
-            let result = reduce::perform_reduce(
-                &reduce_request,
-                &operation_state_arc,
-                master_interface_arc,
-                data_abstraction_layer_arc,
-                &output_dir_uuid,
-            );
+            let result = reduce::perform_reduce(&reduce_request, &resources, &output_dir_uuid);
 
             future::result(result)
         })
