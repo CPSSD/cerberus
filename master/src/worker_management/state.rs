@@ -120,6 +120,10 @@ impl State {
                     )
                 })?;
 
+            if scheduled_task.id != reduce_result.task_id {
+                return Err("Task id does not match expected task id.".into());
+            }
+
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.cpu_time = reduce_result.get_cpu_time();
             return Ok(scheduled_task);
@@ -142,6 +146,9 @@ impl State {
                     )
                 })?;
 
+            if scheduled_task.id != map_result.task_id {
+                return Err("Task id does not match expected task id.".into());
+            }
 
             let worker = self.workers.get_mut(&map_result.worker_id).chain_err(|| {
                 format!("Worker with ID {} not found.", map_result.worker_id)
