@@ -47,7 +47,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use errors::*;
-use scheduling::{TaskProcessorImpl, Scheduler, run_task_result_loop};
+use scheduling::{TaskProcessorImpl, Scheduler, run_task_update_loop};
 use util::init_logger;
 use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 use worker_communication::WorkerInterfaceImpl;
@@ -121,7 +121,7 @@ fn run() -> Result<()> {
     run_health_check_loop(Arc::clone(&worker_manager));
 
     // Startup scheduler loop
-    run_task_result_loop(
+    run_task_update_loop(
         Arc::clone(&map_reduce_scheduler),
         &Arc::clone(&worker_manager),
     );

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use protobuf::repeated::RepeatedField;
+use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
@@ -55,6 +56,9 @@ pub struct Task {
     // Number of times this task has failed in the past.
     pub failure_count: u16,
     pub failure_details: Option<String>,
+
+    pub time_started: Option<DateTime<Utc>>,
+    pub time_completed: Option<DateTime<Utc>>,
 }
 
 impl Task {
@@ -90,6 +94,9 @@ impl Task {
 
             failure_count: 0,
             failure_details: None,
+
+            time_started: None,
+            time_completed: None,
         }
     }
 
@@ -163,6 +170,9 @@ impl Task {
 
             failure_count: 0,
             failure_details: None,
+
+            time_started: None,
+            time_completed: None,
         }
     }
 
@@ -244,6 +254,15 @@ impl StateHandling for Task {
             }
         };
 
+        let time_started = match self.time_started {
+            Some(timestamp) => timestamp.timestamp(),
+            None => -1,
+        };
+        let time_completed = match self.time_completed {
+            Some(timestamp) => timestamp.timestamp(),
+            None => -1,
+        };
+
         Ok(json!({
             "task_type": self.task_type,
             "request": request,
@@ -254,6 +273,8 @@ impl StateHandling for Task {
             "status": self.status,
             "failure_count": self.failure_count,
             "failure_details": self.failure_details,
+            "time_started": time_started,
+            "time_completed": time_completed,
         }))
     }
 
@@ -290,6 +311,26 @@ impl StateHandling for Task {
             .chain_err(|| "Unable to convert failure_count")?;
         self.failure_details = serde_json::from_value(data["failure_details"].clone())
             .chain_err(|| "Unable to convert failure_details")?;
+
+        let time_started: i64 = serde_json::from_value(data["time_started"].clone())
+            .chain_err(|| "Unable to convert time_started")?;
+        self.time_started = match time_started {
+            -1 => None,
+            _ => Some(DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(time_started, 0),
+                Utc,
+            )),
+        };
+
+        let time_completed: i64 = serde_json::from_value(data["time_completed"].clone())
+            .chain_err(|| "Unable to convert time_completed")?;
+        self.time_completed = match time_completed {
+            -1 => None,
+            _ => Some(DateTime::<Utc>::from_utc(
+                NaiveDateTime::from_timestamp(time_completed, 0),
+                Utc,
+            )),
+        };
 
         Ok(())
     }
