@@ -61,6 +61,7 @@ use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLay
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
 const MAIN_LOOP_SLEEP_MS: u64 = 3000;
+const RECONNECT_FAILED_WAIT_MS: u64 = 5000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
 const DEFAULT_PORT: &str = "0";
@@ -143,18 +144,19 @@ fn run() -> Result<()> {
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
-        if let Err(err) = operation_handler.update_worker_status() {
-            error!("Could not send updated worker status to master: {}", err);
-            current_health_check_failures += 1;
-        } else {
-            current_health_check_failures = 0;
-        }
-
         if current_health_check_failures >= MAX_HEALTH_CHECK_FAILURES {
             if let Err(err) = register_worker(&*master_interface, &local_addr) {
                 error!("Failed to re-register worker after disconnecting: {}", err);
+                thread::sleep(time::Duration::from_millis(RECONNECT_FAILED_WAIT_MS));
             } else {
                 info!("Successfully re-registered with master after being disconnected.");
+                current_health_check_failures = 0;
+            }
+        } else {
+            if let Err(err) = operation_handler.update_worker_status() {
+                error!("Could not send updated worker status to master: {}", err);
+                current_health_check_failures += 1;
+            } else {
                 current_health_check_failures = 0;
             }
         }
