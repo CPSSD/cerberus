@@ -66,14 +66,17 @@ impl Task {
         let mut map_task_input = pb::MapTaskInput::new();
         map_task_input.set_input_locations(RepeatedField::from_vec(input_locations));
 
+        let id = Uuid::new_v4().to_string();
+
         let mut map_request = pb::PerformMapRequest::new();
         map_request.set_input(map_task_input);
         map_request.set_mapper_file_path(binary_path.into());
+        map_request.set_task_id(id.clone());
 
         Task {
             task_type: TaskType::Map,
             job_id: job_id.into(),
-            id: Uuid::new_v4().to_string(),
+            id: id,
 
             map_request: Some(map_request),
             reduce_request: None,
@@ -132,6 +135,8 @@ impl Task {
         input_files: Vec<String>,
         output_directory: S,
     ) -> Self {
+        let id = Uuid::new_v4().to_string();
+
         let mut reduce_request = pb::PerformReduceRequest::new();
         reduce_request.set_partition(input_partition);
         for input_file in input_files {
@@ -139,11 +144,12 @@ impl Task {
         }
         reduce_request.set_reducer_file_path(binary_path.into());
         reduce_request.set_output_directory(output_directory.into());
+        reduce_request.set_task_id(id.clone());
 
         Task {
             task_type: TaskType::Reduce,
             job_id: job_id.into(),
-            id: Uuid::new_v4().to_string(),
+            id: id,
 
             map_request: None,
             reduce_request: Some(reduce_request),
@@ -255,6 +261,24 @@ impl StateHandling for Task {
         self.id = serde_json::from_value(data["id"].clone()).chain_err(
             || "Unable to convert id",
         )?;
+
+        match self.task_type {
+            TaskType::Map => {
+                let mut map_request = self.map_request.clone().chain_err(
+                    || "Map Request should exist",
+                )?;
+                map_request.task_id = self.id.clone();
+                self.map_request = Some(map_request);
+            }
+            TaskType::Reduce => {
+                let mut reduce_request = self.reduce_request.clone().chain_err(
+                    || "Reduce Request should exist",
+                )?;
+                reduce_request.task_id = self.id.clone();
+                self.reduce_request = Some(reduce_request);
+            }
+        }
+
         self.map_output_files = serde_json::from_value(data["map_output_files"].clone())
             .chain_err(|| "Unable to convert map_output_files")?;
         self.assigned_worker_id = serde_json::from_value(data["assigned_worker_id"].clone())

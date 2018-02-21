@@ -40,6 +40,7 @@ struct ReduceInput {
 struct ReduceOptions {
     reducer_file_path: String,
     output_directory: String,
+    task_id: String,
 }
 
 /// `ReduceOperationQueue` is a struct used for storing and executing a queue of `ReduceOperations`.
@@ -269,6 +270,7 @@ fn internal_perform_reduce(
     let reduce_options = ReduceOptions {
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
         output_directory: reduce_request.get_output_directory().to_owned(),
+        task_id: reduce_request.get_task_id().to_owned(),
     };
 
     run_reduce_queue(
@@ -287,11 +289,13 @@ fn handle_reduce_queue_finished(
     operation_state_arc: &Arc<Mutex<OperationState>>,
     master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
+    task_id: &str,
 ) {
     if let Some(err) = reduce_err {
         let mut response = pb::ReduceResult::new();
         response.set_status(pb::ResultStatus::FAILURE);
         response.set_failure_details(operation_handler::failure_details_from_error(&err));
+        response.set_task_id(task_id.to_owned());
 
         let result = send_reduce_result(master_interface_arc, response);
         if let Err(err) = result {
@@ -303,6 +307,8 @@ fn handle_reduce_queue_finished(
         let mut response = pb::ReduceResult::new();
         response.set_status(pb::ResultStatus::SUCCESS);
         response.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+        response.set_task_id(task_id.to_owned());
+
         let result = send_reduce_result(master_interface_arc, response);
 
         match result {
@@ -353,6 +359,7 @@ fn run_reduce_queue(
             &operation_state_arc,
             &master_interface_arc,
             initial_cpu_time,
+            &reduce_options.task_id,
         );
     });
 }
@@ -391,6 +398,7 @@ mod tests {
         let reduce_options = ReduceOptions {
             output_directory: "foo".to_owned(),
             reducer_file_path: "bar".to_owned(),
+            task_id: "task1".to_owned(),
         };
 
         let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =

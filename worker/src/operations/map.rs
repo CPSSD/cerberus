@@ -154,6 +154,7 @@ fn combine_map_results(
     master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
     output_dir: &str,
+    task_id: &str,
 ) -> Result<()> {
     let partition_map;
     {
@@ -187,6 +188,7 @@ fn combine_map_results(
     map_result.set_map_results(map_results);
     map_result.set_status(pb::ResultStatus::SUCCESS);
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
+    map_result.set_task_id(task_id.to_owned());
 
     if let Err(err) = send_map_result(master_interface_arc, map_result) {
         log_map_operation_err(err, operation_state_arc);
@@ -226,6 +228,7 @@ fn process_map_result(
     master_interface_arc: &Arc<MasterInterface>,
     initial_cpu_time: u64,
     output_dir: &str,
+    task_id: &str,
 ) {
     {
         // The number of operations waiting will be 0 if we have already processed one
@@ -276,6 +279,7 @@ fn process_map_result(
                     master_interface_arc,
                     initial_cpu_time,
                     output_dir,
+                    task_id,
                 );
 
                 if let Err(err) = result {
@@ -361,6 +365,7 @@ fn internal_perform_map(
         let operation_state_arc_clone = Arc::clone(operation_state_arc);
         let master_interface_arc_clone = Arc::clone(master_interface_arc);
         let output_path_str: String = (*output_path.to_string_lossy()).to_owned();
+        let task_id = map_options.task_id.clone();
 
         thread::spawn(move || {
             let result = map_operation_thread_impl(&map_input_document, child);
@@ -371,6 +376,7 @@ fn internal_perform_map(
                 &master_interface_arc_clone,
                 initial_cpu_time,
                 &output_path_str,
+                &task_id,
             );
         });
     }
