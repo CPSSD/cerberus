@@ -11,6 +11,7 @@ use errors::*;
 use master_interface::MasterInterface;
 use super::io;
 use super::operation_handler;
+use super::operation_handler::OperationResources;
 use super::state::OperationState;
 use util::output_error;
 use util::data_layer::AbstractionLayer;
@@ -220,13 +221,11 @@ fn create_reduce_operations(
 // Public api for performing a reduce task.
 pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+    resources: &OperationResources,
     output_uuid: &str,
 ) -> Result<()> {
     {
-        let mut operation_state = operation_state_arc.lock().unwrap();
+        let mut operation_state = resources.operation_state.lock().unwrap();
         operation_state.initial_cpu_time = operation_handler::get_cpu_time();
     }
 
@@ -235,21 +234,15 @@ pub fn perform_reduce(
         reduce_request.reducer_file_path
     );
 
-    if operation_handler::get_worker_status(operation_state_arc) == pb::WorkerStatus::BUSY {
+    if operation_handler::get_worker_status(&resources.operation_state) == pb::WorkerStatus::BUSY {
         warn!("Reduce operation requested while worker is busy");
         return Err("Worker is busy.".into());
     }
-    operation_handler::set_busy_status(operation_state_arc);
+    operation_handler::set_busy_status(&resources.operation_state);
 
-    let result = internal_perform_reduce(
-        reduce_request,
-        Arc::clone(operation_state_arc),
-        master_interface_arc,
-        data_abstraction_layer_arc,
-        output_uuid,
-    );
+    let result = internal_perform_reduce(reduce_request, resources, output_uuid);
     if let Err(err) = result {
-        log_reduce_operation_err(err, operation_state_arc);
+        log_reduce_operation_err(err, &resources.operation_state);
         return Err("Error starting reduce operation.".into());
     }
 
@@ -259,9 +252,7 @@ pub fn perform_reduce(
 // Internal implementation for performing a reduce task.
 fn internal_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+    resources: &OperationResources,
     output_uuid: &str,
 ) -> Result<()> {
     let reduce_operations = create_reduce_operations(reduce_request, output_uuid)
@@ -273,21 +264,14 @@ fn internal_perform_reduce(
         task_id: reduce_request.get_task_id().to_owned(),
     };
 
-    run_reduce_queue(
-        reduce_options,
-        operation_state_arc,
-        reduce_operations,
-        master_interface_arc,
-        data_abstraction_layer_arc,
-    );
+    run_reduce_queue(reduce_options, resources, reduce_operations);
 
     Ok(())
 }
 
 fn handle_reduce_queue_finished(
     reduce_err: Option<Error>,
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: &Arc<MasterInterface>,
+    resources: &OperationResources,
     initial_cpu_time: u64,
     task_id: &str,
 ) {
@@ -297,28 +281,28 @@ fn handle_reduce_queue_finished(
         response.set_failure_details(operation_handler::failure_details_from_error(&err));
         response.set_task_id(task_id.to_owned());
 
-        let result = send_reduce_result(master_interface_arc, response);
+        let result = send_reduce_result(&resources.master_interface, response);
         if let Err(err) = result {
             error!("Error sending reduce failed: {}", err);
         }
 
-        log_reduce_operation_err(err, operation_state_arc);
+        log_reduce_operation_err(err, &resources.operation_state);
     } else {
         let mut response = pb::ReduceResult::new();
         response.set_status(pb::ResultStatus::SUCCESS);
         response.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
         response.set_task_id(task_id.to_owned());
 
-        let result = send_reduce_result(master_interface_arc, response);
+        let result = send_reduce_result(&resources.master_interface, response);
 
         match result {
             Ok(_) => {
-                operation_handler::set_complete_status(operation_state_arc);
+                operation_handler::set_complete_status(&resources.operation_state);
                 info!("Reduce operation completed sucessfully.");
             }
             Err(err) => {
                 error!("Error sending reduce result: {}", err);
-                operation_handler::set_failed_status(operation_state_arc);
+                operation_handler::set_failed_status(&resources.operation_state);
             }
         }
     }
@@ -326,12 +310,11 @@ fn handle_reduce_queue_finished(
 
 fn run_reduce_queue(
     reduce_options: ReduceOptions,
-    operation_state_arc: Arc<Mutex<OperationState>>,
+    resources: &OperationResources,
     reduce_operations: Vec<ReduceOperation>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
 ) {
-    let initial_cpu_time = operation_state_arc.lock().unwrap().initial_cpu_time;
+    let initial_cpu_time = resources.operation_state.lock().unwrap().initial_cpu_time;
+    let resources = resources.clone();
 
     thread::spawn(move || {
         let mut reduce_err = None;
@@ -345,7 +328,7 @@ fn run_reduce_queue(
             } else {
                 let result = reduce_queue.perform_next_reduce_operation(
                     &reduce_options,
-                    &data_abstraction_layer_arc,
+                    &resources.data_abstraction_layer,
                 );
                 if let Err(err) = result {
                     reduce_err = Some(err);
@@ -356,8 +339,7 @@ fn run_reduce_queue(
 
         handle_reduce_queue_finished(
             reduce_err,
-            &operation_state_arc,
-            &master_interface_arc,
+            &resources,
             initial_cpu_time,
             &reduce_options.task_id,
         );
