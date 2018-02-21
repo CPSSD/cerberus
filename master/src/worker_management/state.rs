@@ -40,15 +40,6 @@ impl State {
         workers
     }
 
-    pub fn is_job_in_progress(&self, job_id: &str) -> bool {
-        for task in self.assigned_tasks.values() {
-            if task.job_id == job_id {
-                return true;
-            }
-        }
-        false
-    }
-
     // Returns a list of worker not currently assigned a task sorted by most recent health checks.
     pub fn get_available_workers(&self) -> Vec<String> {
         let mut workers = Vec::new();
@@ -125,6 +116,7 @@ impl State {
             }
 
             scheduled_task.status = TaskStatus::Complete;
+            scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = reduce_result.get_cpu_time();
             return Ok(scheduled_task);
         }
@@ -165,6 +157,7 @@ impl State {
                 );
             }
             scheduled_task.status = TaskStatus::Complete;
+            scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = map_result.get_cpu_time();
 
             return Ok(scheduled_task);
@@ -195,6 +188,7 @@ impl State {
 
         if assigned_task.failure_count > MAX_TASK_FAILURE_COUNT {
             assigned_task.status = TaskStatus::Failed;
+            assigned_task.time_completed = Some(Utc::now());
         } else {
             assigned_task.status = TaskStatus::Queued;
             self.task_queue.push_front(assigned_task.clone());
@@ -271,6 +265,9 @@ impl State {
         };
 
         scheduled_task.status = TaskStatus::InProgress;
+        if scheduled_task.time_started == None {
+            scheduled_task.time_started = Some(Utc::now());
+        }
         scheduled_task.assigned_worker_id = worker.worker_id.to_owned();
 
         let task = scheduled_task.clone();

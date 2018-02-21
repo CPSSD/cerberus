@@ -30,8 +30,8 @@ pub struct WorkerManager {
     state: Arc<Mutex<State>>,
     worker_interface: Arc<WorkerInterface + Send>,
 
-    task_result_sender: Mutex<Sender<Task>>,
-    task_result_reciever: Arc<Mutex<Receiver<Task>>>,
+    task_update_sender: Mutex<Sender<Task>>,
+    task_update_reciever: Arc<Mutex<Receiver<Task>>>,
 }
 
 impl WorkerManager {
@@ -41,25 +41,19 @@ impl WorkerManager {
             state: Arc::new(Mutex::new(State::new())),
             worker_interface: worker_interface,
 
-            task_result_sender: Mutex::new(sender),
-            task_result_reciever: Arc::new(Mutex::new(receiver)),
+            task_update_sender: Mutex::new(sender),
+            task_update_reciever: Arc::new(Mutex::new(receiver)),
         }
     }
 
-    pub fn get_result_reciever(&self) -> Arc<Mutex<Receiver<Task>>> {
-        Arc::clone(&self.task_result_reciever)
+    pub fn get_update_reciever(&self) -> Arc<Mutex<Receiver<Task>>> {
+        Arc::clone(&self.task_update_reciever)
     }
 
     // Returns a count of workers registered with the master.
     pub fn get_available_workers(&self) -> u32 {
         let state = self.state.lock().unwrap();
         state.get_worker_count()
-    }
-
-    // Returns if a there are any tasks assigned to workers for a given job.
-    pub fn is_job_in_progress(&self, job_id: &str) -> bool {
-        let state = self.state.lock().unwrap();
-        state.is_job_in_progress(job_id)
     }
 
     pub fn register_worker(&self, worker: Worker) -> Result<()> {
@@ -99,8 +93,8 @@ impl WorkerManager {
         );
 
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
-            let task_result_sender = self.task_result_sender.lock().unwrap();
-            task_result_sender.send(task).chain_err(
+            let task_update_sender = self.task_update_sender.lock().unwrap();
+            task_update_sender.send(task).chain_err(
                 || "Error processing reduce result.",
             )?;
         }
@@ -127,8 +121,8 @@ impl WorkerManager {
         );
 
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
-            let task_result_sender = self.task_result_sender.lock().unwrap();
-            task_result_sender.send(task).chain_err(
+            let task_update_sender = self.task_update_sender.lock().unwrap();
+            task_update_sender.send(task).chain_err(
                 || "Error processing map result.",
             )?;
         }
@@ -274,9 +268,15 @@ impl WorkerManager {
 
             if let Some(task) = task_option {
                 let task_assignment_future = match task.task_type {
-                    TaskType::Map => self.assign_map_task(worker_id, task),
-                    TaskType::Reduce => self.assign_reduce_task(worker_id, task),
+                    TaskType::Map => self.assign_map_task(worker_id, task.clone()),
+                    TaskType::Reduce => self.assign_reduce_task(worker_id, task.clone()),
                 };
+
+                let task_update_sender = self.task_update_sender.lock().unwrap();
+                if let Err(err) = task_update_sender.send(task) {
+                    error!("Error updating scheduler on task status: {}", err);
+                }
+
                 task_assignment_futures.push(task_assignment_future);
             } else {
                 break;
