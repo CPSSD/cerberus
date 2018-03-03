@@ -29,7 +29,7 @@ impl Map for WordCountMapper {
 struct WordCountReducer;
 impl Reduce for WordCountReducer {
     type Value = u64;
-    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
+    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
     {
@@ -55,8 +55,12 @@ fn run() -> Result<()> {
 
     let matches = cerberus::parse_command_line();
 
-    let registry = UserImplRegistryBuilder::new()
-        .mapper(&wc_mapper)
+    let registry = UserImplRegistryBuilder::<
+        WordCountMapper,
+        WordCountReducer,
+        HashPartitioner,
+        NullCombiner,
+    >::new().mapper(&wc_mapper)
         .reducer(&wc_reducer)
         .partitioner(&wc_partitioner)
         .build()

@@ -1,11 +1,11 @@
 use bson;
 use errors::*;
 use mapper::MapInputKV;
-use reducer::ReduceInputKV;
+use intermediate::IntermediateInputKV;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json;
-use serialise::{FinalOutputObject, IntermediateOutputObject};
+use serialise::{FinalOutputObject, IntermediateOutputObject, IntermediateOutputPair};
 use std::io::{Read, Write};
 
 /// `read_map_input` reads bytes from a source and returns a `MapInputKV`.
@@ -23,11 +23,11 @@ pub fn read_map_input<R: Read>(source: &mut R) -> Result<MapInputKV> {
     Ok(map_input)
 }
 
-/// `read_reduce_input` reads a string from a source and returns a `ReduceInputKV`.
+/// `read_intermediate_input` reads a string from a source and returns a `IntermediateInputKV`.
 ///
 /// It attempts to parse the string from the input source as JSON and returns an `errors::Error` if
 /// the attempt fails.
-pub fn read_reduce_input<R, V>(source: &mut R) -> Result<ReduceInputKV<V>>
+pub fn read_intermediate_input<R, V>(source: &mut R) -> Result<IntermediateInputKV<V>>
 where
     R: Read,
     V: Default + Serialize + DeserializeOwned,
@@ -40,13 +40,29 @@ where
         warn!("bytes_read is 0");
     }
     let result = serde_json::from_str(input_string.as_str()).chain_err(
-        || "Error parsing input JSON to ReduceInputKV.",
+        || "Error parsing input JSON to IntermediateInputKV.",
     )?;
     Ok(result)
 }
 
-/// `write_map_output` attempts to serialise an `IntermediateOutputObject` to a given sink.
-pub fn write_map_output<W, K, V>(
+/// `write_intermediate_pair` attempts to serialise an `IntermediateOutputPair` to a given sink.
+pub fn write_intermediate_pair<W, K, V>(
+    sink: &mut W,
+    output: &IntermediateOutputPair<K, V>,
+) -> Result<()>
+where
+    W: Write,
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    serde_json::to_writer(sink, &output).chain_err(
+        || "Error writing to sink.",
+    )?;
+    Ok(())
+}
+
+/// `write_intermediate_output` attempts to serialise an `IntermediateOutputObject` to a given sink.
+pub fn write_intermediate_output<W, K, V>(
     sink: &mut W,
     output: &IntermediateOutputObject<K, V>,
 ) -> Result<()>
@@ -117,12 +133,12 @@ mod tests {
     fn read_valid_reduce_input_kv() {
         let test_string = r#"{"key":"foo","values":["bar","baz"]}"#;
         let mut cursor = Cursor::new(test_string);
-        let expected_result = ReduceInputKV {
+        let expected_result = IntermediateInputKV {
             key: "foo".to_owned(),
             values: vec!["bar".to_owned(), "baz".to_owned()],
         };
 
-        let result: ReduceInputKV<String> = read_reduce_input(&mut cursor).unwrap();
+        let result: IntermediateInputKV<String> = read_intermediate_input(&mut cursor).unwrap();
 
         assert_eq!(expected_result, result);
     }
@@ -133,7 +149,7 @@ mod tests {
         let test_string = "";
         let mut cursor = Cursor::new(test_string);
 
-        let _: ReduceInputKV<String> = read_reduce_input(&mut cursor).unwrap();
+        let _: IntermediateInputKV<String> = read_intermediate_input(&mut cursor).unwrap();
     }
 
     #[test]
@@ -162,7 +178,7 @@ mod tests {
         let output_vector: Vec<u8> = Vec::new();
         let mut cursor = Cursor::new(output_vector);
 
-        write_map_output(&mut cursor, &test_object).unwrap();
+        write_intermediate_output(&mut cursor, &test_object).unwrap();
 
         let output_string = String::from_utf8(cursor.into_inner()).unwrap();
         assert_eq!(expected_json_string, output_string);

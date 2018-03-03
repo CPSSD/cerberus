@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use emitter::{EmitPartitionedIntermediate, EmitFinal};
+use emitter::{EmitIntermediate, EmitFinal, EmitPartitionedIntermediate};
 use errors::*;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
@@ -35,7 +35,46 @@ pub struct FinalOutputObject<V: Default + Serialize> {
     pub values: Vec<V>,
 }
 
-/// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputObject`.
+/// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputPair`.
+pub struct IntermediateOutputPairEmitter<'a, K, V>
+where
+    K: Default + Serialize + 'a,
+    V: Default + Serialize + 'a,
+{
+    sink: &'a mut IntermediateOutputPair<K, V>,
+}
+
+impl<'a, K, V> IntermediateOutputPairEmitter<'a, K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    /// Constructs a new `IntermediateOutputPairEmitter` with a mutable reference to a given
+    /// `IntermediateOutputPair`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - A mutable reference to the `IntermediateOutputPair`
+    /// to receive the emitted values.
+    pub fn new(sink: &'a mut IntermediateOutputPair<K, V>) -> Self {
+        IntermediateOutputPairEmitter { sink: sink }
+    }
+}
+
+impl<'a, K, V> EmitIntermediate<K, V> for IntermediateOutputPairEmitter<'a, K, V>
+where
+    K: Default + Serialize,
+    V: Default + Serialize,
+{
+    fn emit(&mut self, key: K, value: V) -> Result<()> {
+        self.sink.key = key;
+        self.sink.value = value;
+        Ok(())
+    }
+}
+
+/// A struct implementing `EmitPartitionedIntermediate`
+/// which emits to an `IntermediateOutputObject`.
 pub struct IntermediateOutputObjectEmitter<'a, K, V>
 where
     K: Default + Serialize + 'a,
@@ -54,7 +93,8 @@ where
     ///
     /// # Arguments
     ///
-    /// * `sink` - A mutable reference to the `IntermediateOutputObject` to receive the emitted values.
+    /// * `sink` - A mutable reference to the `IntermediateOutputObject`
+    /// to receive the emitted values.
     pub fn new(sink: &'a mut IntermediateOutputObject<K, V>) -> Self {
         IntermediateOutputObjectEmitter { sink: sink }
     }
@@ -136,12 +176,12 @@ mod tests {
 
         let output = IntermediateOutputObject { partitions: partitions };
         let mut output_set = HashSet::new();
-        let expected_json_string1 =
+        let expected_string1 =
             r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}],"1":[{"key":"foo_intermediate2","value":"bar"}]}}"#;
-        let expected_json_string2 =
+        let expected_string2 =
             r#"{"partitions":{"1":[{"key":"foo_intermediate2","value":"bar"}],"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}}"#;
-        output_set.insert(expected_json_string1.to_owned());
-        output_set.insert(expected_json_string2.to_owned());
+        output_set.insert(expected_string1.to_owned());
+        output_set.insert(expected_string2.to_owned());
 
         let json_string = serde_json::to_string(&output).unwrap();
 
