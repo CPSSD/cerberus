@@ -51,6 +51,7 @@ fn run() -> Result<()> {
             println!("Getting Cluster Status...");
             runner::cluster_status(&client)
         }
+        ("cancel", sub) => runner::cancel(&client, sub),
         ("status", Some(sub)) => runner::status(&client, sub),
         _ => Err(matches.usage().into()),
     }

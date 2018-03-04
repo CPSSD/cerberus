@@ -141,6 +141,11 @@ impl Scheduler {
         )
     }
 
+    // TODO(rhino): Continue this
+    pub fn cancel_job(&self, _job_id: &str) -> Result<()> {
+        Ok(())
+    }
+
     pub fn get_job_queue_size(&self) -> u32 {
         let state = self.state.lock().unwrap();
         state.get_job_queue_size()
@@ -162,6 +167,17 @@ impl Scheduler {
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<Job> {
         let state = self.state.lock().unwrap();
         state.get_jobs(client_id)
+    }
+
+    pub fn get_most_recent_client_job_id(&self, client_id: &str) -> Result<String> {
+        let state = self.state.lock().unwrap();
+        let jobs = state.get_jobs(client_id);
+
+        if jobs.is_empty() {
+            return Err("No jobs queued for client".into());
+        }
+
+        Ok(jobs[0].id.clone())
     }
 }
 

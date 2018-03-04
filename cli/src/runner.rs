@@ -136,6 +136,28 @@ pub fn cluster_status(client: &grpc_pb::MapReduceServiceClient) -> Result<()> {
     Ok(())
 }
 
+pub fn cancel(client: &grpc_pb::MapReduceServiceClient, args: Option<&ArgMatches>) -> Result<()> {
+    let mut req = pb::MapReduceCancelRequest::new();
+    req.set_client_id(get_client_id().chain_err(|| "Error getting client id")?);
+    if let Some(sub) = args {
+        if let Some(id) = sub.value_of("id") {
+            req.set_mapreduce_id(id.to_owned());
+        }
+    }
+
+    let resp = client
+        .cancel_map_reduce(RequestOptions::new(), req)
+        .wait()
+        .chain_err(|| "Failed to cancel MapReduce")?
+        .1;
+
+    println!(
+        "Succesfully cancelled MapReduce with ID: {}",
+        resp.mapreduce_id
+    );
+    Ok(())
+}
+
 pub fn status(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let mut req = pb::MapReduceStatusRequest::new();
     req.set_client_id(get_client_id()?);

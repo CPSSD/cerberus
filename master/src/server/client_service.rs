@@ -10,6 +10,7 @@ use util::data_layer::AbstractionLayer;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 
+const JOB_CANCEL_ERROR: &str = "Unable to cancel mapreduce job";
 const JOB_SCHEDULE_ERROR: &str = "Unable to schedule mapreduce job";
 const JOB_RETRIEVAL_ERROR: &str = "Unable to retrieve mapreduce jobs";
 const MISSING_JOB_IDS: &str = "No client_id or mapreduce_id provided";
@@ -107,6 +108,37 @@ impl grpc_pb::MapReduceService for ClientService {
             }
 
             response.reports.push(report);
+        }
+
+        SingleResponse::completed(response)
+    }
+
+    fn cancel_map_reduce(
+        &self,
+        _: RequestOptions,
+        req: pb::MapReduceCancelRequest,
+    ) -> SingleResponse<pb::MapReduceCancelResponse> {
+        let mut response = pb::MapReduceCancelResponse::new();
+        let job_id = {
+            if !req.mapreduce_id.is_empty() {
+                req.mapreduce_id
+            } else {
+                match self.scheduler.get_most_recent_client_job_id(&req.client_id) {
+                    Err(err) => {
+                        output_error(&err.chain_err(|| "Error cancelling MapReduce."));
+                        return SingleResponse::err(Error::Other("No jobs found for this client"));
+                    }
+                    Ok(job_id) => job_id,
+                }
+            }
+        };
+        response.set_mapreduce_id(job_id.clone());
+
+        println!("Attempting to cancel MapReduce: {}", job_id);
+        let result = self.scheduler.cancel_job(job_id.as_ref());
+        if let Err(err) = result {
+            output_error(&err.chain_err(|| "Error cancelling MapReduce"));
+            return SingleResponse::err(Error::Other(JOB_CANCEL_ERROR));
         }
 
         SingleResponse::completed(response)
