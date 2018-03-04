@@ -177,7 +177,15 @@ impl Scheduler {
             return Err("No jobs queued for client".into());
         }
 
-        Ok(jobs[0].id.clone())
+        let mut latest_job = &jobs[0];
+        for i in 1..jobs.len() {
+            let job = &jobs[i];
+            if job.time_requested > latest_job.time_requested {
+                latest_job = job;
+            }
+        }
+
+        Ok(latest_job.id.clone())
     }
 }
 
