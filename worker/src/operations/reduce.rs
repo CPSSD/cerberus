@@ -187,12 +187,12 @@ fn create_reduce_operations(
         if let serde_json::Value::Array(ref pairs) = parsed_value {
             for pair in pairs {
                 let key = pair["key"].as_str().chain_err(
-                    || "Error parsing reduce input.",
+                    || "Error parsing reduce input key.",
                 )?;
 
                 let value = pair["value"].clone();
                 if value.is_null() {
-                    return Err("Error parsing reduce input.".into());
+                    return Err("Error parsing reduce input value.".into());
                 }
 
                 let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);

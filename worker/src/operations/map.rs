@@ -13,6 +13,7 @@ use uuid::Uuid;
 use errors::*;
 use cerberus_proto::worker as pb;
 use master_interface::MasterInterface;
+use super::combine;
 use super::io;
 use super::operation_handler;
 use super::operation_handler::OperationResources;
@@ -147,6 +148,10 @@ fn combine_map_results(
     output_dir: &str,
     task_id: &str,
 ) -> Result<()> {
+    combine::optional_run_combine(resources).chain_err(
+        || "Error running combine operation.",
+    )?;
+
     let partition_map;
     {
         let operation_state = resources.operation_state.lock().unwrap();
