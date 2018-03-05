@@ -42,6 +42,17 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                         .required(false),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("cancel")
+                .about("Cancels a running or queued MapReduce. If no id is provided it will cancel the most recently schceduled job")
+                .arg(
+                    Arg::with_name("id")
+                        .short("i")
+                        .help("ID of the MapReduce to cancel")
+                        .required(false)
+                        .takes_value(true),
+                ),
+        )
         .subcommand(SubCommand::with_name("cluster_status").about(
             "Status of the cluster",
         ))
