@@ -69,13 +69,12 @@ fn run() -> Result<()> {
 
     let matches = cerberus::parse_command_line();
 
-    let registry =
-        UserImplRegistryBuilder::<TestMapper, TestReducer, TestPartitioner, NullCombiner>::new()
-            .mapper(&test_mapper)
-            .reducer(&test_reducer)
-            .partitioner(&test_partitioner)
-            .build()
-            .chain_err(|| "Error building UserImplRegistry.")?;
+    let registry = UserImplRegistryBuilder::new_no_combiner()
+        .mapper(&test_mapper)
+        .reducer(&test_reducer)
+        .partitioner(&test_partitioner)
+        .build()
+        .chain_err(|| "Error building UserImplRegistry.")?;
 
     cerberus::run(&matches, &registry)
 }

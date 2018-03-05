@@ -55,12 +55,8 @@ fn run() -> Result<()> {
 
     let matches = cerberus::parse_command_line();
 
-    let registry = UserImplRegistryBuilder::<
-        WordCountMapper,
-        WordCountReducer,
-        HashPartitioner,
-        NullCombiner,
-    >::new().mapper(&wc_mapper)
+    let registry = UserImplRegistryBuilder::new_no_combiner()
+        .mapper(&wc_mapper)
         .reducer(&wc_reducer)
         .partitioner(&wc_partitioner)
         .build()

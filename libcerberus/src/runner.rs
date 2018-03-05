@@ -12,7 +12,7 @@ use io::*;
 use mapper::Map;
 use partition::{Partition, PartitionInputPairs};
 use reducer::Reduce;
-use combiner::Combine;
+use combiner::{Combine, NullCombiner};
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
                 IntermediateOutputPair, IntermediateOutputObjectEmitter,
                 IntermediateOutputPairEmitter};
@@ -117,6 +117,21 @@ where
             partitioner: partitioner,
             combiner: self.combiner,
         })
+    }
+}
+
+impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
+where
+    M: Map + 'a,
+    R: Reduce + 'a,
+    P: Partition<
+        M::Key,
+        M::Value,
+    >
+        + 'a,
+{
+    pub fn new_no_combiner() -> UserImplRegistryBuilder<'a, M, R, P, NullCombiner> {
+        Default::default()
     }
 }
 

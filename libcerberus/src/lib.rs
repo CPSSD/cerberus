@@ -35,7 +35,7 @@ pub mod reducer;
 pub mod runner;
 pub mod serialise;
 
-pub use combiner::{Combine, NullCombiner};
+pub use combiner::Combine;
 pub use errors::*;
 pub use emitter::{EmitIntermediate, EmitPartitionedIntermediate, EmitFinal};
 pub use intermediate::IntermediateInputKV;
