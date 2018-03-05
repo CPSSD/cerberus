@@ -20,6 +20,7 @@ pub struct OperationResources {
     pub operation_state: Arc<Mutex<OperationState>>,
     pub master_interface: Arc<MasterInterface>,
     pub data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+    pub binary_path: String,
 }
 
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
@@ -123,6 +124,7 @@ impl OperationHandler {
             operation_state: Arc::clone(&self.operation_state),
             master_interface: Arc::clone(&self.master_interface),
             data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+            binary_path: map_options.get_mapper_file_path().to_string(),
         };
 
         let output_dir_uuid = self.output_dir_uuid.clone();
@@ -142,6 +144,7 @@ impl OperationHandler {
             operation_state: Arc::clone(&self.operation_state),
             master_interface: Arc::clone(&self.master_interface),
             data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+            binary_path: reduce_request.get_reducer_file_path().to_string(),
         };
 
         let output_dir_uuid = self.output_dir_uuid.clone();

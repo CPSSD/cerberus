@@ -25,18 +25,22 @@ mod errors {
     }
 }
 
+pub mod combiner;
 pub mod emitter;
 pub mod io;
+pub mod intermediate;
 pub mod mapper;
 pub mod partition;
 pub mod reducer;
 pub mod runner;
 pub mod serialise;
 
+pub use combiner::Combine;
 pub use errors::*;
 pub use emitter::{EmitIntermediate, EmitPartitionedIntermediate, EmitFinal};
+pub use intermediate::IntermediateInputKV;
 pub use mapper::{Map, MapInputKV};
 pub use partition::{HashPartitioner, Partition, PartitionInputPairs};
-pub use reducer::{Reduce, ReduceInputKV};
+pub use reducer::Reduce;
 pub use runner::*;
 pub use serialise::{FinalOutputObject, IntermediateOutputObject};

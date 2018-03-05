@@ -29,7 +29,7 @@ impl Map for WordCountMapper {
 struct WordCountReducer;
 impl Reduce for WordCountReducer {
     type Value = u64;
-    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
+    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
     {
@@ -44,6 +44,24 @@ impl Reduce for WordCountReducer {
     }
 }
 
+pub struct WordCountCombiner;
+impl Combine<u64> for WordCountCombiner {
+    fn combine<E>(&self, input: IntermediateInputKV<u64>, mut emitter: E) -> Result<()>
+    where
+        E: EmitFinal<u64>,
+    {
+        let mut total: u64 = 0;
+        for val in input.values {
+            total += val;
+        }
+        emitter.emit(total).chain_err(|| {
+            format!("Error emitting value {:?}.", total)
+        })?;
+
+        Ok(())
+    }
+}
+
 fn run() -> Result<()> {
     env_logger::init().chain_err(
         || "Failed to initialise logging.",
@@ -52,6 +70,7 @@ fn run() -> Result<()> {
     let wc_mapper = WordCountMapper;
     let wc_reducer = WordCountReducer;
     let wc_partitioner = HashPartitioner::new(MAP_OUTPUT_PARTITIONS);
+    let wc_combiner = WordCountCombiner;
 
     let matches = cerberus::parse_command_line();
 
@@ -59,6 +78,7 @@ fn run() -> Result<()> {
         .mapper(&wc_mapper)
         .reducer(&wc_reducer)
         .partitioner(&wc_partitioner)
+        .combiner(&wc_combiner)
         .build()
         .chain_err(|| "Error building UserImplRegistry.")?;
 

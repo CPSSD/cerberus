@@ -72,6 +72,16 @@ fn run_reducer(
         || "Error accessing payload output.",
     )?;
 
+    let stderr_str = String::from_utf8(output.stderr).chain_err(
+        || "Error accessing payload output.",
+    )?;
+
+    if !stderr_str.is_empty() {
+        return Err(
+            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
+        );
+    }
+
     let reduce_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
         || "Error parsing reduce results.",
     )?;
@@ -110,7 +120,7 @@ impl ReduceOperationQueue {
             .arg("reduce")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .chain_err(|| "Failed to start reduce operation process.")?;
 
@@ -187,12 +197,12 @@ fn create_reduce_operations(
         if let serde_json::Value::Array(ref pairs) = parsed_value {
             for pair in pairs {
                 let key = pair["key"].as_str().chain_err(
-                    || "Error parsing reduce input.",
+                    || "Error parsing reduce input key.",
                 )?;
 
                 let value = pair["value"].clone();
                 if value.is_null() {
-                    return Err("Error parsing reduce input.".into());
+                    return Err("Error parsing reduce input value.".into());
                 }
 
                 let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);

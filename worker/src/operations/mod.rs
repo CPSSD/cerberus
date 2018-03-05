@@ -1,3 +1,4 @@
+mod combine;
 pub mod io;
 mod map;
 mod reduce;
