@@ -1,8 +1,9 @@
-use emitter::EmitIntermediate;
-use errors::*;
-use intermediate::IntermediateInputKV;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+use emitter::EmitFinal;
+use errors::*;
+use intermediate::IntermediateInputKV;
 
 /// The `Combine` trait defines a function for performing a combine operation.
 ///
@@ -11,7 +12,7 @@ use serde::de::DeserializeOwned;
 /// # Arguments
 ///
 /// * `input`   - A `IntermediateInputKV` containing the input data for the combine operation.
-/// * `emitter` - A struct implementing the `EmitIntermediate` trait,
+/// * `emitter` - A struct implementing the `EmitFinal` trait,
 ///               provided by the combine runner.
 ///
 /// # Outputs
@@ -24,19 +25,5 @@ where
 {
     fn combine<E>(&self, input: IntermediateInputKV<V>, emitter: E) -> Result<()>
     where
-        E: EmitIntermediate<String, V>;
-}
-
-// A null implementation for `Combine` as this is optional component.
-pub struct NullCombiner;
-impl<V> Combine<V> for NullCombiner
-where
-    V: Default + Serialize + DeserializeOwned,
-{
-    fn combine<E>(&self, _input: IntermediateInputKV<V>, _emitter: E) -> Result<()>
-    where
-        E: EmitIntermediate<String, V>,
-    {
-        Ok(())
-    }
+        E: EmitFinal<V>;
 }

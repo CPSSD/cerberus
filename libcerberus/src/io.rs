@@ -5,7 +5,7 @@ use intermediate::IntermediateInputKV;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json;
-use serialise::{FinalOutputObject, IntermediateOutputObject, IntermediateOutputPair};
+use serialise::{FinalOutputObject, IntermediateOutputObject};
 use std::io::{Read, Write};
 
 /// `read_map_input` reads bytes from a source and returns a `MapInputKV`.
@@ -45,14 +45,10 @@ where
     Ok(result)
 }
 
-/// `write_intermediate_pair` attempts to serialise an `IntermediateOutputPair` to a given sink.
-pub fn write_intermediate_pair<W, K, V>(
-    sink: &mut W,
-    output: &IntermediateOutputPair<K, V>,
-) -> Result<()>
+/// `write_intermediate_vector` attempts to serialise an `Vec` to a given sink.
+pub fn write_intermediate_vector<W, V>(sink: &mut W, output: &Vec<V>) -> Result<()>
 where
     W: Write,
-    K: Default + Serialize,
     V: Default + Serialize,
 {
     serde_json::to_writer(sink, &output).chain_err(

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use emitter::{EmitIntermediate, EmitFinal, EmitPartitionedIntermediate};
+use emitter::{EmitFinal, EmitPartitionedIntermediate};
 use errors::*;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
@@ -35,40 +35,35 @@ pub struct FinalOutputObject<V: Default + Serialize> {
     pub values: Vec<V>,
 }
 
-/// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputPair`.
-pub struct IntermediateOutputPairEmitter<'a, K, V>
+/// A struct implementing `EmitFinal` which emits to a `Vec` of intermediate values.
+pub struct VecEmitter<'a, V>
 where
-    K: Default + Serialize + 'a,
     V: Default + Serialize + 'a,
 {
-    sink: &'a mut IntermediateOutputPair<K, V>,
+    sink: &'a mut Vec<V>,
 }
 
-impl<'a, K, V> IntermediateOutputPairEmitter<'a, K, V>
+impl<'a, V> VecEmitter<'a, V>
 where
-    K: Default + Serialize,
     V: Default + Serialize,
 {
-    /// Constructs a new `IntermediateOutputPairEmitter` with a mutable reference to a given
-    /// `IntermediateOutputPair`.
+    /// Constructs a new `VecEmitter` with a mutable reference to a given `Vec`.
     ///
     /// # Arguments
     ///
-    /// * `sink` - A mutable reference to the `IntermediateOutputPair`
+    /// * `sink` - A mutable reference to the `Vec`
     /// to receive the emitted values.
-    pub fn new(sink: &'a mut IntermediateOutputPair<K, V>) -> Self {
-        IntermediateOutputPairEmitter { sink: sink }
+    pub fn new(sink: &'a mut Vec<V>) -> Self {
+        VecEmitter { sink: sink }
     }
 }
 
-impl<'a, K, V> EmitIntermediate<K, V> for IntermediateOutputPairEmitter<'a, K, V>
+impl<'a, V> EmitFinal<V> for VecEmitter<'a, V>
 where
-    K: Default + Serialize,
     V: Default + Serialize,
 {
-    fn emit(&mut self, key: K, value: V) -> Result<()> {
-        self.sink.key = key;
-        self.sink.value = value;
+    fn emit(&mut self, value: V) -> Result<()> {
+        self.sink.push(value);
         Ok(())
     }
 }

@@ -6,16 +6,16 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
-use emitter::IntermediateVecEmitter;
+use combiner::Combine;
+use emitter::{EmitFinal, IntermediateVecEmitter};
 use errors::*;
 use io::*;
+use intermediate::IntermediateInputKV;
 use mapper::Map;
 use partition::{Partition, PartitionInputPairs};
 use reducer::Reduce;
-use combiner::{Combine, NullCombiner};
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
-                IntermediateOutputPair, IntermediateOutputObjectEmitter,
-                IntermediateOutputPairEmitter};
+                IntermediateOutputObjectEmitter, VecEmitter};
 use super::VERSION;
 
 /// `UserImplRegistry` tracks the user's implementations of Map, Reduce, etc.
@@ -120,6 +120,22 @@ where
     }
 }
 
+/// A null implementation for `Combine` as this is optional component.
+/// This should not be used by user code.
+pub struct NullCombiner;
+impl<V> Combine<V> for NullCombiner
+where
+    V: Default + Serialize + DeserializeOwned,
+{
+    fn combine<E>(&self, _input: IntermediateInputKV<V>, _emitter: E) -> Result<()>
+    where
+        E: EmitFinal<V>,
+    {
+        Err("This code should never run".into())
+    }
+}
+
+/// Construct a UserImplRegistryBuilder that does not need a `Combine` implementation
 impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
 where
     M: Map + 'a,
@@ -179,7 +195,7 @@ where
             )?;
             Ok(())
         }
-        Some("combiner") => {
+        Some("combine") => {
             let combiner = registry.combiner.chain_err(
                 || "Attempt to run combine command when combiner is not implemented",
             )?;
@@ -198,8 +214,7 @@ where
             eprintln!("{}", matches.usage());
             Ok(())
         }
-        // This won't ever be reached, due to clap checking invalid commands before this.
-        _ => Ok(()),
+        Some(other) => Err(format!("Unknown command {}", other).into()),
     }
 }
 
@@ -260,18 +275,16 @@ where
     let mut source = stdin();
     let mut sink = stdout();
     let input_kv = read_intermediate_input(&mut source).chain_err(
-        || "Error getting input to reduce.",
+        || "Error getting input to combine.",
     )?;
-    let mut output_object = IntermediateOutputPair::<String, V>::default();
+
+    let mut output_object = Vec::<V>::new();
 
     combiner
-        .combine(
-            input_kv,
-            IntermediateOutputPairEmitter::new(&mut output_object),
-        )
+        .combine(input_kv, VecEmitter::new(&mut output_object))
         .chain_err(|| "Error running combine operation.")?;
 
-    write_intermediate_pair(&mut sink, &output_object)
+    write_intermediate_vector(&mut sink, &output_object)
         .chain_err(|| "Error writing combine output to stdout.")?;
     Ok(())
 }

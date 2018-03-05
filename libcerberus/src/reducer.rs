@@ -1,8 +1,9 @@
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
 use emitter::EmitFinal;
 use errors::*;
 use intermediate::IntermediateInputKV;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 
 /// The `Reduce` trait defines a function for performing a reduce operation.
 ///

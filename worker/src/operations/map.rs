@@ -94,6 +94,16 @@ fn map_operation_thread_impl(
         || "Error accessing payload output.",
     )?;
 
+    let stderr_str = String::from_utf8(output.stderr).chain_err(
+        || "Error accessing payload output.",
+    )?;
+
+    if !stderr_str.is_empty() {
+        return Err(
+            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
+        );
+    }
+
     let map_results = parse_map_results(&output_str).chain_err(
         || "Error parsing map results.",
     )?;
@@ -314,7 +324,7 @@ fn internal_perform_map(
             .arg("map")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .chain_err(|| "Failed to start map operation process.")?;
 

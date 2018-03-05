@@ -45,7 +45,7 @@ fn do_combine_operation(
         .arg("combine")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .chain_err(|| "Failed to start combine operation process.")?;
 
@@ -65,11 +65,21 @@ fn do_combine_operation(
         || "Error accessing payload output.",
     )?;
 
-    let combine_result: serde_json::Value = serde_json::from_str(&output_str).chain_err(
-        || "Error parsing reduce results.",
+    let stderr_str = String::from_utf8(output.stderr).chain_err(
+        || "Error accessing payload output.",
     )?;
 
-    Ok(combine_result)
+    if !stderr_str.is_empty() {
+        return Err(
+            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
+        );
+    }
+
+    let combine_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
+        || "Error parsing combine results.",
+    )?;
+
+    Ok(combine_results)
 }
 
 fn run_combine(resources: &OperationResources) -> Result<()> {
@@ -101,10 +111,22 @@ fn run_combine(resources: &OperationResources) -> Result<()> {
 
         for (key, values) in (&kv_map).iter() {
             if values.len() > 1 {
-                let pair = do_combine_operation(resources, key, values.clone())
+                let results = do_combine_operation(resources, key, values.clone())
                     .chain_err(|| "Failed to run combine operation.")?;
 
-                partition_results.push(pair);
+                if let serde_json::Value::Array(ref values) = results {
+                    for value in values {
+                        partition_results.push(json!({
+                            "key": key,
+                            "value": value
+                        }));
+                    }
+                } else {
+                    partition_results.push(json!({
+                        "key": key,
+                        "value": results
+                    }));
+                }
             } else if let Some(value) = values.first() {
                 partition_results.push(json!({
                     "key": key,
