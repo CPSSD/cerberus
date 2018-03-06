@@ -58,7 +58,7 @@ use util::init_logger;
 use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::{WorkerManager, run_health_check_loop, run_task_assigment_loop};
-use server::{Server, ClientService, WorkerService};
+use server::{Server, ClientService, FileSystemService, WorkerService};
 use state::StateHandler;
 
 const MAIN_LOOP_SLEEP_MS: u64 = 100;
@@ -102,9 +102,12 @@ fn run() -> Result<()> {
     // Cli to Master Communications
     let client_service = ClientService::new(
         Arc::clone(&map_reduce_scheduler),
-        data_abstraction_layer_arc,
+        Arc::clone(&data_abstraction_layer_arc),
     );
-    let srv = Server::new(port, client_service, worker_service)
+
+    let file_system_service = FileSystemService::new(data_abstraction_layer_arc);
+
+    let srv = Server::new(port, client_service, worker_service, file_system_service)
         .chain_err(|| "Error building grpc server.")?;
 
     let state_handler = StateHandler::new(
