@@ -71,6 +71,7 @@ enum Status {
     IN_PROGRESS = 2;
     IN_QUEUE = 3;
     FAILED = 4;
+    CANCELLED = 5;
 };
 
 message MapReduceReport {

@@ -205,6 +205,10 @@ mod tests {
         ) -> Result<()> {
             Ok(())
         }
+
+        fn cancel_task(&self, _request: wpb::CancelTaskRequest, _worker_id: &str) -> Result<()> {
+            Ok(())
+        }
     }
 
     fn create_scheduler() -> Scheduler {

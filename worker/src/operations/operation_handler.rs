@@ -65,6 +65,14 @@ pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     );
 }
 
+pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
+    set_operation_handler_status(
+        operation_state_arc,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::CANCELLED,
+    );
+}
+
 pub fn set_busy_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     let mut operation_state = operation_state_arc.lock().unwrap();
 
@@ -154,6 +162,13 @@ impl OperationHandler {
 
             future::result(result)
         })
+    }
+
+    pub fn cancel_task(&self, request: pb::CancelTaskRequest) -> Result<()> {
+        let mut operation_state = self.operation_state.lock().unwrap();
+        operation_state.last_cancelled_task_id = Some(request.task_id.clone());
+
+        Ok(())
     }
 
     pub fn update_worker_status(&self) -> Result<()> {

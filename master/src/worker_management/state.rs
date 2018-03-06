@@ -27,6 +27,16 @@ impl State {
         Default::default()
     }
 
+    pub fn remove_queued_tasks_for_job(&mut self, job_id: &str) -> Result<()> {
+        let mut new_task_queue = self.task_queue.clone();
+        new_task_queue.retain(|t| match self.tasks.get_mut(&t.clone()) {
+            Some(task) => task.job_id != job_id,
+            None => false,
+        });
+        self.task_queue = new_task_queue;
+        Ok(())
+    }
+
     pub fn get_worker_count(&self) -> u32 {
         self.workers.len() as u32
     }
@@ -106,6 +116,17 @@ impl State {
                 return Err("Task id does not match expected task id.".into());
             }
 
+            let worker = self.workers.get(&reduce_result.worker_id).chain_err(|| {
+                format!("Worker with ID {} not found.", reduce_result.worker_id)
+            })?;
+
+            if let Some(task_id) = worker.last_cancelled_task_id.clone() {
+                if task_id == reduce_result.task_id {
+                    scheduled_task.status = TaskStatus::Cancelled;
+                    return Ok(scheduled_task);
+                }
+            }
+
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = reduce_result.get_cpu_time();
@@ -136,6 +157,13 @@ impl State {
             let worker = self.workers.get_mut(&map_result.worker_id).chain_err(|| {
                 format!("Worker with ID {} not found.", map_result.worker_id)
             })?;
+
+            if let Some(task_id) = worker.last_cancelled_task_id.clone() {
+                if task_id == map_result.task_id {
+                    scheduled_task.status = TaskStatus::Cancelled;
+                    return Ok(scheduled_task);
+                }
+            }
 
             for (partition, output_file) in map_result.get_map_results() {
                 scheduled_task.map_output_files.insert(
@@ -199,6 +227,21 @@ impl State {
         }
 
         Ok(assigned_task)
+    }
+
+    pub fn get_workers_running_job(&self, job_id: &str) -> Result<Vec<String>> {
+        let mut worker_ids = Vec::new();
+
+        let workers = self.get_workers();
+        for worker in workers {
+            if let Some(task) = self.tasks.get(&worker.current_task_id) {
+                if task.job_id == job_id {
+                    worker_ids.push(worker.worker_id.clone());
+                }
+            }
+        }
+
+        Ok(worker_ids)
     }
 
     // Mark that a given worker has returned a result for it's task.
@@ -293,6 +336,19 @@ impl State {
             Ok(task) => Ok(Some(task)),
             Err(err) => Err(err),
         }
+    }
+
+    // Clears the workers current_task_id and returns the previous value.
+    pub fn cancel_task_for_worker(&mut self, worker_id: &str) -> Result<String> {
+        let worker = self.workers.get_mut(worker_id).chain_err(|| {
+            format!("Worker with ID {} not found.", worker_id)
+        })?;
+
+        let previous_task_id = worker.current_task_id.clone();
+        worker.last_cancelled_task_id = Some(worker.current_task_id.clone());
+        worker.current_task_id = String::new();
+
+        Ok(previous_task_id)
     }
 
     pub fn has_task(&self, task_id: &str) -> bool {
