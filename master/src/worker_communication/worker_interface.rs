@@ -18,6 +18,7 @@ pub trait WorkerInterface: Sync + Send {
 
     fn schedule_map(&self, request: pb::PerformMapRequest, worker_id: &str) -> Result<()>;
     fn schedule_reduce(&self, request: pb::PerformReduceRequest, worker_id: &str) -> Result<()>;
+    fn cancel_task(&self, request: pb::CancelTaskRequest, worker_id: &str) -> Result<()>;
 }
 
 #[derive(Default)]
@@ -92,6 +93,20 @@ impl WorkerInterface for WorkerInterfaceImpl {
                 .perform_reduce(RequestOptions::new(), request)
                 .wait()
                 .chain_err(|| "Failed to schedule reduce operation")?;
+            Ok(())
+        } else {
+            Err(NO_CLIENT_FOUND_ERR.into())
+        }
+    }
+
+    fn cancel_task(&self, request: pb::CancelTaskRequest, worker_id: &str) -> Result<()> {
+        let clients = self.clients.read().unwrap();
+
+        if let Some(client) = clients.get(worker_id) {
+            client
+                .cancel_task(RequestOptions::new(), request)
+                .wait()
+                .chain_err(|| "Failed to cancel task")?;
             Ok(())
         } else {
             Err(NO_CLIENT_FOUND_ERR.into())

@@ -239,6 +239,18 @@ fn process_map_result(
         }
     }
 
+    // If we have cancelled the current task then we should avoid processing the map results.
+    {
+        let cancelled = {
+            let operation_state = resources.operation_state.lock().unwrap();
+            operation_state.task_cancelled(task_id)
+        };
+        if cancelled {
+            operation_handler::set_cancelled_status(&resources.operation_state);
+            return;
+        }
+    }
+
     match result {
         Ok(map_result) => {
             let (finished, parse_failed) = {
@@ -313,6 +325,19 @@ fn internal_perform_map(
     }
 
     for input_location in input_locations {
+        // Make sure the job hasn't been cancelled before continuing.
+        {
+            let cancelled = {
+                let operation_state = resources.operation_state.lock().unwrap();
+                operation_state.task_cancelled(&map_options.task_id)
+            };
+            if cancelled {
+                operation_handler::set_cancelled_status(&resources.operation_state);
+                println!("Succesfully cancelled task: {}", map_options.task_id);
+                return Ok(());
+            }
+        }
+
         let map_input_value = io::read_location(&resources.data_abstraction_layer, input_location)
             .chain_err(|| "unable to open input file")?;
 

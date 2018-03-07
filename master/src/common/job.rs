@@ -77,6 +77,7 @@ pub enum SerializableJobStatus {
     IN_QUEUE,
     FAILED,
     UNKNOWN,
+    CANCELLED,
 }
 
 impl Job {
@@ -208,6 +209,7 @@ impl Job {
             SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
             SerializableJobStatus::FAILED => pb::Status::FAILED,
             SerializableJobStatus::UNKNOWN => pb::Status::UNKNOWN,
+            SerializableJobStatus::CANCELLED => pb::Status::CANCELLED,
         }
     }
 
@@ -218,6 +220,7 @@ impl Job {
             pb::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
             pb::Status::FAILED => SerializableJobStatus::FAILED,
             pb::Status::UNKNOWN => SerializableJobStatus::UNKNOWN,
+            pb::Status::CANCELLED => SerializableJobStatus::CANCELLED,
         }
     }
 }

@@ -148,6 +148,27 @@ impl WorkerManager {
         }
     }
 
+    pub fn cancel_workers_tasks(&self, workers: Vec<String>) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+
+        for worker_id in workers {
+            // Clear the task from the worker so that we can ignore it's result.
+            let task_id = state.cancel_task_for_worker(&worker_id).chain_err(|| {
+                format!("Error cancelling task on worker: {}", worker_id)
+            })?;
+
+            // Create a request to cancel the task the worker is currently running.
+            let mut cancel_request = pb::CancelTaskRequest::new();
+            cancel_request.task_id = task_id;
+
+            // Tell the worker to cancel what it's doing.
+            self.worker_interface
+                .cancel_task(cancel_request, &worker_id)
+                .chain_err(|| "Error telling worker to cancel task")?;
+        }
+        Ok(())
+    }
+
     fn remove_workers(&self, workers: Vec<String>) {
         let mut state = self.state.lock().unwrap();
         for worker_id in workers {
@@ -310,6 +331,16 @@ impl WorkerManager {
     pub fn has_task(&self, task_id: &str) -> bool {
         let state = self.state.lock().unwrap();
         state.has_task(task_id)
+    }
+
+    pub fn remove_queued_tasks_for_job(&self, job_id: &str) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.remove_queued_tasks_for_job(job_id)
+    }
+
+    pub fn get_workers_running_job(&self, job_id: &str) -> Result<Vec<String>> {
+        let state = self.state.lock().unwrap();
+        state.get_workers_running_job(job_id)
     }
 }
 

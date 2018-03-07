@@ -141,8 +141,29 @@ impl Scheduler {
         )
     }
 
-    // TODO(rhino): Continue this
-    pub fn cancel_job(&self, _job_id: &str) -> Result<()> {
+    pub fn cancel_job(&self, job_id: &str) -> Result<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.cancel_job(job_id).chain_err(|| {
+                format!("Unable to cancel job with ID: {}", job_id)
+            })?;
+        }
+
+        let workers = self.worker_manager
+            .get_workers_running_job(job_id)
+            .chain_err(|| {
+                format!("Unable to get list of workers running job {}", job_id)
+            })?;
+
+        self.worker_manager
+            .remove_queued_tasks_for_job(job_id)
+            .chain_err(|| "Unable to remove queued task from state")?;
+
+        self.worker_manager
+            .cancel_workers_tasks(workers)
+            .chain_err(|| "Unable to cancel task on workers")?;
+
+        println!("Succesfully cancelled job {}", job_id);
         Ok(())
     }
 

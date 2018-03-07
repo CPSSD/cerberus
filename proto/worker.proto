@@ -45,6 +45,7 @@ enum OperationStatus {
     IN_PROGRESS = 1;
     COMPLETE = 2;
     FAILED = 3;
+    CANCELLED = 4;
 };
 
 message UpdateStatusRequest {
@@ -95,6 +96,9 @@ service ScheduleOperationService {
     // Tells a worker to start a reduce operation for a certain partition of the map output.
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
+
+    // Used by the master to tell a worker to stop working on it's current task.
+    rpc CancelTask (CancelTaskRequest) returns (EmptyMessage);
 }
 
 // Message specifying where one part of the input for a map task is located.
@@ -134,6 +138,11 @@ message PerformReduceRequest {
     // The path to the output directory.
     string output_directory = 4;
     string task_id = 5;
+}
+
+message CancelTaskRequest {
+    // The id of the task the worker should cancel.
+    string task_id = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

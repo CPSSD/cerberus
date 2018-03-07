@@ -19,6 +19,8 @@ pub struct OperationState {
 
     pub waiting_map_operations: usize,
     pub intermediate_map_results: HashMap<u64, Vec<serde_json::Value>>,
+
+    pub last_cancelled_task_id: Option<String>,
 }
 
 impl OperationState {
@@ -30,10 +32,18 @@ impl OperationState {
             intermediate_file_store: Vec::new(),
             waiting_map_operations: 0,
             intermediate_map_results: HashMap::new(),
+            last_cancelled_task_id: None,
         }
     }
 
     pub fn add_intermediate_files(&mut self, files: Vec<PathBuf>) {
         self.intermediate_file_store.extend(files.into_iter());
+    }
+
+    pub fn task_cancelled(&self, task_id: &str) -> bool {
+        match self.last_cancelled_task_id.clone() {
+            Some(id) => task_id == id,
+            None => false,
+        }
     }
 }

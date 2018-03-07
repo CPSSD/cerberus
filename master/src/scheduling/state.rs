@@ -121,6 +121,24 @@ impl State {
         Ok(())
     }
 
+    pub fn cancel_job(&mut self, job_id: &str) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(job) => job,
+            None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
+        };
+
+        let job_status = scheduled_job.job.status;
+        if !(job_status == pb::Status::IN_PROGRESS || job_status == pb::Status::IN_QUEUE) {
+            return Err(
+                format!("Unable to cancel job. Expected IN_PROGRESS or IN_QUEUE job. Got {:?}",
+                        job_status).into(),
+            );
+        }
+
+        scheduled_job.job.status = pb::Status::CANCELLED;
+        Ok(())
+    }
+
     pub fn get_job(&self, job_id: &str) -> Result<Job> {
         match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => Ok(scheduled_job.job.clone()),

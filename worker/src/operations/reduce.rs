@@ -336,6 +336,23 @@ fn run_reduce_queue(
             if reduce_queue.is_queue_empty() {
                 break;
             } else {
+
+                // Make sure the job hasn't been cancelled before continuing.
+                {
+                    let cancelled = {
+                        let operation_state = resources.operation_state.lock().unwrap();
+                        operation_state.task_cancelled(&reduce_options.task_id)
+                    };
+                    if cancelled {
+                        operation_handler::set_cancelled_status(&resources.operation_state);
+                        println!(
+                            "Succesfully cancelled reduce task: {}",
+                            &reduce_options.task_id
+                        );
+                        return;
+                    }
+                }
+
                 let result = reduce_queue.perform_next_reduce_operation(
                     &reduce_options,
                     &resources.data_abstraction_layer,
