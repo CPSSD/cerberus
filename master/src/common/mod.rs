@@ -14,4 +14,5 @@ pub use self::job::JobOptions;
 pub use self::task::Task;
 pub use self::task::TaskStatus;
 pub use self::task::TaskType;
+pub use self::task::PriorityTask;
 pub use self::worker::Worker;

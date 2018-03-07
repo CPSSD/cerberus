@@ -104,11 +104,25 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         || "Invalid binary path.",
     )?;
 
+    let priority_str = matches.value_of("priority").unwrap_or("1");
+    let priority: u32 = match priority_str.parse() {
+        Ok(val) => val,
+        Err(err) => {
+            println!(
+                "Error occured while converting '{}' to a u32: {}",
+                priority_str,
+                err
+            );
+            1
+        }
+    };
+
     let mut req = pb::MapReduceRequest::new();
     req.set_binary_path(binary.to_owned());
     req.set_input_directory(input.to_owned());
     req.set_client_id(get_client_id()?);
     req.set_output_directory(output.to_owned());
+    req.set_priority(priority);
 
     let res = client
         .perform_map_reduce(RequestOptions::new(), req)

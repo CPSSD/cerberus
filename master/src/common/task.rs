@@ -1,8 +1,11 @@
 use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::result::Result as std_result;
 
 use protobuf::repeated::RepeatedField;
 use chrono::prelude::*;
 use serde_json;
+use serde::ser::{Serialize, Serializer, SerializeStruct};
 use uuid::Uuid;
 
 use errors::*;
@@ -40,6 +43,8 @@ pub struct Task {
     pub job_id: String,
     pub id: String,
 
+    pub job_priority: u32,
+
     // This will only exist if TaskType is Map.
     pub map_request: Option<pb::PerformMapRequest>,
     // This will only exist if TaskType is Reduce.
@@ -67,6 +72,7 @@ impl Task {
         job_id: S,
         binary_path: S,
         input_locations: Vec<pb::InputLocation>,
+        job_priority: u32,
     ) -> Self {
         let mut map_task_input = pb::MapTaskInput::new();
         map_task_input.set_input_locations(RepeatedField::from_vec(input_locations));
@@ -82,6 +88,8 @@ impl Task {
             task_type: TaskType::Map,
             job_id: job_id.into(),
             id: id,
+
+            job_priority: job_priority,
 
             map_request: Some(map_request),
             reduce_request: None,
@@ -126,7 +134,10 @@ impl Task {
             })
             .collect();
 
-        let mut task = Task::new_map_task(id, binary_path, input_locations_pb);
+        let job_priority: u32 = serde_json::from_value(data["job_priority"].clone())
+            .chain_err(|| "Unable to convert job priority")?;
+
+        let mut task = Task::new_map_task(id, binary_path, input_locations_pb, job_priority);
 
         // Update the state.
         task.load_state(data).chain_err(
@@ -142,6 +153,7 @@ impl Task {
         input_partition: u64,
         input_files: Vec<String>,
         output_directory: S,
+        job_priority: u32,
     ) -> Self {
         let id = Uuid::new_v4().to_string();
 
@@ -158,6 +170,8 @@ impl Task {
             task_type: TaskType::Reduce,
             job_id: job_id.into(),
             id: id,
+
+            job_priority: job_priority,
 
             map_request: None,
             reduce_request: Some(reduce_request),
@@ -192,8 +206,17 @@ impl Task {
             .chain_err(|| "Unable to convert binary_path")?;
         let output_dir: String = serde_json::from_value(request_data["output_directory"].clone())
             .chain_err(|| "Unable to convert output_directory")?;
-        let mut task =
-            Task::new_reduce_task(id, binary_path, input_partition, input_files, output_dir);
+
+        let job_priority: u32 = serde_json::from_value(data["job_priority"].clone())
+            .chain_err(|| "Unable to convert job priority")?;
+        let mut task = Task::new_reduce_task(
+            id,
+            binary_path,
+            input_partition,
+            input_files,
+            output_dir,
+            job_priority,
+        );
 
         task.load_state(data).chain_err(
             || "Unable to load Task from state",
@@ -276,6 +299,7 @@ impl StateHandling for Task {
             "failure_details": self.failure_details,
             "time_started": time_started,
             "time_completed": time_completed,
+            "job_priority": self.job_priority,
         }))
     }
 
@@ -337,6 +361,42 @@ impl StateHandling for Task {
     }
 }
 
+#[derive(Eq, PartialEq)]
+pub struct PriorityTask {
+    pub id: String,
+    pub priority: u32,
+}
+
+impl PriorityTask {
+    pub fn new(id: String, priority: u32) -> Self {
+        PriorityTask { id, priority }
+    }
+}
+
+impl Ord for PriorityTask {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.priority.cmp(&other.priority)
+    }
+}
+
+impl PartialOrd for PriorityTask {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Serialize for PriorityTask {
+    fn serialize<S>(&self, serializer: S) -> std_result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("PriorityTask", 2)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("priority", &self.priority)?;
+        state.end()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,7 +408,7 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location], 1);
 
         let reduce_task = Task::new_reduce_task(
             "reduce-1",
@@ -356,6 +416,7 @@ mod tests {
             0,
             vec!["/tmp/input/".to_owned()],
             "/tmp/output/",
+            1,
         );
 
         assert_eq!(map_task.task_type, TaskType::Map);
@@ -369,7 +430,7 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location], 1);
         assert_eq!(map_task.job_id, "map-1");
     }
 
@@ -380,7 +441,7 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
+        let map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location], 1);
         let map_request = map_task.map_request.unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
@@ -397,6 +458,7 @@ mod tests {
             0,
             vec!["/tmp/input/file1".to_owned(), "/tmp/input/file2".to_owned()],
             "/tmp/output/",
+            1,
         );
         let reduce_request = reduce_task.reduce_request.unwrap();
 
@@ -415,7 +477,7 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location]);
+        let mut map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location], 1);
 
         map_task.map_output_files.insert(
             0,
@@ -439,6 +501,7 @@ mod tests {
             0,
             vec!["/tmp/input/inter_mediate".to_owned()],
             "/tmp/output/",
+            1,
         );
         // Assert assigned worker id starts as an empty string.
         assert_eq!(reduce_task.assigned_worker_id, "");
@@ -455,6 +518,7 @@ mod tests {
             0,
             vec!["/tmp/input/inter_mediate".to_owned()],
             "/tmp/output/",
+            1,
         );
         // Assert that the default status for a task is Queued.
         assert_eq!(reduce_task.status, TaskStatus::Queued);

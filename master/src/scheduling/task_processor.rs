@@ -77,6 +77,7 @@ impl TaskProcessorImpl {
                     job.id.as_str(),
                     job.binary_path.as_str(),
                     map_task_file_info.input_locations.clone(),
+                    job.priority,
                 ));
 
                 *map_task_file_info = MapTaskFileInformation {
@@ -127,6 +128,7 @@ impl TaskProcessor for TaskProcessorImpl {
                 job.id.as_str(),
                 job.binary_path.as_str(),
                 map_task_file_info.input_locations,
+                job.priority,
             ));
         }
 
@@ -152,6 +154,7 @@ impl TaskProcessor for TaskProcessorImpl {
                 reduce_partition,
                 reduce_input,
                 job.output_directory.as_str(),
+                job.priority,
             ));
         }
 
@@ -277,7 +280,8 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let mut map_task1 = Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()]);
+        let mut map_task1 =
+            Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()], 1);
         map_task1.map_output_files.insert(
             0,
             "/tmp/output/1".to_owned(),
@@ -287,7 +291,7 @@ mod tests {
             "/tmp/output/2".to_owned(),
         );
 
-        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location]);
+        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location], 1);
         map_task2.map_output_files.insert(
             0,
             "/tmp/output/3".to_owned(),

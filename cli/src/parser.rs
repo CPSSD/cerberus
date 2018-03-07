@@ -40,7 +40,16 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .default_value("")
                         .required(false),
-                ),
+                )
+                .arg(
+                    Arg::with_name("priority")
+                        .long("priority")
+                        .short("p")
+                        .help("Priority of the MapReduce")
+                        .takes_value(true)
+                        .default_value("1")
+                        .required(false),
+                )
         )
         .subcommand(
             SubCommand::with_name("cancel")

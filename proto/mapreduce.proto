@@ -39,6 +39,9 @@ message MapReduceRequest {
     // making the request. Generated on a single machine for now
     // TODO(voy): Convert to unique identity once we have authentication.
     string client_id = 4;
+
+    // Priority of the MapReduce
+    uint32 priority = 5;
 }
 
 // Response from the master about the map reduce.
