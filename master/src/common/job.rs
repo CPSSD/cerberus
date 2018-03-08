@@ -156,10 +156,7 @@ impl Job {
         )?;
         if !is_dir {
             return Err(
-                format!(
-                    "Input directory does not exist: {:?}",
-                    data_abstraction_layer.absolute_path(input_path)
-                ).into(),
+                format!("Input directory does not exist: {:?}", input_path).into(),
             );
         }
 
@@ -168,12 +165,7 @@ impl Job {
             || "Error checking if path is a file",
         )?;
         if !is_file {
-            return Err(
-                format!(
-                    "Binary does not exist: {:?}",
-                    data_abstraction_layer.absolute_path(binary_path)
-                ).into(),
-            );
+            return Err(format!("Binary does not exist: {:?}", binary_path).into());
         }
 
         // Binary exists, so run sanity-check on it to verify that it's a libcerberus binary.
@@ -186,7 +178,7 @@ impl Job {
     ) -> Result<()> {
         let binary_path = Path::new(&self.binary_path);
         let absolute_path = data_abstraction_layer
-            .absolute_path(binary_path)
+            .get_local_file(binary_path)
             .chain_err(|| "unable to get absolute path")?;
         let child = Command::new(absolute_path)
             .arg("sanity-check")

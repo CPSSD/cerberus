@@ -135,7 +135,7 @@ where
     }
 }
 
-/// Construct a UserImplRegistryBuilder that does not need a `Combine` implementation
+/// Construct a `UserImplRegistryBuilder` that does not need a `Combine` implementation
 impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
 where
     M: Map + 'a,

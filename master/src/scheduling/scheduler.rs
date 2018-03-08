@@ -199,8 +199,7 @@ impl Scheduler {
         }
 
         let mut latest_job = &jobs[0];
-        for i in 1..jobs.len() {
-            let job = &jobs[i];
+        for job in jobs.iter().skip(1) {
             if job.time_requested > latest_job.time_requested {
                 latest_job = job;
             }

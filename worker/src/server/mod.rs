@@ -3,13 +3,18 @@
 mod intermediate_data_service;
 /// `master_service` is responsible for handing data incoming from the master.
 mod master_service;
+/// `filesystem_service` is responsible for handling requests related to the distributed file
+/// system.
+mod filesystem_service;
 
 pub use self::intermediate_data_service::IntermediateDataService;
 pub use self::master_service::ScheduleOperationService;
+pub use self::filesystem_service::FileSystemService;
 
 use std::net::SocketAddr;
 use grpc;
 use cerberus_proto::worker_grpc;
+use cerberus_proto::filesystem_grpc;
 use errors::*;
 
 const GRPC_THREAD_POOL_SIZE: usize = 10;
@@ -23,6 +28,7 @@ impl Server {
         port: u16,
         scheduler_service: ScheduleOperationService,
         interm_data_service: IntermediateDataService,
+        filesystem_service: FileSystemService,
     ) -> Result<Self> {
         let mut server_builder = grpc::ServerBuilder::new_plain();
         server_builder.http.set_port(port);
@@ -40,6 +46,13 @@ impl Server {
         server_builder.add_service(
             worker_grpc::IntermediateDataServiceServer::new_service_def(
                 interm_data_service,
+            ),
+        );
+
+        // Register FileSystemService
+        server_builder.add_service(
+            filesystem_grpc::FileSystemWorkerServiceServer::new_service_def(
+                filesystem_service,
             ),
         );
 

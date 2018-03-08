@@ -1,5 +1,6 @@
 use std::fs::{File, DirEntry};
 use std::fs;
+use std::io::{Read, Write, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use errors::*;
@@ -14,21 +15,15 @@ impl NFSAbstractionLayer {
     pub fn new(nfs_path: &Path) -> Self {
         NFSAbstractionLayer { nfs_path: PathBuf::from(nfs_path) }
     }
-}
 
-impl AbstractionLayer for NFSAbstractionLayer {
-    fn open_file(&self, path: &Path) -> Result<File> {
-        let file_path = self.absolute_path(path).chain_err(|| "Unable to get path")?;
-        debug!("Opening file: {}", file_path.to_string_lossy());
-        File::open(file_path.clone()).chain_err(|| format!("unable to open file {:?}", file_path))
-    }
-
-    fn create_file(&self, path: &Path) -> Result<File> {
-        let file_path = self.absolute_path(path).chain_err(|| "Unable to get path")?;
-        debug!("Creating file: {}", file_path.to_string_lossy());
-        File::create(file_path.clone()).chain_err(|| {
-            format!("unable to create file {:?}", file_path)
-        })
+    fn abstracted_path(&self, path: &Path) -> Result<PathBuf> {
+        if path.starts_with(self.nfs_path.clone()) {
+            let abstracted_path = path.strip_prefix(self.nfs_path.as_path()).chain_err(
+                || "Unable to strip prefix from path",
+            )?;
+            return Ok(PathBuf::from(abstracted_path));
+        }
+        Ok(PathBuf::from(path))
     }
 
     fn absolute_path(&self, path: &Path) -> Result<PathBuf> {
@@ -44,14 +39,56 @@ impl AbstractionLayer for NFSAbstractionLayer {
         Ok(self.nfs_path.join(relative_path))
     }
 
-    fn abstracted_path(&self, path: &Path) -> Result<PathBuf> {
-        if path.starts_with(self.nfs_path.clone()) {
-            let abstracted_path = path.strip_prefix(self.nfs_path.as_path()).chain_err(
-                || "Unable to strip prefix from path",
-            )?;
-            return Ok(PathBuf::from(abstracted_path));
-        }
-        Ok(PathBuf::from(path))
+    fn open_file(&self, path: &Path) -> Result<File> {
+        let file_path = self.absolute_path(path).chain_err(|| "Unable to get path")?;
+        debug!("Opening file: {}", file_path.to_string_lossy());
+        File::open(file_path.clone()).chain_err(|| format!("unable to open file {:?}", file_path))
+    }
+}
+
+impl AbstractionLayer for NFSAbstractionLayer {
+    fn get_file_length(&self, path: &Path) -> Result<u64> {
+        debug!("Getting file length: {:?}", path);
+
+        let file_path = self.absolute_path(path).chain_err(|| "Unable to get path")?;
+        let metadata = fs::metadata(file_path).chain_err(
+            || "Error getting metadata",
+        )?;
+
+        Ok(metadata.len())
+    }
+
+    fn read_file_location(&self, path: &Path, start_byte: u64, end_byte: u64) -> Result<Vec<u8>> {
+        debug!("Reading file: {:?}", path);
+
+        let mut file = self.open_file(path)?;
+        file.seek(SeekFrom::Start(start_byte)).chain_err(|| {
+            format!("Error reading file {:?}", path)
+        })?;
+
+        let mut bytes = vec![0; (end_byte - start_byte) as usize];
+        file.read_exact(&mut bytes).chain_err(|| {
+            format!("Error reading file {:?}", path)
+        })?;
+
+        Ok(bytes)
+    }
+
+    fn write_file(&self, path: &Path, data: &[u8]) -> Result<()> {
+        let file_path = self.absolute_path(path).chain_err(|| "Unable to get path")?;
+        debug!("Writing file: {}", file_path.to_string_lossy());
+        let mut file = File::create(file_path.clone()).chain_err(|| {
+            format!("unable to create file {:?}", file_path)
+        })?;
+
+        file.write_all(data).chain_err(|| {
+            format!("unable to write content to {:?}", file_path)
+        })
+    }
+
+
+    fn get_local_file(&self, path: &Path) -> Result<PathBuf> {
+        self.absolute_path(path)
     }
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {

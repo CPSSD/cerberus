@@ -6,8 +6,8 @@ package filesystem;
 // and processing requests for file locations from workers. 
 service FileSystemMasterService {
     rpc UploadFile (UploadFileRequest) returns (EmptyMessage);
-    rpc DownloadFile (DownloadFileRequest) returns (DownloadFileResponse);
     rpc GetFileLocation (FileLocationRequest) returns (FileLocationResponse);
+    rpc GetFileInfo (FileInfoRequest) returns (FileInfoResponse);
 }
 
 // Empty message where there is nothing to be send or replied with.
@@ -15,36 +15,40 @@ message EmptyMessage {}
 
 message UploadFileRequest {
     string file_path = 1;
-    string client_id = 2;
-    uint64 start_byte = 3; 
-    bytes data = 4;
-}
-
-message DownloadFileRequest {
-    string file_path = 1;
-    string client_id = 2;
-    uint64 start_byte = 3; 
-    uint64 end_byte = 4; 
-}
-
-message DownloadFileResponse {
-    bytes data = 1;
+    uint64 start_byte = 2; 
+    bytes data = 3;
 }
 
 message FileLocationRequest {
     string file_path = 1;
     uint64 start_byte = 2; 
+    // Gets the locations for the entire file if end_byte is 0
     uint64 end_byte = 3; 
 }
 
-message FileLocation {
-    string worker_address = 1;
-    uint64 start_byte = 2; 
-    uint64 end_byte = 3; 
+message FileChunk {
+    uint64 start_byte = 1; 
+    uint64 end_byte = 2; 
+    repeated string worker_address = 3;
 }
 
 message FileLocationResponse {
-    repeated FileLocation file_locations = 1;
+    repeated FileChunk chunks = 1;
+}
+
+message FileInfoRequest {
+    string file_path = 1;
+}
+
+message FileInfoResponse {
+    bool exists = 1;
+    bool is_file = 2;
+
+    // File length if file, number of files in directory if directory. 
+    uint64 length = 3;
+
+    // Files in the directory, if it is a directory.
+    repeated string children = 4;
 }
 
 // File System Worker service is responsible for recieving distributed files from the master
