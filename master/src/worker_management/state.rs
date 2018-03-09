@@ -1,16 +1,21 @@
 use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::collections::BinaryHeap;
 
 use chrono::prelude::*;
 use serde_json;
 
 use cerberus_proto::worker as pb;
-use common::{Task, TaskStatus, Worker};
+use common::{PriorityTask, Task, TaskStatus, Worker};
 use errors::*;
 use state;
 
 const MAX_TASK_FAILURE_COUNT: u16 = 10;
 const MAX_TASK_ASSIGNMENT_FAILURE: u16 = 5;
+
+// Priority for different task types.
+const DEFAULT_TASK_PRIORITY: u32 = 10;
+const REQUEUED_TASK_PRIORITY: u32 = 15;
+const FAILED_TASK_PRIORITY: u32 = 20;
 
 #[derive(Default)]
 pub struct State {
@@ -18,8 +23,8 @@ pub struct State {
     workers: HashMap<String, Worker>,
     // A map of task id to task.
     tasks: HashMap<String, Task>,
-    // Tasks that are in the queue to be ran.
-    task_queue: VecDeque<String>,
+    // Prioritised list of tasks that are in the queue to be ran.
+    priority_task_queue: BinaryHeap<PriorityTask>,
 }
 
 impl State {
@@ -28,12 +33,17 @@ impl State {
     }
 
     pub fn remove_queued_tasks_for_job(&mut self, job_id: &str) -> Result<()> {
-        let mut new_task_queue = self.task_queue.clone();
-        new_task_queue.retain(|t| match self.tasks.get_mut(&t.clone()) {
-            Some(task) => task.job_id != job_id,
-            None => false,
-        });
-        self.task_queue = new_task_queue;
+        let mut new_priority_queue: BinaryHeap<PriorityTask> = BinaryHeap::new();
+
+        for priority_task in self.priority_task_queue.drain() {
+            if let Some(task) = self.tasks.get(&priority_task.id.clone()) {
+                if task.job_id != job_id {
+                    new_priority_queue.push(priority_task);
+                }
+            }
+        }
+
+        self.priority_task_queue = new_priority_queue;
         Ok(())
     }
 
@@ -223,7 +233,10 @@ impl State {
                 task_id.clone().to_owned(),
                 assigned_task.clone(),
             );
-            self.task_queue.push_front(task_id.clone().to_owned());
+            self.priority_task_queue.push(PriorityTask::new(
+                task_id.to_owned().clone(),
+                FAILED_TASK_PRIORITY * assigned_task.job_priority,
+            ));
         }
 
         Ok(assigned_task)
@@ -271,7 +284,13 @@ impl State {
 
             // If this worker is a assigned a task, requeue the task.
             if !worker.current_task_id.is_empty() {
-                self.task_queue.push_front(worker.current_task_id);
+                let assigned_task = self.tasks.get(&worker.current_task_id).chain_err(
+                    || "Unable to get worker task",
+                )?;
+                self.priority_task_queue.push(PriorityTask::new(
+                    worker.current_task_id,
+                    REQUEUED_TASK_PRIORITY * assigned_task.job_priority,
+                ));
             }
         } else {
             return Err(format!("Worker with ID {} not found.", worker_id).into());
@@ -282,7 +301,10 @@ impl State {
 
     pub fn add_task(&mut self, task: Task) {
         self.tasks.insert(task.id.clone(), task.clone());
-        self.task_queue.push_back(task.id);
+        self.priority_task_queue.push(PriorityTask::new(
+            task.id,
+            DEFAULT_TASK_PRIORITY * task.job_priority,
+        ));
     }
 
     // Unassign a task assigned to a worker and put the task back in the queue.
@@ -291,8 +313,14 @@ impl State {
             format!("Worker with ID {} not found.", worker_id)
         })?;
 
+        let assigned_task = self.tasks.get(&worker.current_task_id).chain_err(
+            || "Unable to get worker task",
+        )?;
         if !worker.current_task_id.is_empty() {
-            self.task_queue.push_front(worker.current_task_id.clone());
+            self.priority_task_queue.push(PriorityTask::new(
+                worker.current_task_id.clone(),
+                REQUEUED_TASK_PRIORITY * assigned_task.job_priority,
+            ));
         }
 
         worker.current_task_id = String::new();
@@ -327,8 +355,15 @@ impl State {
     // Tries to assign a worker the next task in the queue.
     // Returns the task if one exists.
     pub fn try_assign_worker_task(&mut self, worker_id: &str) -> Result<(Option<Task>)> {
-        let scheduled_task_id = match self.task_queue.pop_front() {
-            Some(scheduled_task_id) => scheduled_task_id,
+        let scheduled_task_id = match self.priority_task_queue.pop() {
+            Some(priority_task) => {
+                println!(
+                    "Popped off task {} with priority {}",
+                    priority_task.id,
+                    priority_task.priority
+                );
+                priority_task.id
+            }
             None => return Ok(None),
         };
 
@@ -407,7 +442,7 @@ impl state::StateHandling for State {
 
         Ok(json!({
             "workers": json!(workers_json),
-            "task_queue": json!(self.task_queue),
+            "priority_task_queue": json!(self.priority_task_queue),
             "tasks": json!(tasks_json),
         }))
     }
@@ -424,17 +459,8 @@ impl state::StateHandling for State {
             return Err("Error processing workers array.".into());
         }
 
-        if let serde_json::Value::Array(ref task_queue) = data["task_queue"] {
-            for task_id in task_queue {
-                let task_id_str: String = serde_json::from_value(task_id.clone()).chain_err(
-                    || "Error processing task_id in tasks queue",
-                )?;
-
-                self.task_queue.push_front(task_id_str);
-            }
-        } else {
-            return Err("Error processing tasks queue.".into());
-        }
+        self.priority_task_queue = serde_json::from_value(data["priority_task_queue"].clone())
+            .chain_err(|| "Error processing priority task queue")?;
 
         if let serde_json::Value::Array(ref tasks_array) = data["tasks"] {
             for task in tasks_array {

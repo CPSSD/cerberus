@@ -24,6 +24,8 @@ pub struct JobOptions {
     pub output_directory: Option<String>,
     /// Determines if paths should be validated. Should only be disabled during tests.
     pub validate_paths: bool,
+    /// Priority that should be applied to all tasks for the job.
+    pub priority: u32,
 }
 
 impl From<pb::MapReduceRequest> for JobOptions {
@@ -38,6 +40,7 @@ impl From<pb::MapReduceRequest> for JobOptions {
                 None
             },
             validate_paths: true,
+            priority: other.priority,
         }
     }
 }
@@ -50,6 +53,8 @@ pub struct Job {
     pub binary_path: String,
     pub input_directory: String,
     pub output_directory: String,
+
+    pub priority: u32,
 
     pub status: pb::Status,
     pub status_details: Option<String>,
@@ -103,6 +108,8 @@ impl Job {
             binary_path: options.binary_path,
             input_directory: input_directory,
             output_directory: output_directory,
+
+            priority: options.priority,
 
             status: pb::Status::IN_QUEUE,
             status_details: None,
@@ -237,6 +244,9 @@ impl StateHandling for Job {
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
             validate_paths: false,
+            priority: serde_json::from_value(data["priority"].clone()).chain_err(
+                || "Unable to convert priority",
+            )?,
         };
 
         let mut job = Job::new_no_validate(options).chain_err(
@@ -263,6 +273,8 @@ impl StateHandling for Job {
             "binary_path": self.binary_path,
             "input_directory": self.input_directory,
             "output_directory": self.output_directory,
+
+            "priority": self.priority,
 
             "status": self.get_serializable_status(),
             "status_details": self.status_details,
@@ -367,6 +379,7 @@ mod tests {
             input_directory: "/tmp/input/".to_owned(),
             output_directory: Some("/tmp/output/".to_owned()),
             validate_paths: false,
+            priority: 1,
         }).unwrap();
 
         assert_eq!("/tmp/input/output/", job1.output_directory);
