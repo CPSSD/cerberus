@@ -256,11 +256,18 @@ impl State {
             None => return Err(format!("Job with ID {} is not found.", &task.job_id).into()),
         };
 
+        if task.has_completed_before && task.task_type == TaskType::Map {
+            scheduled_job.job.reduce_tasks_total = 0;
+            scheduled_job.job.reduce_tasks_completed = 0;
+        }
+
         scheduled_job.job.cpu_time += task.cpu_time;
         if task.status == TaskStatus::Complete {
             match task.task_type {
                 TaskType::Map => {
-                    scheduled_job.job.map_tasks_completed += 1;
+                    if !task.has_completed_before {
+                        scheduled_job.job.map_tasks_completed += 1;
+                    }
                 }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;

@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use serde_json;
 
 use cerberus_proto::worker as pb;
-use common::{PriorityTask, Task, TaskStatus, Worker};
+use common::{PriorityTask, Task, TaskStatus, TaskType, Worker};
 use errors::*;
 use util::state::StateHandling;
 
@@ -23,6 +23,8 @@ pub struct State {
     workers: HashMap<String, Worker>,
     // A map of task id to task.
     tasks: HashMap<String, Task>,
+    // A map of task id to task for completed map tasks of running jobs.
+    completed_tasks: HashMap<String, Task>,
     // Prioritised list of tasks that are in the queue to be ran.
     priority_task_queue: BinaryHeap<PriorityTask>,
 }
@@ -48,6 +50,18 @@ impl State {
         self.priority_task_queue = new_priority_queue;
 
         Ok(())
+    }
+
+    fn get_in_progress_tasks_for_job(&self, job_id: &str) -> Result<Vec<String>> {
+        let mut tasks: Vec<String> = Vec::new();
+
+        for task in self.tasks.values() {
+            if task.job_id == job_id {
+                tasks.push(task.id.clone());
+            }
+        }
+
+        Ok(tasks)
     }
 
     pub fn get_worker_count(&self) -> u32 {
@@ -200,6 +214,11 @@ impl State {
             scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = map_result.get_cpu_time();
 
+            self.completed_tasks.insert(
+                scheduled_task.id.clone(),
+                scheduled_task.clone(),
+            );
+
             return Ok(scheduled_task);
         }
 
@@ -281,6 +300,19 @@ impl State {
         } else {
             worker.operation_status = pb::OperationStatus::FAILED;
         }
+        worker.status_last_updated = Utc::now();
+        worker.current_task_id = String::new();
+
+        Ok(())
+    }
+
+    pub fn set_worker_operation_cancelled(&mut self, worker_id: &str) -> Result<()> {
+        let worker = self.workers.get_mut(worker_id).chain_err(|| {
+            format!("Worker with ID {} not found.", worker_id)
+        })?;
+
+        worker.status = pb::WorkerStatus::AVAILABLE;
+        worker.operation_status = pb::OperationStatus::CANCELLED;
         worker.status_last_updated = Utc::now();
         worker.current_task_id = String::new();
 
@@ -432,6 +464,119 @@ impl State {
         })?;
         worker.task_assignments_failed = 0;
 
+        Ok(())
+    }
+
+    pub fn reschedule_map_task(&mut self, task_id: &str) -> Result<()> {
+        let map_task = self.completed_tasks
+            .get(task_id)
+            .chain_err(|| format!("Unable to get map task with ID {}", task_id))?
+            .clone();
+
+        let queued_tasks = self.get_in_progress_tasks_for_job(&map_task.job_id)
+            .chain_err(|| {
+                format!("Unable to get queued tasks for job {}", map_task.job_id)
+            })?;
+
+        let mut remove_tasks: Vec<String> = Vec::new();
+        for queued_task_id in queued_tasks.clone() {
+            let queued_task = self.tasks.get(&queued_task_id).chain_err(|| {
+                format!("Unable to get task {} from task queue", queued_task_id)
+            })?;
+
+            if queued_task.task_type != TaskType::Reduce {
+                continue;
+            }
+
+            let from_map_task =
+                self.reduce_from_map_task(&map_task, queued_task)
+                    .chain_err(|| "Unable to determine if reduce stems from map task")?;
+
+            if from_map_task {
+                remove_tasks.push(queued_task.id.clone());
+            }
+        }
+
+        self.remove_tasks_from_queue(&remove_tasks).chain_err(
+            || "Unable to remove tasks from queue",
+        )?;
+
+        // Reschedule the map task
+        let mut new_map_task = map_task.clone();
+        new_map_task.reset_map_task();
+        self.tasks.insert(
+            new_map_task.id.clone(),
+            new_map_task.clone(),
+        );
+        self.priority_task_queue.push(PriorityTask::new(
+            task_id.to_owned(),
+            new_map_task.job_priority * FAILED_TASK_PRIORITY,
+        ));
+
+        info!("Rescheduled map task with ID {}", new_map_task.id);
+        Ok(())
+    }
+
+    pub fn handle_worker_report(&mut self, request: &pb::ReportWorkerRequest) -> Result<()> {
+        let mut reschedule_task = String::new();
+
+        if self.tasks.contains_key(&request.task_id) {
+            for task in self.completed_tasks.values() {
+                if self.path_from_map_task(task, &request.path) {
+                    reschedule_task = task.id.clone();
+                    break;
+                }
+
+            }
+        }
+
+        if !reschedule_task.is_empty() {
+            self.reschedule_map_task(&reschedule_task).chain_err(|| {
+                format!("Unable to reschedule map task with ID {}", reschedule_task)
+            })?;
+        }
+
+        self.set_worker_operation_cancelled(&request.worker_id)
+            .chain_err(|| "Unable to set worker operation to cancelled")
+    }
+
+    // Returns true if the path was created by the given map task.
+    pub fn path_from_map_task(&self, map_task: &Task, path: &str) -> bool {
+        for partition in map_task.map_output_files.values() {
+            if partition.ends_with(&path) {
+                return true;
+            }
+        }
+        false
+    }
+
+    // Returns true if a reduce task stems from the given map task.
+    pub fn reduce_from_map_task(&self, map_task: &Task, reduce_task: &Task) -> Result<bool> {
+        match reduce_task.reduce_request {
+            Some(ref req) => Ok(map_task.map_output_files.contains_key(&req.partition)),
+            None => Err(
+                format!(
+                    "Unabale to get reduce request for task with ID {}",
+                    map_task.id
+                ).into(),
+            ),
+        }
+    }
+
+    pub fn remove_tasks_from_queue(&mut self, task_ids: &[String]) -> Result<()> {
+        let mut new_priority_queue: BinaryHeap<PriorityTask> = BinaryHeap::new();
+
+        for task_id in task_ids {
+            self.tasks.remove(task_id);
+        }
+
+        for priority_task in self.priority_task_queue.drain() {
+            if self.tasks.contains_key(&priority_task.id) {
+                new_priority_queue.push(priority_task);
+            }
+        }
+
+        self.priority_task_queue = new_priority_queue;
         Ok(())
     }
 }

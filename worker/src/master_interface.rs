@@ -96,4 +96,23 @@ impl MasterInterface {
 
         Ok(())
     }
+
+    pub fn report_worker(
+        &self,
+        worker_address: String,
+        intermediate_data_path: String,
+        task_id: String,
+    ) -> Result<()> {
+        let mut report_request = pb::ReportWorkerRequest::new();
+        report_request.set_task_id(task_id);
+        report_request.set_worker_id(self.worker_id.read().unwrap().clone());
+        report_request.set_report_address(worker_address);
+        report_request.set_path(intermediate_data_path);
+        self.client
+            .report_worker(RequestOptions::new(), report_request)
+            .wait()
+            .chain_err(|| "Failed to report worker to master.")?;
+
+        Ok(())
+    }
 }

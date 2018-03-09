@@ -404,6 +404,18 @@ impl WorkerManager {
 
         Ok(())
     }
+
+    pub fn handle_worker_report(&self, request: &pb::ReportWorkerRequest) -> Result<()> {
+        info!(
+            "Worker on '{}' failed to provide map output data to '{}' for task with ID {}",
+            request.report_address,
+            request.worker_id,
+            request.task_id,
+        );
+
+        let mut state = self.state.lock().unwrap();
+        state.handle_worker_report(request)
+    }
 }
 
 impl SimpleStateHandling<Error> for WorkerManager {

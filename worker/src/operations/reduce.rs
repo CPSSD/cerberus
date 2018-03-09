@@ -126,13 +126,18 @@ fn send_reduce_result(
 fn create_reduce_input(
     reduce_request: &pb::PerformReduceRequest,
     output_uuid: &str,
+    resources: &OperationResources,
 ) -> Result<Vec<ReduceInput>> {
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     for reduce_input_file in reduce_request.get_input_file_paths() {
         // TODO: Run these operations in parallel as networks can be slow
-        let reduce_input = WorkerInterface::get_data(reduce_input_file, output_uuid)
-            .chain_err(|| "Couldn't read reduce input file")?;
+        let reduce_input = WorkerInterface::get_data(
+            reduce_input_file,
+            output_uuid,
+            resources,
+            &reduce_request.task_id,
+        ).chain_err(|| "Couldn't read reduce input file")?;
 
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing reduce input",
@@ -208,9 +213,8 @@ fn internal_perform_reduce(
     resources: &OperationResources,
     output_uuid: &str,
 ) -> Result<()> {
-    let reduce_operations = create_reduce_input(reduce_request, output_uuid).chain_err(
-        || "Error creating reduce operations from input.",
-    )?;
+    let reduce_operations = create_reduce_input(reduce_request, output_uuid, resources)
+        .chain_err(|| "Error creating reduce operations from input")?;
 
     let reduce_options = ReduceOptions {
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
@@ -237,7 +241,6 @@ fn handle_reduce_error(err: Error, resources: &OperationResources, task_id: &str
 
     log_reduce_operation_err(err, &resources.operation_state);
 }
-
 
 fn handle_reduce_success(resources: &OperationResources, initial_cpu_time: u64, task_id: &str) {
     let mut response = pb::ReduceResult::new();

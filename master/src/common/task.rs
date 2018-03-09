@@ -42,6 +42,7 @@ pub struct Task {
     pub id: String,
 
     pub job_priority: u32,
+    pub has_completed_before: bool,
 
     // This will only exist if TaskType is Map.
     pub map_request: Option<pb::PerformMapRequest>,
@@ -88,6 +89,7 @@ impl Task {
             id: id,
 
             job_priority: job_priority,
+            has_completed_before: false,
 
             map_request: Some(map_request),
             reduce_request: None,
@@ -105,6 +107,17 @@ impl Task {
             time_started: None,
             time_completed: None,
         }
+    }
+
+    pub fn reset_map_task(&mut self) {
+        self.map_output_files = HashMap::new();
+        self.assigned_worker_id = String::new();
+        self.status = TaskStatus::Queued;
+        self.cpu_time = 0;
+        self.failure_count = 0;
+        self.time_started = None;
+        self.time_completed = None;
+        self.has_completed_before = true;
     }
 
     fn new_map_task_from_json(data: serde_json::Value) -> Result<Self> {
@@ -170,6 +183,7 @@ impl Task {
             id: id,
 
             job_priority: job_priority,
+            has_completed_before: false,
 
             map_request: None,
             reduce_request: Some(reduce_request),
