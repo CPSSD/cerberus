@@ -313,10 +313,13 @@ impl State {
             format!("Worker with ID {} not found.", worker_id)
         })?;
 
+        let assigned_task = self.tasks.get(&worker.current_task_id).chain_err(
+            || "Unable to get worker task",
+        )?;
         if !worker.current_task_id.is_empty() {
             self.priority_task_queue.push(PriorityTask::new(
                 worker.current_task_id.clone(),
-                REQUEUED_TASK_PRIORITY,
+                REQUEUED_TASK_PRIORITY * assigned_task.job_priority,
             ));
         }
 
@@ -456,24 +459,8 @@ impl state::StateHandling for State {
             return Err("Error processing workers array.".into());
         }
 
-        if let serde_json::Value::Array(ref priority_task_queue) = data["priority_task_queue"] {
-            for priority_task in priority_task_queue {
-                let task_id_str: String =
-                    serde_json::from_value(priority_task["id"].clone())
-                        .chain_err(|| "Error processing task_id in priority task queue")?;
-
-                let priority: u32 =
-                    serde_json::from_value(priority_task["priority"].clone())
-                        .chain_err(|| "Error processing priority in priority task queue")?;
-
-                self.priority_task_queue.push(PriorityTask::new(
-                    task_id_str,
-                    priority,
-                ));
-            }
-        } else {
-            return Err("Error processing tasks queue.".into());
-        }
+        self.priority_task_queue = serde_json::from_value(data["priority_task_queue"].clone())
+            .chain_err(|| "Error processing priority task queue")?;
 
         if let serde_json::Value::Array(ref tasks_array) = data["tasks"] {
             for task in tasks_array {

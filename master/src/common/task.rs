@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::cmp::Ordering;
-use std::result::Result as std_result;
 
 use protobuf::repeated::RepeatedField;
 use chrono::prelude::*;
 use serde_json;
-use serde::ser::{Serialize, Serializer, SerializeStruct};
 use uuid::Uuid;
 
 use errors::*;
@@ -361,7 +359,7 @@ impl StateHandling for Task {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Serialize, Deserialize)]
 pub struct PriorityTask {
     pub id: String,
     pub priority: u32,
@@ -382,18 +380,6 @@ impl Ord for PriorityTask {
 impl PartialOrd for PriorityTask {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl Serialize for PriorityTask {
-    fn serialize<S>(&self, serializer: S) -> std_result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("PriorityTask", 2)?;
-        state.serialize_field("id", &self.id)?;
-        state.serialize_field("priority", &self.priority)?;
-        state.end()
     }
 }
 

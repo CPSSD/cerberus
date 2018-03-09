@@ -45,9 +45,8 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                     Arg::with_name("priority")
                         .long("priority")
                         .short("p")
-                        .help("Priority of the MapReduce")
+                        .help("Priority of the MapReduce. Valid values are 1 to 10")
                         .takes_value(true)
-                        .default_value("1")
                         .required(false),
                 )
         )
