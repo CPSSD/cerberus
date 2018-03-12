@@ -5,6 +5,7 @@ pub use self::client_service::ClientService;
 pub use self::worker_service::WorkerService;
 
 use grpc;
+
 use cerberus_proto::{mapreduce_grpc, worker_grpc};
 use errors::*;
 

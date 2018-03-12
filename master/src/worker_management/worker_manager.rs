@@ -342,6 +342,45 @@ impl WorkerManager {
         let state = self.state.lock().unwrap();
         state.get_workers_running_job(job_id)
     }
+
+    pub fn get_workers_info(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+
+        let mut results_vec = Vec::new();
+        for worker in state.get_workers() {
+            let worker_info = json!({
+                "worker_id": worker.worker_id,
+                "status": worker.get_serializable_worker_status(),
+                "operation_status": worker.get_serializable_operation_status(),
+                "current_task_id": worker.current_task_id,
+                "task_assignments_failed": worker.task_assignments_failed,
+            });
+
+            results_vec.push(worker_info);
+        }
+
+        Ok(json!(results_vec))
+    }
+
+    pub fn get_tasks_info(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+
+        let mut results_vec = Vec::new();
+        for task in state.get_tasks() {
+            let task_info = json!({
+                "task_id": task.id,
+                "job_id": task.job_id,
+                "task_type": task.task_type,
+                "assigned_worker_id": task.assigned_worker_id,
+                "status": task.status,
+                "failure_count": task.failure_count,
+            });
+
+            results_vec.push(task_info);
+        }
+
+        Ok(json!(results_vec))
+    }
 }
 
 impl state::SimpleStateHandling for WorkerManager {
@@ -362,9 +401,9 @@ impl state::SimpleStateHandling for WorkerManager {
             for worker in workers {
                 let add_client_result = self.worker_interface.add_client(worker);
                 if let Err(e) = add_client_result {
-                    output_error(&e.chain_err(|| {
-                        format!("Unable to reconnect to worker {}", worker.worker_id)
-                    }));
+                    output_error(&e.chain_err(
+                        || format!("Unable to reconnect to worker {}", worker.worker_id),
+                    ));
                     workers_to_remove.push(worker.worker_id.to_owned());
                 }
             }
@@ -396,9 +435,9 @@ fn handle_task_assignment_result(
 ) {
     let worker_id = assignment_result.worker_id.clone();
     if let Err(err) = assignment_result.result {
-        output_error(&err.chain_err(|| {
-            format!("Error assigning task to worker {}", worker_id)
-        }));
+        output_error(&err.chain_err(
+            || format!("Error assigning task to worker {}", worker_id),
+        ));
         let result = worker_manager.handle_task_assignment_failure(&worker_id);
         if let Err(err) = result {
             output_error(&err.chain_err(|| "Error handling task assignment failure."));

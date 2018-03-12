@@ -146,6 +146,15 @@ impl State {
         }
     }
 
+    pub fn get_all_jobs(&self) -> Vec<&Job> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            jobs.push(&scheduled_job.job);
+        }
+
+        jobs
+    }
+
     pub fn get_jobs(&self, client_id: &str) -> Vec<Job> {
         let mut jobs = Vec::new();
         for scheduled_job in self.scheduled_jobs.values() {
@@ -259,7 +268,7 @@ impl State {
             match task.task_type {
                 TaskType::Map => {
                     scheduled_job.job.map_tasks_completed += 1;
-                } 
+                }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;
                     if scheduled_job.job.reduce_tasks_completed ==

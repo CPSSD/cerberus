@@ -220,7 +220,7 @@ impl Job {
         }
     }
 
-    fn get_serializable_status(&self) -> SerializableJobStatus {
+    pub fn get_serializable_status(&self) -> SerializableJobStatus {
         match self.status {
             pb::Status::DONE => SerializableJobStatus::DONE,
             pb::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,

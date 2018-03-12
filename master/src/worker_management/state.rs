@@ -59,6 +59,14 @@ impl State {
         workers
     }
 
+    pub fn get_tasks(&self) -> Vec<&Task> {
+        let mut tasks = Vec::new();
+        for task in self.tasks.values() {
+            tasks.push(task)
+        }
+        tasks
+    }
+
     // Returns a list of worker not currently assigned a task sorted by most recent health checks.
     pub fn get_available_workers(&self) -> Vec<String> {
         let mut workers = Vec::new();

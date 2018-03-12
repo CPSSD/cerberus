@@ -208,6 +208,30 @@ impl Scheduler {
 
         Ok(latest_job.id.clone())
     }
+
+    pub fn get_jobs_info(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+
+        let mut results_vec = Vec::new();
+        for job in state.get_all_jobs() {
+            let job_info = json!({
+                "job_id": job.id,
+                "client_id": job.client_id,
+                "binary_path": job.binary_path,
+                "input_directory": job.input_directory,
+                "output_directory": job.output_directory,
+                "status": job.get_serializable_status(),
+                "map_tasks_completed": job.map_tasks_completed,
+                "map_tasks_total": job.map_tasks_total,
+                "reduce_tasks_completed": job.reduce_tasks_completed,
+                "reduce_tasks_total": job.reduce_tasks_total,
+            });
+
+            results_vec.push(job_info);
+        }
+
+        Ok(json!(results_vec))
+    }
 }
 
 impl state::SimpleStateHandling for Scheduler {
