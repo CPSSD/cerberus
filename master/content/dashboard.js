@@ -7,14 +7,17 @@ function createCard(parent) {
     .addClass("container")
     .appendTo(infoBox);
 
-  return container;
+  var table = $("<table/>")
+    .addClass("stats-table")
+    .appendTo(container);
+
+  return table;
 }
 
 function addProperty(name, value, container) {
-  $("<a/>")
-    .addClass("ui-all")
-    .text(name + ": " + value)
-    .appendTo(container);
+  var row = $("<tr/>").appendTo(container);
+  $("<td>").text(name).appendTo(row);
+  $("<td>").text(value).appendTo(row);
 }
 
 function updateWorkersList() {
@@ -49,7 +52,7 @@ function updateJobsList() {
       jobsBox.empty();
 
       jobs.forEach(function(jobsInfo) {
-        var container = createCard(tasksBox);
+        var container = createCard(jobsBox);
 
         addProperty("Job ID", jobsInfo.job_id, container);
         addProperty("Client ID", jobsInfo.client_id, container);
