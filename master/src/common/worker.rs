@@ -74,7 +74,7 @@ impl Worker {
         }
     }
 
-    fn get_serializable_operation_status(&self) -> OperationStatus {
+    pub fn get_serializable_operation_status(&self) -> OperationStatus {
         match self.operation_status {
             pb::OperationStatus::IN_PROGRESS => OperationStatus::IN_PROGRESS,
             pb::OperationStatus::COMPLETE => OperationStatus::COMPLETE,
@@ -91,7 +91,7 @@ impl Worker {
         }
     }
 
-    fn get_serializable_worker_status(&self) -> WorkerStatus {
+    pub fn get_serializable_worker_status(&self) -> WorkerStatus {
         match self.status {
             pb::WorkerStatus::AVAILABLE => WorkerStatus::AVAILABLE,
             pb::WorkerStatus::BUSY => WorkerStatus::BUSY,

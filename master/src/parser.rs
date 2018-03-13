@@ -48,5 +48,13 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("dashboard-address")
+                .long("dashboard-address")
+                .short("d")
+                .help("The address to serve the cluster dashboard to")
+                .takes_value(true)
+                .required(false),
+        )
         .get_matches()
 }

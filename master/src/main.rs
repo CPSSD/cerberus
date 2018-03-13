@@ -10,14 +10,18 @@ extern crate error_chain;
 extern crate futures;
 extern crate futures_cpupool;
 extern crate grpc;
+extern crate iron;
 #[macro_use]
 extern crate log;
+extern crate mount;
 extern crate protobuf;
+extern crate router;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
+extern crate staticfile;
 extern crate uuid;
 extern crate util;
 
@@ -34,6 +38,7 @@ mod errors {
 }
 
 mod common;
+mod dashboard;
 mod scheduling;
 mod state;
 mod worker_communication;
@@ -46,6 +51,7 @@ use std::{thread, time};
 use std::path::Path;
 use std::str::FromStr;
 
+use dashboard::DashboardServer;
 use errors::*;
 use scheduling::{TaskProcessorImpl, Scheduler, run_task_update_loop};
 use util::init_logger;
@@ -59,6 +65,7 @@ const MAIN_LOOP_SLEEP_MS: u64 = 100;
 const DUMP_LOOP_MS: u64 = 5000;
 const DEFAULT_PORT: &str = "8081";
 const DEFAULT_DUMP_DIR: &str = "/var/lib/cerberus";
+const DEFAULT_DASHBOARD_ADDRESS: &str = "127.0.0.1:3000";
 
 fn run() -> Result<()> {
     println!("Cerberus Master!");
@@ -126,11 +133,23 @@ fn run() -> Result<()> {
         &Arc::clone(&worker_manager),
     );
 
+    let dashboard_address = matches.value_of("dashboard-address").unwrap_or(
+        DEFAULT_DASHBOARD_ADDRESS,
+    );
+    let mut dashboard = DashboardServer::new(
+        &dashboard_address,
+        Arc::clone(&map_reduce_scheduler),
+        Arc::clone(&worker_manager),
+    ).chain_err(|| "Failed to create cluster dashboard server.")?;
+
     let mut count = 0;
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
         if !srv.is_alive() {
+            dashboard.iron_server.close().chain_err(
+                || "Failed to close dashboard server",
+            )?;
             return Err("GRPC server unexpectedly died".into());
         }
 
