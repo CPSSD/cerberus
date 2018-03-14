@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
 
@@ -17,6 +19,7 @@ use state;
 use state::StateHandling;
 use worker_communication::WorkerInterface;
 use worker_management::state::State;
+use util::distributed_filesystem::WorkerInfoProvider;
 
 const HEALTH_CHECK_LOOP_MS: u64 = 100;
 const TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S: i64 = 60;
@@ -28,14 +31,14 @@ const ASSIGN_TASK_LOOP_MS: u64 = 100;
 /// It also handles worker health checking and stores the list of `Worker`s currently registered.
 pub struct WorkerManager {
     state: Arc<Mutex<State>>,
-    worker_interface: Arc<WorkerInterface + Send>,
+    worker_interface: Arc<WorkerInterface + Send + Sync>,
 
     task_update_sender: Mutex<Sender<Task>>,
     task_update_reciever: Arc<Mutex<Receiver<Task>>>,
 }
 
 impl WorkerManager {
-    pub fn new(worker_interface: Arc<WorkerInterface + Send>) -> Self {
+    pub fn new(worker_interface: Arc<WorkerInterface + Send + Sync>) -> Self {
         let (sender, receiver) = channel();
         WorkerManager {
             state: Arc::new(Mutex::new(State::new())),
@@ -414,6 +417,19 @@ impl state::SimpleStateHandling for WorkerManager {
             )?;
         }
         Ok(())
+    }
+}
+
+impl WorkerInfoProvider for WorkerManager {
+    fn get_workers(&self) -> HashMap<String, SocketAddr> {
+        let mut worker_map = HashMap::new();
+        let state = self.state.lock().unwrap();
+        let workers = state.get_workers();
+        for worker in workers {
+            worker_map.insert(worker.worker_id.to_owned(), worker.address);
+        }
+
+        worker_map
     }
 }
 

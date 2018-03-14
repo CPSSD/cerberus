@@ -46,7 +46,7 @@ where
 }
 
 /// `write_intermediate_vector` attempts to serialise an `Vec` to a given sink.
-pub fn write_intermediate_vector<W, V>(sink: &mut W, output: &Vec<V>) -> Result<()>
+pub fn write_intermediate_vector<W, V>(sink: &mut W, output: &[V]) -> Result<()>
 where
     W: Write,
     V: Default + Serialize,

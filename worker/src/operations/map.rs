@@ -338,12 +338,19 @@ fn internal_perform_map(
             }
         }
 
+        info!(
+            "Running map task for {} ({} - > {})",
+            input_location.input_path,
+            input_location.start_byte,
+            input_location.end_byte
+        );
+
         let map_input_value = io::read_location(&resources.data_abstraction_layer, input_location)
             .chain_err(|| "unable to open input file")?;
 
         let absolute_path = resources
             .data_abstraction_layer
-            .absolute_path(Path::new(map_options.get_mapper_file_path()))
+            .get_local_file(Path::new(map_options.get_mapper_file_path()))
             .chain_err(|| "Unable to get absolute path")?;
         let child = Command::new(absolute_path)
             .arg("map")

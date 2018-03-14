@@ -51,4 +51,5 @@ fn compile(proto_name: &str) {
 fn main() {
     compile("mapreduce");
     compile("worker");
+    compile("filesystem");
 }

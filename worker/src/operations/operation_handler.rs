@@ -164,7 +164,7 @@ impl OperationHandler {
         })
     }
 
-    pub fn cancel_task(&self, request: pb::CancelTaskRequest) -> Result<()> {
+    pub fn cancel_task(&self, request: &pb::CancelTaskRequest) -> Result<()> {
         let mut operation_state = self.operation_state.lock().unwrap();
         operation_state.last_cancelled_task_id = Some(request.task_id.clone());
 

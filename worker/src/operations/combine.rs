@@ -11,7 +11,7 @@ use super::operation_handler::OperationResources;
 fn check_has_combine(resources: &OperationResources) -> Result<bool> {
     let absolute_path = resources
         .data_abstraction_layer
-        .absolute_path(Path::new(&resources.binary_path))
+        .get_local_file(Path::new(&resources.binary_path))
         .chain_err(|| "Unable to get absolute path")?;
     let output = Command::new(absolute_path)
         .arg("has-combine")
@@ -27,10 +27,10 @@ fn check_has_combine(resources: &OperationResources) -> Result<bool> {
 fn do_combine_operation(
     resources: &OperationResources,
     key: &str,
-    values: Vec<serde_json::Value>,
+    values: &[serde_json::Value],
 ) -> Result<serde_json::Value> {
     let combine_input = json!({
-        "key": key.clone().to_owned(),
+        "key": key.to_owned(),
         "values": values,
     });
     let combine_input_str = serde_json::to_string(&combine_input).chain_err(
@@ -39,7 +39,7 @@ fn do_combine_operation(
 
     let absolute_binary_path = resources
         .data_abstraction_layer
-        .absolute_path(Path::new(&resources.binary_path))
+        .get_local_file(Path::new(&resources.binary_path))
         .chain_err(|| "Unable to get absolute path")?;
     let mut child = Command::new(absolute_binary_path)
         .arg("combine")
@@ -111,8 +111,9 @@ fn run_combine(resources: &OperationResources) -> Result<()> {
 
         for (key, values) in (&kv_map).iter() {
             if values.len() > 1 {
-                let results = do_combine_operation(resources, key, values.clone())
-                    .chain_err(|| "Failed to run combine operation.")?;
+                let results = do_combine_operation(resources, key, values).chain_err(
+                    || "Failed to run combine operation.",
+                )?;
 
                 if let serde_json::Value::Array(ref values) = results {
                     for value in values {
@@ -144,7 +145,7 @@ fn run_combine(resources: &OperationResources) -> Result<()> {
     Ok(())
 }
 
-/// Optionally run a combine operation if it's implemented by the MapReduce binary.
+/// Optionally run a combine operation if it's implemented by the `MapReduce` binary.
 pub fn optional_run_combine(resources: &OperationResources) -> Result<()> {
     let has_combine = check_has_combine(resources).chain_err(
         || "Error running has-combine command.",

@@ -47,7 +47,7 @@ impl grpc_pb::ScheduleOperationService for ScheduleOperationService {
         _o: RequestOptions,
         cancel_request: pb::CancelTaskRequest,
     ) -> SingleResponse<pb::EmptyMessage> {
-        let cancel_task_result = self.operation_handler.cancel_task(cancel_request);
+        let cancel_task_result = self.operation_handler.cancel_task(&cancel_request);
         match cancel_task_result {
             Ok(_) => SingleResponse::completed(pb::EmptyMessage::new()),
             Err(err) => SingleResponse::err(Error::Panic(err.to_string())),

@@ -53,7 +53,15 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .long("dashboard-address")
                 .short("d")
                 .help("The address to serve the cluster dashboard to")
-                .takes_value(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("dfs")
+                .long("dfs")
+                .help(
+                    "Makes the master run using the distributed file system for data access.",
+                )
+                .takes_value(false)
                 .required(false),
         )
         .get_matches()

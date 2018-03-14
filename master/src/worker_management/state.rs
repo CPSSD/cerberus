@@ -237,10 +237,7 @@ impl State {
             assigned_task.time_completed = Some(Utc::now());
         } else {
             assigned_task.status = TaskStatus::Queued;
-            self.tasks.insert(
-                task_id.clone().to_owned(),
-                assigned_task.clone(),
-            );
+            self.tasks.insert(task_id.to_owned(), assigned_task.clone());
             self.priority_task_queue.push(PriorityTask::new(
                 task_id.to_owned().clone(),
                 FAILED_TASK_PRIORITY * assigned_task.job_priority,
@@ -344,7 +341,7 @@ impl State {
                 if scheduled_task.time_started == None {
                     scheduled_task.time_started = Some(Utc::now());
                 }
-                scheduled_task.assigned_worker_id = worker_id.clone().to_owned();
+                scheduled_task.assigned_worker_id = worker_id.to_owned();
 
                 scheduled_task.clone()
             } else {
@@ -355,7 +352,7 @@ impl State {
         let worker = self.workers.get_mut(worker_id).chain_err(|| {
             format!("Worker with ID {} not found.", worker_id)
         })?;
-        worker.current_task_id = task_id.clone().to_owned();
+        worker.current_task_id = task_id.to_owned();
 
         Ok(assigned_task)
     }

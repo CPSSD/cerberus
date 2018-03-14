@@ -1,16 +1,18 @@
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use errors::*;
 
 pub trait AbstractionLayer {
-    fn open_file(&self, path: &Path) -> Result<File>;
+    fn get_file_length(&self, path: &Path) -> Result<u64>;
 
-    fn create_file(&self, path: &Path) -> Result<File>;
+    fn read_file_location(&self, path: &Path, start_byte: u64, end_byte: u64) -> Result<Vec<u8>>;
 
-    fn absolute_path(&self, path: &Path) -> Result<PathBuf>;
+    fn write_file(&self, path: &Path, data: &[u8]) -> Result<()>;
 
-    fn abstracted_path(&self, path: &Path) -> Result<PathBuf>;
+    /// `get_local_file` returns a filepath of the given file on the local machine. If the file can
+    /// not be accessed on the local machine already, it will retrive the file and create it on the
+    /// local machine.
+    fn get_local_file(&self, path: &Path) -> Result<PathBuf>;
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
 

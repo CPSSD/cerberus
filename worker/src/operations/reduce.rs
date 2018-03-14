@@ -114,7 +114,7 @@ impl ReduceOperationQueue {
         data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<()> {
         let absolute_path = data_abstraction_layer_arc
-            .absolute_path(Path::new(&reduce_options.reducer_file_path))
+            .get_local_file(Path::new(&reduce_options.reducer_file_path))
             .chain_err(|| "Unable to get absolute path")?;
         let child = Command::new(absolute_path)
             .arg("reduce")
