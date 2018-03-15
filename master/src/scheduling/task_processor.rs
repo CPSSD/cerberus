@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::cmp::max;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -8,12 +8,14 @@ use common::{Job, Task};
 use util::data_layer::AbstractionLayer;
 use errors::*;
 
-const MEGA_BYTE: usize = 1000 * 1000;
-const MAP_INPUT_SIZE: usize = MEGA_BYTE * 64;
+const MEGA_BYTE: u64 = 1000 * 1000;
+const MAP_INPUT_SIZE: u64 = MEGA_BYTE * 64;
+const CLOSEST_ENDLINE_STEP: u64 = 1000;
+const NEWLINE: u8 = 0x0A;
 
-struct MapTaskFileInformation {
-    task_num: u32,
-    bytes_to_write: usize,
+#[derive(Clone)]
+struct MapTaskInformation {
+    bytes_remaining: u64,
 
     input_locations: Vec<pb::InputLocation>,
 }
@@ -37,96 +39,134 @@ impl TaskProcessorImpl {
         TaskProcessorImpl { data_abstraction_layer: data_abstraction_layer }
     }
 
-    /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
-    fn read_input_file(
+    /// `get_closest_endline` files the endline closest to the end of a given range for input file
+    /// splitting.
+    fn get_closest_endline(
         &self,
-        job: &Job,
-        map_task_file_info: &mut MapTaskFileInformation,
         input_file_path: &PathBuf,
-        map_tasks: &mut Vec<Task>,
-    ) -> Result<()> {
-        let input_path_str = input_file_path.to_str().ok_or("Invalid input file path.")?;
+        start_byte: u64,
+        end_byte: u64,
+    ) -> Result<u64> {
+        let mut current_byte = end_byte;
+        while current_byte > start_byte {
+            let new_current_byte = max(start_byte, current_byte - CLOSEST_ENDLINE_STEP);
 
-        let mut input_location = pb::InputLocation::new();
-        input_location.set_input_path(input_path_str.to_owned());
-        input_location.set_start_byte(0);
+            let bytes = self.data_abstraction_layer
+                .read_file_location(input_file_path, new_current_byte, current_byte)
+                .chain_err(|| "Error getting closest newline")?;
 
-        let input_file = self.data_abstraction_layer
-            .open_file(input_file_path)
-            .chain_err(|| "Error opening input file.")?;
+            current_byte = new_current_byte;
 
-        let mut bytes_read: usize = 0;
-
-        let buf_reader = BufReader::new(input_file);
-        for line in buf_reader.lines() {
-            let mut read_str = line.chain_err(|| "Error reading Map input.")?;
-            bytes_read += read_str.len() + 1; // Add one byte for newline character
-
-            input_location.set_end_byte(bytes_read as u64);
-
-            let ammount_read: usize = read_str.len();
-            if ammount_read > map_task_file_info.bytes_to_write {
-                map_task_file_info.input_locations.push(input_location);
-
-                input_location = pb::InputLocation::new();
-                input_location.set_input_path(input_path_str.to_owned());
-                input_location.set_start_byte(bytes_read as u64 + 1);
-                input_location.set_end_byte(bytes_read as u64 + 1);
-
-                map_tasks.push(Task::new_map_task(
-                    job.id.as_str(),
-                    job.binary_path.as_str(),
-                    map_task_file_info.input_locations.clone(),
-                ));
-
-                *map_task_file_info = MapTaskFileInformation {
-                    task_num: map_task_file_info.task_num + 1,
-                    bytes_to_write: MAP_INPUT_SIZE,
-
-                    input_locations: Vec::new(),
-                };
-            } else {
-                map_task_file_info.bytes_to_write -= ammount_read;
+            for i in (0..bytes.len()).rev() {
+                if bytes[i] == NEWLINE {
+                    // Start next chunk after newline.
+                    return Ok(current_byte + (i as u64) + 1);
+                }
             }
         }
 
-        if input_location.start_byte != input_location.end_byte {
-            map_task_file_info.input_locations.push(input_location);
+        // Could not find a newline, just split at the end of the chunk.
+        Ok(end_byte)
+    }
+
+    /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
+    /// If a file can fit into one map task, it will not be split.
+    fn read_input_file(&self, input_file_path: &PathBuf) -> Result<Vec<pb::InputLocation>> {
+        let input_path_str = input_file_path.to_str().ok_or("Invalid input file path.")?;
+
+        let mut input_locations = Vec::new();
+
+        let mut start_byte: u64 = 0;
+        let end_byte: u64 = self.data_abstraction_layer
+            .get_file_length(input_file_path)
+            .chain_err(|| "Error reading input file")?;
+
+        while end_byte - start_byte > MAP_INPUT_SIZE {
+            let new_start_byte =
+                self.get_closest_endline(input_file_path, start_byte, start_byte + MAP_INPUT_SIZE)
+                    .chain_err(|| "Error reading input file")?;
+            start_byte = new_start_byte;
+
+            let mut input_location = pb::InputLocation::new();
+            input_location.set_input_path(input_path_str.to_owned());
+            input_location.set_start_byte(start_byte);
+            input_location.set_end_byte(new_start_byte);
+            input_locations.push(input_location);
         }
 
-        Ok(())
+        if start_byte != end_byte {
+            let mut input_location = pb::InputLocation::new();
+            input_location.set_input_path(input_path_str.to_owned());
+            input_location.set_start_byte(start_byte);
+            input_location.set_end_byte(end_byte);
+            input_locations.push(input_location);
+        }
+
+        Ok(input_locations)
     }
-}
 
-impl TaskProcessor for TaskProcessorImpl {
-    fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
-        let mut map_tasks = Vec::new();
+    /// `get_map_task_infos` reads a directory and creates a set of `MapTaskFileInformations`
+    fn get_map_task_infos(&self, input_directory: &Path) -> Result<Vec<MapTaskInformation>> {
+        let mut map_task_infos = Vec::new();
 
-        let mut map_task_file_info = MapTaskFileInformation {
-            task_num: 1,
-            bytes_to_write: MAP_INPUT_SIZE,
+        let mut map_task_info = MapTaskInformation {
+            bytes_remaining: MAP_INPUT_SIZE,
 
             input_locations: Vec::new(),
         };
 
         let paths = self.data_abstraction_layer
-            .read_dir(Path::new(&job.input_directory))
+            .read_dir(input_directory)
             .chain_err(|| "Unable to read directory")?;
         for path in paths {
             if self.data_abstraction_layer
                 .is_file(path.as_path())
                 .chain_err(|| "Failed to check if path is a file")?
             {
-                self.read_input_file(job, &mut map_task_file_info, &path, &mut map_tasks)
-                    .chain_err(|| "Error reading input file.")?;
+                let input_locations = self.read_input_file(&path).chain_err(
+                    || "Error reading input file.",
+                )?;
+
+                for input_location in input_locations {
+                    let bytes_to_read = input_location.end_byte - input_location.start_byte;
+                    if bytes_to_read > map_task_info.bytes_remaining {
+                        map_task_infos.push(map_task_info);
+
+                        map_task_info = MapTaskInformation {
+                            bytes_remaining: MAP_INPUT_SIZE,
+                            input_locations: Vec::new(),
+                        };
+                    }
+
+                    map_task_info.bytes_remaining -= bytes_to_read;
+                    map_task_info.input_locations.push(input_location);
+                }
             }
         }
 
-        if map_task_file_info.bytes_to_write != MAP_INPUT_SIZE {
+        if map_task_info.bytes_remaining != MAP_INPUT_SIZE {
+            map_task_infos.push(map_task_info);
+        }
+
+        Ok(map_task_infos)
+    }
+}
+
+impl TaskProcessor for TaskProcessorImpl {
+    fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
+        let map_task_infos = self.get_map_task_infos(Path::new(&job.input_directory))
+            .chain_err(|| "Error creating map tasks")?;
+
+        // TODO(conor): Consider adding together any map tasks that can be combined here.
+
+        let mut map_tasks = Vec::new();
+
+        for map_task_info in map_task_infos {
             map_tasks.push(Task::new_map_task(
                 job.id.as_str(),
                 job.binary_path.as_str(),
-                map_task_file_info.input_locations,
+                map_task_info.input_locations,
+                job.priority,
             ));
         }
 
@@ -152,6 +192,7 @@ impl TaskProcessor for TaskProcessorImpl {
                 reduce_partition,
                 reduce_input,
                 job.output_directory.as_str(),
+                job.priority,
             ));
         }
 
@@ -166,6 +207,7 @@ mod tests {
     use std::io::{Read, Write};
     use std::collections::HashSet;
     use std::fs;
+    use std::fs::File;
     use common::{JobOptions, TaskType};
     use util::data_layer::NullAbstractionLayer;
 
@@ -182,17 +224,11 @@ mod tests {
         input_path2.push("input-2");
 
         fs::create_dir_all(test_path.clone()).unwrap();
-        let mut input_file1 = task_processor
-            .data_abstraction_layer
-            .create_file(input_path1.as_path().clone())
-            .unwrap();
+        let mut input_file1 = File::create(&input_path1.as_path()).unwrap();
         input_file1
             .write_all(b"this is the first test file")
             .unwrap();
-        let mut input_file2 = task_processor
-            .data_abstraction_layer
-            .create_file(input_path2.as_path().clone())
-            .unwrap();
+        let mut input_file2 = File::create(&input_path2.as_path()).unwrap();
         input_file2
             .write_all(b"this is the second test file")
             .unwrap();
@@ -221,20 +257,14 @@ mod tests {
         let path = perform_map_req.get_input().get_input_locations()[0]
             .input_path
             .clone();
-        let mut input_file0 = task_processor
-            .data_abstraction_layer
-            .open_file(&Path::new(&path))
-            .unwrap();
+        let mut input_file0 = File::open(&path).unwrap();
         let mut map_input0 = String::new();
         input_file0.read_to_string(&mut map_input0).unwrap();
 
         let path = perform_map_req.get_input().get_input_locations()[1]
             .input_path
             .clone();
-        let mut input_file1 = task_processor
-            .data_abstraction_layer
-            .open_file(&Path::new(&path))
-            .unwrap();
+        let mut input_file1 = File::open(&path).unwrap();
         let mut map_input1 = String::new();
         input_file1.read_to_string(&mut map_input1).unwrap();
 
@@ -277,7 +307,8 @@ mod tests {
         input_location.set_start_byte(0);
         input_location.set_end_byte(0);
 
-        let mut map_task1 = Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()]);
+        let mut map_task1 =
+            Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()], 1);
         map_task1.map_output_files.insert(
             0,
             "/tmp/output/1".to_owned(),
@@ -287,7 +318,7 @@ mod tests {
             "/tmp/output/2".to_owned(),
         );
 
-        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location]);
+        let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location], 1);
         map_task2.map_output_files.insert(
             0,
             "/tmp/output/3".to_owned(),

@@ -11,6 +11,7 @@ use errors::*;
 use master_interface::MasterInterface;
 use super::io;
 use super::operation_handler;
+use super::operation_handler::OperationResources;
 use super::state::OperationState;
 use util::output_error;
 use util::data_layer::AbstractionLayer;
@@ -40,6 +41,7 @@ struct ReduceInput {
 struct ReduceOptions {
     reducer_file_path: String,
     output_directory: String,
+    task_id: String,
 }
 
 /// `ReduceOperationQueue` is a struct used for storing and executing a queue of `ReduceOperations`.
@@ -69,6 +71,16 @@ fn run_reducer(
     let output_str = String::from_utf8(output.stdout).chain_err(
         || "Error accessing payload output.",
     )?;
+
+    let stderr_str = String::from_utf8(output.stderr).chain_err(
+        || "Error accessing payload output.",
+    )?;
+
+    if !stderr_str.is_empty() {
+        return Err(
+            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
+        );
+    }
 
     let reduce_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
         || "Error parsing reduce results.",
@@ -102,13 +114,13 @@ impl ReduceOperationQueue {
         data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<()> {
         let absolute_path = data_abstraction_layer_arc
-            .absolute_path(Path::new(&reduce_options.reducer_file_path))
+            .get_local_file(Path::new(&reduce_options.reducer_file_path))
             .chain_err(|| "Unable to get absolute path")?;
         let child = Command::new(absolute_path)
             .arg("reduce")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .chain_err(|| "Failed to start reduce operation process.")?;
 
@@ -185,12 +197,12 @@ fn create_reduce_operations(
         if let serde_json::Value::Array(ref pairs) = parsed_value {
             for pair in pairs {
                 let key = pair["key"].as_str().chain_err(
-                    || "Error parsing reduce input.",
+                    || "Error parsing reduce input key.",
                 )?;
 
                 let value = pair["value"].clone();
                 if value.is_null() {
-                    return Err("Error parsing reduce input.".into());
+                    return Err("Error parsing reduce input value.".into());
                 }
 
                 let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);
@@ -219,13 +231,11 @@ fn create_reduce_operations(
 // Public api for performing a reduce task.
 pub fn perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+    resources: &OperationResources,
     output_uuid: &str,
 ) -> Result<()> {
     {
-        let mut operation_state = operation_state_arc.lock().unwrap();
+        let mut operation_state = resources.operation_state.lock().unwrap();
         operation_state.initial_cpu_time = operation_handler::get_cpu_time();
     }
 
@@ -234,21 +244,15 @@ pub fn perform_reduce(
         reduce_request.reducer_file_path
     );
 
-    if operation_handler::get_worker_status(operation_state_arc) == pb::WorkerStatus::BUSY {
+    if operation_handler::get_worker_status(&resources.operation_state) == pb::WorkerStatus::BUSY {
         warn!("Reduce operation requested while worker is busy");
         return Err("Worker is busy.".into());
     }
-    operation_handler::set_busy_status(operation_state_arc);
+    operation_handler::set_busy_status(&resources.operation_state);
 
-    let result = internal_perform_reduce(
-        reduce_request,
-        Arc::clone(operation_state_arc),
-        master_interface_arc,
-        data_abstraction_layer_arc,
-        output_uuid,
-    );
+    let result = internal_perform_reduce(reduce_request, resources, output_uuid);
     if let Err(err) = result {
-        log_reduce_operation_err(err, operation_state_arc);
+        log_reduce_operation_err(err, &resources.operation_state);
         return Err("Error starting reduce operation.".into());
     }
 
@@ -258,9 +262,7 @@ pub fn perform_reduce(
 // Internal implementation for performing a reduce task.
 fn internal_perform_reduce(
     reduce_request: &pb::PerformReduceRequest,
-    operation_state_arc: Arc<Mutex<OperationState>>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+    resources: &OperationResources,
     output_uuid: &str,
 ) -> Result<()> {
     let reduce_operations = create_reduce_operations(reduce_request, output_uuid)
@@ -269,50 +271,48 @@ fn internal_perform_reduce(
     let reduce_options = ReduceOptions {
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
         output_directory: reduce_request.get_output_directory().to_owned(),
+        task_id: reduce_request.get_task_id().to_owned(),
     };
 
-    run_reduce_queue(
-        reduce_options,
-        operation_state_arc,
-        reduce_operations,
-        master_interface_arc,
-        data_abstraction_layer_arc,
-    );
+    run_reduce_queue(reduce_options, resources, reduce_operations);
 
     Ok(())
 }
 
 fn handle_reduce_queue_finished(
     reduce_err: Option<Error>,
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-    master_interface_arc: &Arc<MasterInterface>,
+    resources: &OperationResources,
     initial_cpu_time: u64,
+    task_id: &str,
 ) {
     if let Some(err) = reduce_err {
         let mut response = pb::ReduceResult::new();
         response.set_status(pb::ResultStatus::FAILURE);
         response.set_failure_details(operation_handler::failure_details_from_error(&err));
+        response.set_task_id(task_id.to_owned());
 
-        let result = send_reduce_result(master_interface_arc, response);
+        let result = send_reduce_result(&resources.master_interface, response);
         if let Err(err) = result {
             error!("Error sending reduce failed: {}", err);
         }
 
-        log_reduce_operation_err(err, operation_state_arc);
+        log_reduce_operation_err(err, &resources.operation_state);
     } else {
         let mut response = pb::ReduceResult::new();
         response.set_status(pb::ResultStatus::SUCCESS);
         response.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
-        let result = send_reduce_result(master_interface_arc, response);
+        response.set_task_id(task_id.to_owned());
+
+        let result = send_reduce_result(&resources.master_interface, response);
 
         match result {
             Ok(_) => {
-                operation_handler::set_complete_status(operation_state_arc);
+                operation_handler::set_complete_status(&resources.operation_state);
                 info!("Reduce operation completed sucessfully.");
             }
             Err(err) => {
                 error!("Error sending reduce result: {}", err);
-                operation_handler::set_failed_status(operation_state_arc);
+                operation_handler::set_failed_status(&resources.operation_state);
             }
         }
     }
@@ -320,12 +320,11 @@ fn handle_reduce_queue_finished(
 
 fn run_reduce_queue(
     reduce_options: ReduceOptions,
-    operation_state_arc: Arc<Mutex<OperationState>>,
+    resources: &OperationResources,
     reduce_operations: Vec<ReduceOperation>,
-    master_interface_arc: Arc<MasterInterface>,
-    data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
 ) {
-    let initial_cpu_time = operation_state_arc.lock().unwrap().initial_cpu_time;
+    let initial_cpu_time = resources.operation_state.lock().unwrap().initial_cpu_time;
+    let resources = resources.clone();
 
     thread::spawn(move || {
         let mut reduce_err = None;
@@ -337,9 +336,26 @@ fn run_reduce_queue(
             if reduce_queue.is_queue_empty() {
                 break;
             } else {
+
+                // Make sure the job hasn't been cancelled before continuing.
+                {
+                    let cancelled = {
+                        let operation_state = resources.operation_state.lock().unwrap();
+                        operation_state.task_cancelled(&reduce_options.task_id)
+                    };
+                    if cancelled {
+                        operation_handler::set_cancelled_status(&resources.operation_state);
+                        println!(
+                            "Succesfully cancelled reduce task: {}",
+                            &reduce_options.task_id
+                        );
+                        return;
+                    }
+                }
+
                 let result = reduce_queue.perform_next_reduce_operation(
                     &reduce_options,
-                    &data_abstraction_layer_arc,
+                    &resources.data_abstraction_layer,
                 );
                 if let Err(err) = result {
                     reduce_err = Some(err);
@@ -350,9 +366,9 @@ fn run_reduce_queue(
 
         handle_reduce_queue_finished(
             reduce_err,
-            &operation_state_arc,
-            &master_interface_arc,
+            &resources,
             initial_cpu_time,
+            &reduce_options.task_id,
         );
     });
 }
@@ -391,6 +407,7 @@ mod tests {
         let reduce_options = ReduceOptions {
             output_directory: "foo".to_owned(),
             reducer_file_path: "bar".to_owned(),
+            task_id: "task1".to_owned(),
         };
 
         let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =

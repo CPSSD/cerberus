@@ -100,11 +100,59 @@ impl State {
         Ok(())
     }
 
+    pub fn update_job_started(&mut self, job_id: &str, time_started: DateTime<Utc>) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
+        };
+
+        if scheduled_job.job.status == pb::Status::IN_QUEUE {
+            scheduled_job.job.status = pb::Status::IN_PROGRESS;
+        }
+
+        if let Some(job_time_started) = scheduled_job.job.time_started {
+            if time_started < job_time_started {
+                scheduled_job.job.time_started = Some(time_started);
+            }
+        } else {
+            scheduled_job.job.time_started = Some(time_started);
+        }
+
+        Ok(())
+    }
+
+    pub fn cancel_job(&mut self, job_id: &str) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(job) => job,
+            None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
+        };
+
+        let job_status = scheduled_job.job.status;
+        if !(job_status == pb::Status::IN_PROGRESS || job_status == pb::Status::IN_QUEUE) {
+            return Err(
+                format!("Unable to cancel job. Expected IN_PROGRESS or IN_QUEUE job. Got {:?}",
+                        job_status).into(),
+            );
+        }
+
+        scheduled_job.job.status = pb::Status::CANCELLED;
+        Ok(())
+    }
+
     pub fn get_job(&self, job_id: &str) -> Result<Job> {
         match self.scheduled_jobs.get(job_id) {
             Some(scheduled_job) => Ok(scheduled_job.job.clone()),
             None => Err(format!("Job with ID {} is not found.", &job_id).into()),
         }
+    }
+
+    pub fn get_all_jobs(&self) -> Vec<&Job> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            jobs.push(&scheduled_job.job);
+        }
+
+        jobs
     }
 
     pub fn get_jobs(&self, client_id: &str) -> Vec<Job> {
@@ -171,6 +219,23 @@ impl State {
         Ok(())
     }
 
+    pub fn update_task(&mut self, task: Task) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(&task.job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", task.job_id).into()),
+        };
+
+        if !scheduled_job.tasks.contains_key(&task.id) {
+            return Err(
+                format!("Task with ID {} is does not exist.", &task.id).into(),
+            );
+        }
+
+        scheduled_job.tasks.insert(task.id.to_owned(), task);
+
+        Ok(())
+    }
+
     // Returns if reduce tasks are required for a given job.
     pub fn reduce_tasks_required(&self, job_id: &str) -> Result<bool> {
         let scheduled_job = match self.scheduled_jobs.get(job_id) {
@@ -186,6 +251,13 @@ impl State {
 
     // Adds the information for a completed task and updates the job.
     pub fn add_completed_task(&mut self, task: Task) -> Result<()> {
+        self.update_job_started(
+            &task.job_id,
+            task.time_started.chain_err(
+                || "Time started is expected to exist.",
+            )?,
+        ).chain_err(|| "Error adding completed task.")?;
+
         let scheduled_job = match self.scheduled_jobs.get_mut(&task.job_id) {
             Some(scheduled_job) => scheduled_job,
             None => return Err(format!("Job with ID {} is not found.", &task.job_id).into()),
@@ -196,7 +268,7 @@ impl State {
             match task.task_type {
                 TaskType::Map => {
                     scheduled_job.job.map_tasks_completed += 1;
-                } 
+                }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;
                     if scheduled_job.job.reduce_tasks_completed ==
@@ -219,10 +291,12 @@ impl State {
         Ok(())
     }
 
-    pub fn get_in_progress_job_count(&self) -> u32 {
+    pub fn get_job_queue_size(&self) -> u32 {
         let mut job_count = 0;
         for scheduled_job in self.scheduled_jobs.values() {
-            if scheduled_job.job.status == pb::Status::IN_PROGRESS {
+            if scheduled_job.job.status == pb::Status::IN_PROGRESS ||
+                scheduled_job.job.status == pb::Status::IN_QUEUE
+            {
                 job_count += 1;
             }
         }

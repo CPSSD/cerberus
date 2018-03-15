@@ -45,6 +45,7 @@ enum OperationStatus {
     IN_PROGRESS = 1;
     COMPLETE = 2;
     FAILED = 3;
+    CANCELLED = 4;
 };
 
 message UpdateStatusRequest {
@@ -71,6 +72,7 @@ message MapResult {
     uint64 cpu_time = 4;
     // Details on the error if the status is failure
     string failure_details = 5;
+    string task_id = 6;
 }
 
 message ReduceResult {
@@ -81,6 +83,7 @@ message ReduceResult {
     uint64 cpu_time = 3;
     // Details on the error if the status is failure
     string failure_details = 4;
+    string task_id = 5;
 }
 
 // ScheduleOperationService is used by the master to schedule Map and Reduce operations on the
@@ -93,6 +96,9 @@ service ScheduleOperationService {
     // Tells a worker to start a reduce operation for a certain partition of the map output.
     // An error will be returned if the operation is not valid or the worker is busy.
     rpc PerformReduce (PerformReduceRequest) returns (EmptyMessage);
+
+    // Used by the master to tell a worker to stop working on it's current task.
+    rpc CancelTask (CancelTaskRequest) returns (EmptyMessage);
 }
 
 // Message specifying where one part of the input for a map task is located.
@@ -118,6 +124,7 @@ message PerformMapRequest {
     MapTaskInput input = 1;
     // The path to the binary that performs the map operation.
     string mapper_file_path = 2;
+    string task_id = 3;
 }
 
 message PerformReduceRequest {
@@ -130,6 +137,12 @@ message PerformReduceRequest {
     string reducer_file_path = 3;
     // The path to the output directory.
     string output_directory = 4;
+    string task_id = 5;
+}
+
+message CancelTaskRequest {
+    // The id of the task the worker should cancel.
+    string task_id = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

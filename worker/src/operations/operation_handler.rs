@@ -14,6 +14,15 @@ use super::map;
 use super::reduce;
 use super::state::OperationState;
 
+/// `OperationResources` is used to hold resources passed to map and reduce operation functions.
+#[derive(Clone)]
+pub struct OperationResources {
+    pub operation_state: Arc<Mutex<OperationState>>,
+    pub master_interface: Arc<MasterInterface>,
+    pub data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
+    pub binary_path: String,
+}
+
 /// `OperationHandler` is used for executing Map and Reduce operations queued by the Master
 pub struct OperationHandler {
     operation_state: Arc<Mutex<OperationState>>,
@@ -53,6 +62,14 @@ pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
         operation_state_arc,
         pb::WorkerStatus::AVAILABLE,
         pb::OperationStatus::FAILED,
+    );
+}
+
+pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
+    set_operation_handler_status(
+        operation_state_arc,
+        pb::WorkerStatus::AVAILABLE,
+        pb::OperationStatus::CANCELLED,
     );
 }
 
@@ -111,19 +128,17 @@ impl OperationHandler {
         &self,
         map_options: pb::PerformMapRequest,
     ) -> impl Future<Item = (), Error = Error> {
-        let operation_state_arc = Arc::clone(&self.operation_state);
-        let master_interface_arc = Arc::clone(&self.master_interface);
-        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
+        let resources = OperationResources {
+            operation_state: Arc::clone(&self.operation_state),
+            master_interface: Arc::clone(&self.master_interface),
+            data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+            binary_path: map_options.get_mapper_file_path().to_string(),
+        };
+
         let output_dir_uuid = self.output_dir_uuid.clone();
 
         future::lazy(move || {
-            let result = map::perform_map(
-                &map_options,
-                &operation_state_arc,
-                &master_interface_arc,
-                &data_abstraction_layer_arc,
-                &output_dir_uuid,
-            );
+            let result = map::perform_map(&map_options, &resources, &output_dir_uuid);
 
             future::result(result)
         })
@@ -133,23 +148,27 @@ impl OperationHandler {
         &self,
         reduce_request: pb::PerformReduceRequest,
     ) -> impl Future<Item = (), Error = Error> {
-        let operation_state_arc = Arc::clone(&self.operation_state);
-        let master_interface_arc = Arc::clone(&self.master_interface);
-        let data_abstraction_layer_arc = Arc::clone(&self.data_abstraction_layer);
+        let resources = OperationResources {
+            operation_state: Arc::clone(&self.operation_state),
+            master_interface: Arc::clone(&self.master_interface),
+            data_abstraction_layer: Arc::clone(&self.data_abstraction_layer),
+            binary_path: reduce_request.get_reducer_file_path().to_string(),
+        };
 
         let output_dir_uuid = self.output_dir_uuid.clone();
 
         future::lazy(move || {
-            let result = reduce::perform_reduce(
-                &reduce_request,
-                &operation_state_arc,
-                master_interface_arc,
-                data_abstraction_layer_arc,
-                &output_dir_uuid,
-            );
+            let result = reduce::perform_reduce(&reduce_request, &resources, &output_dir_uuid);
 
             future::result(result)
         })
+    }
+
+    pub fn cancel_task(&self, request: &pb::CancelTaskRequest) -> Result<()> {
+        let mut operation_state = self.operation_state.lock().unwrap();
+        operation_state.last_cancelled_task_id = Some(request.task_id.clone());
+
+        Ok(())
     }
 
     pub fn update_worker_status(&self) -> Result<()> {

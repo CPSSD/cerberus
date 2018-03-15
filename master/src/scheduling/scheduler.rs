@@ -2,11 +2,9 @@ use std::thread;
 use std::collections::HashMap;
 use std::sync::{Mutex, Arc};
 
-use chrono::Utc;
 use serde_json;
 
-use cerberus_proto::mapreduce as pb;
-use common::{Task, Job};
+use common::{Task, TaskStatus, Job};
 use errors::*;
 use scheduling::state::{ScheduledJob, State};
 use scheduling::task_processor::TaskProcessor;
@@ -85,6 +83,30 @@ impl Scheduler {
         Ok(())
     }
 
+    fn process_in_progress_task(&self, task: &Task) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state
+            .update_job_started(
+                &task.job_id,
+                task.time_started.chain_err(
+                    || "Time started expected to exist.",
+                )?,
+            )
+            .chain_err(|| "Error updating job start time.")?;
+
+        state.update_task(task.to_owned()).chain_err(
+            || "Error updating task info.",
+        )
+    }
+
+    pub fn process_updated_task(&self, task: &Task) -> Result<()> {
+        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
+            self.process_completed_task(task)
+        } else {
+            self.process_in_progress_task(task)
+        }
+    }
+
     /// Schedule a [`Task`](common::Task) to be executed.
     fn schedule_task(&self, task: Task) {
         let worker_manager = Arc::clone(&self.worker_manager);
@@ -107,8 +129,6 @@ impl Scheduler {
         }
 
         info!("Starting job with ID {}.", job.id);
-        job.status = pb::Status::IN_PROGRESS;
-        job.time_started = Some(Utc::now());
 
         let scheduled_job = ScheduledJob {
             job: job,
@@ -121,9 +141,35 @@ impl Scheduler {
         )
     }
 
+    pub fn cancel_job(&self, job_id: &str) -> Result<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.cancel_job(job_id).chain_err(|| {
+                format!("Unable to cancel job with ID: {}", job_id)
+            })?;
+        }
+
+        let workers = self.worker_manager
+            .get_workers_running_job(job_id)
+            .chain_err(|| {
+                format!("Unable to get list of workers running job {}", job_id)
+            })?;
+
+        self.worker_manager
+            .remove_queued_tasks_for_job(job_id)
+            .chain_err(|| "Unable to remove queued task from state")?;
+
+        self.worker_manager
+            .cancel_workers_tasks(workers)
+            .chain_err(|| "Unable to cancel task on workers")?;
+
+        println!("Succesfully cancelled job {}", job_id);
+        Ok(())
+    }
+
     pub fn get_job_queue_size(&self) -> u32 {
         let state = self.state.lock().unwrap();
-        state.get_in_progress_job_count()
+        state.get_job_queue_size()
     }
 
     // Returns a count of workers registered with the master.
@@ -131,39 +177,59 @@ impl Scheduler {
         self.worker_manager.get_available_workers()
     }
 
-    /// `modify_job_status` modifies a job status to IN_QUEUE if no progress has been made on it
-    /// yet.
-    fn modify_job_status(&self, job: &mut Job) {
-        if job.status == pb::Status::IN_PROGRESS && job.map_tasks_completed == 0 &&
-            !self.worker_manager.is_job_in_progress(&job.id)
-        {
-            // If the job is not in progress, it's status should be queued.
-            // This check is needed because the scheduler activates all jobs immediately.
-            job.status = pb::Status::IN_QUEUE;
-        }
-    }
-
     pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<Job> {
         let state = self.state.lock().unwrap();
-        let mut job = state.get_job(mapreduce_id).chain_err(
+        state.get_job(mapreduce_id).chain_err(
             || "Error getting map reduce status.",
-        )?;
-
-        self.modify_job_status(&mut job);
-
-        Ok(job)
+        )
     }
 
     /// `get_mapreduce_client_status` returns a vector of `Job`s for a given client.
     pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<Job> {
         let state = self.state.lock().unwrap();
-        let mut jobs = state.get_jobs(client_id);
+        state.get_jobs(client_id)
+    }
 
-        for mut job in &mut jobs {
-            self.modify_job_status(&mut job);
+    pub fn get_most_recent_client_job_id(&self, client_id: &str) -> Result<String> {
+        let state = self.state.lock().unwrap();
+        let jobs = state.get_jobs(client_id);
+
+        if jobs.is_empty() {
+            return Err("No jobs queued for client".into());
         }
 
-        jobs
+        let mut latest_job = &jobs[0];
+        for job in jobs.iter().skip(1) {
+            if job.time_requested > latest_job.time_requested {
+                latest_job = job;
+            }
+        }
+
+        Ok(latest_job.id.clone())
+    }
+
+    pub fn get_jobs_info(&self) -> Result<serde_json::Value> {
+        let state = self.state.lock().unwrap();
+
+        let mut results_vec = Vec::new();
+        for job in state.get_all_jobs() {
+            let job_info = json!({
+                "job_id": job.id,
+                "client_id": job.client_id,
+                "binary_path": job.binary_path,
+                "input_directory": job.input_directory,
+                "output_directory": job.output_directory,
+                "status": job.get_serializable_status(),
+                "map_tasks_completed": job.map_tasks_completed,
+                "map_tasks_total": job.map_tasks_total,
+                "reduce_tasks_completed": job.reduce_tasks_completed,
+                "reduce_tasks_total": job.reduce_tasks_total,
+            });
+
+            results_vec.push(job_info);
+        }
+
+        Ok(json!(results_vec))
     }
 }
 
@@ -191,14 +257,14 @@ impl state::SimpleStateHandling for Scheduler {
 }
 
 
-pub fn run_task_result_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
-    let reciever = worker_manager.get_result_reciever();
+pub fn run_task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
+    let reciever = worker_manager.get_update_reciever();
     thread::spawn(move || loop {
         let receiver = reciever.lock().unwrap();
         match receiver.recv() {
             Err(e) => error!("Error processing task results: {}", e),
             Ok(task) => {
-                let result = scheduler.process_completed_task(&task);
+                let result = scheduler.process_updated_task(&task);
                 if let Err(e) = result {
                     output_error(&e);
                 }

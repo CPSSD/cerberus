@@ -1,6 +1,6 @@
 [package]
 name = "cli"
-version = "0.3.0"
+version = "0.5.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
@@ -11,3 +11,4 @@ error-chain = "0.11.0"
 grpc = "0.2.1"
 prettytable-rs = "^0.6"
 uuid = { version = "0.5", features = ["v4"] }
+util = { path = "../util" }

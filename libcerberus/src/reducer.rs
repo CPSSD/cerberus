@@ -1,32 +1,9 @@
-use emitter::EmitFinal;
-use errors::*;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// The `ReduceInputKV` is a struct for passing input data to a `Reduce`.
-///
-/// `ReduceInputKV` is a thin wrapper around a `(String, Vec<Value>)`, used for creating a clearer API.
-/// It can be constructed normally or using `ReduceInputKV::new()`.
-#[derive(Debug, Default, Deserialize, PartialEq)]
-pub struct ReduceInputKV<V>
-where
-    V: Default + Serialize,
-{
-    pub key: String,
-    pub values: Vec<V>,
-}
-
-impl<V> ReduceInputKV<V>
-where
-    V: Default + Serialize,
-{
-    pub fn new(key: String, values: Vec<V>) -> Self {
-        ReduceInputKV {
-            key: key,
-            values: values,
-        }
-    }
-}
+use emitter::EmitFinal;
+use errors::*;
+use intermediate::IntermediateInputKV;
 
 /// The `Reduce` trait defines a function for performing a reduce operation.
 ///
@@ -34,7 +11,7 @@ where
 ///
 /// # Arguments
 ///
-/// * `input` - A `ReduceInputKV` containing the input data for the reduce operation.
+/// * `input` - A `IntermediateInputKV` containing the input data for the reduce operation.
 /// * `emitter` - A struct implementing the `EmitFinal` trait, provided by the reduce runner.
 ///
 /// # Outputs
@@ -43,7 +20,7 @@ where
 /// through the `emitter`.
 pub trait Reduce {
     type Value: Default + Serialize + DeserializeOwned;
-    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, emitter: E) -> Result<()>
+    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>;
 }
@@ -56,7 +33,7 @@ mod tests {
     struct TestReducer;
     impl Reduce for TestReducer {
         type Value = String;
-        fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
+        fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
         where
             E: EmitFinal<Self::Value>,
         {
@@ -71,7 +48,7 @@ mod tests {
     #[test]
     fn test_reducer_test_strings() {
         let test_vector = vec!["foo".to_owned(), "bar".to_owned()];
-        let test_kv = ReduceInputKV::new("test_vector".to_owned(), test_vector);
+        let test_kv = IntermediateInputKV::new("test_vector".to_owned(), test_vector);
         let mut sink: Vec<String> = Vec::new();
         let reducer = TestReducer;
 
@@ -86,7 +63,7 @@ mod tests {
     fn reduce_input_kv_construction() {
         let test_vector = vec!["foo".to_owned(), "bar".to_owned()];
 
-        let test_kv = ReduceInputKV::new("test_vector".to_owned(), test_vector);
+        let test_kv = IntermediateInputKV::new("test_vector".to_owned(), test_vector);
 
         assert_eq!("foo", test_kv.values[0]);
         assert_eq!("bar", test_kv.values[1]);

@@ -40,6 +40,65 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .default_value("")
                         .required(false),
+                )
+                .arg(
+                    Arg::with_name("priority")
+                        .long("priority")
+                        .short("p")
+                        .help("Priority of the MapReduce. Valid values are 1 to 10")
+                        .takes_value(true)
+                        .required(false),
+                )
+        )
+        .subcommand(
+            SubCommand::with_name("cancel")
+                .about("Cancels a running or queued MapReduce. If no id is provided it will cancel the most recently schceduled job")
+                .arg(
+                    Arg::with_name("id")
+                        .short("i")
+                        .help("ID of the MapReduce to cancel")
+                        .required(false)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("upload")
+                .about("Uploads a file or directory to the cluster distributed filesystem")
+                .arg(
+                    Arg::with_name("local_path")
+                        .short("l")
+                        .long("local_path")
+                        .help("Path of the file or directory on the local machine")
+                        .required(true)
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("remote_path")
+                        .short("r")
+                        .long("remote_path")
+                        .help("Path of the file or directory on the cluster. The local file path will be used if this is not provided")
+                        .required(false)
+                        .takes_value(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("download")
+                .about("Downloads a file or directory from the cluster distributed filesystem")
+                .arg(
+                    Arg::with_name("remote_path")
+                        .short("r")
+                        .long("remote_path")
+                        .help("Path of the file or directory on the distributed filesystem")
+                        .required(true)
+                        .takes_value(true),
+                )
+                .arg(
+                    Arg::with_name("local_path")
+                        .short("l")
+                        .long("local_path")
+                        .help("Directory or file to store the file or directory")
+                        .required(true)
+                        .takes_value(true),
                 ),
         )
         .subcommand(SubCommand::with_name("cluster_status").about(

@@ -24,6 +24,7 @@ pub enum OperationStatus {
     IN_PROGRESS,
     COMPLETE,
     FAILED,
+    CANCELLED,
     UNKNOWN,
 }
 
@@ -36,6 +37,7 @@ pub struct Worker {
     pub status_last_updated: DateTime<Utc>,
 
     pub current_task_id: String,
+    pub last_cancelled_task_id: Option<String>,
     pub worker_id: String,
 
     pub task_assignments_failed: u16,
@@ -55,6 +57,7 @@ impl Worker {
             status_last_updated: Utc::now(),
 
             current_task_id: String::new(),
+            last_cancelled_task_id: None,
             worker_id: Uuid::new_v4().to_string(),
 
             task_assignments_failed: 0,
@@ -66,15 +69,17 @@ impl Worker {
             OperationStatus::IN_PROGRESS => pb::OperationStatus::IN_PROGRESS,
             OperationStatus::COMPLETE => pb::OperationStatus::COMPLETE,
             OperationStatus::FAILED => pb::OperationStatus::FAILED,
+            OperationStatus::CANCELLED => pb::OperationStatus::CANCELLED,
             OperationStatus::UNKNOWN => pb::OperationStatus::UNKNOWN,
         }
     }
 
-    fn get_serializable_operation_status(&self) -> OperationStatus {
+    pub fn get_serializable_operation_status(&self) -> OperationStatus {
         match self.operation_status {
             pb::OperationStatus::IN_PROGRESS => OperationStatus::IN_PROGRESS,
             pb::OperationStatus::COMPLETE => OperationStatus::COMPLETE,
             pb::OperationStatus::FAILED => OperationStatus::FAILED,
+            pb::OperationStatus::CANCELLED => OperationStatus::CANCELLED,
             pb::OperationStatus::UNKNOWN => OperationStatus::UNKNOWN,
         }
     }
@@ -86,7 +91,7 @@ impl Worker {
         }
     }
 
-    fn get_serializable_worker_status(&self) -> WorkerStatus {
+    pub fn get_serializable_worker_status(&self) -> WorkerStatus {
         match self.status {
             pb::WorkerStatus::AVAILABLE => WorkerStatus::AVAILABLE,
             pb::WorkerStatus::BUSY => WorkerStatus::BUSY,

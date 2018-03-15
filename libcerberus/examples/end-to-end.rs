@@ -22,7 +22,7 @@ impl Map for TestMapper {
 struct TestReducer;
 impl Reduce for TestReducer {
     type Value = String;
-    fn reduce<E>(&self, input: ReduceInputKV<Self::Value>, mut emitter: E) -> Result<()>
+    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
     {
@@ -69,7 +69,7 @@ fn run() -> Result<()> {
 
     let matches = cerberus::parse_command_line();
 
-    let registry = UserImplRegistryBuilder::new()
+    let registry = UserImplRegistryBuilder::new_no_combiner()
         .mapper(&test_mapper)
         .reducer(&test_reducer)
         .partitioner(&test_partitioner)

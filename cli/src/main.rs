@@ -7,6 +7,7 @@ extern crate grpc;
 #[macro_use]
 extern crate prettytable;
 extern crate uuid;
+extern crate util;
 
 extern crate cerberus_proto;
 
@@ -51,7 +52,10 @@ fn run() -> Result<()> {
             println!("Getting Cluster Status...");
             runner::cluster_status(&client)
         }
+        ("cancel", sub) => runner::cancel(&client, sub),
         ("status", Some(sub)) => runner::status(&client, sub),
+        ("upload", Some(sub)) => runner::upload(&master_addr, sub),
+        ("download", Some(sub)) => runner::download(&master_addr, sub),
         _ => Err(matches.usage().into()),
     }
 }

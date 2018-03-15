@@ -1,0 +1,152 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  width: 100%;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.stats-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #ddd;
+  font-weight: normal;
+  padding: 8px;
+}
+
+td:first-child {
+  font-weight: bold;
+}
+
+tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+tr:hover {
+  background-color: #ddd;
+}
+
+.header {
+  background-color: #2196f3;
+  color: #fff;
+  font-size: 20px;
+  height: 70px;
+  padding: 1px;
+  text-align: center;
+}
+
+.card {
+  background-color: #bbdefb;
+  border-radius: 5px;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, .2);
+  color: #212121;
+  float: left;
+  margin-bottom: 20px;
+  margin-right: 20px;
+  transition: .3s;
+  width: 45%;
+}
+
+.card:hover {
+  box-shadow: 0 8px 16px 0 rgba(0, 0, 0, .2);
+}
+
+.container {
+  padding: 8px 16px;
+}
+
+.container-grid {
+  display: auto;
+  padding: 8px 16px;
+}
+
+.lower {
+  height: 50%;
+}
+
+.row {
+  height: 100%;
+}
+
+.ui-all {
+  color: #fff;
+  display: block;
+  text-decoration: none;
+}
+
+.box {
+  background-color: #ffffff;
+  border-color: #bbdefb;
+  border-style: double;
+  border-width: medium;
+  color: #212121;
+  float: left;
+  font-size: 20px;
+  font-weight: bold;
+  height: 40%;
+  overflow: auto;
+  padding: 10px;
+  text-align: center;
+  width: 100%;
+}
+
+.box.container {
+  padding-top: 10px;
+}
+
+.column.container {
+  padding-top: 10px;
+}
+
+.column {
+  background-color: #ffffff;
+  border-color: #bbdefb;
+  border-style: double;
+  border-width: medium;
+  color: #212121;
+  float: left;
+  font-weight: bold;
+  height: 100%;
+  overflow: auto;
+  padding: 10px;
+  text-align: center;
+  width: 50%;
+}
+
+.row:after {
+  clear: both;
+  content: '';
+  display: table;
+}
+
+.footer {
+  background-color: #b3e5fc;
+  padding-bottom: 10px;
+  padding-top: 10px;
+  text-align: center;
+}
+
+a:link {
+  color: #FFFFFF;
+  font-weight: bold;
+  padding-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .column {
+    width: 100%;
+  }
+}

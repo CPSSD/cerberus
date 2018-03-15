@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use emitter::{EmitPartitionedIntermediate, EmitFinal};
+use emitter::{EmitFinal, EmitPartitionedIntermediate};
 use errors::*;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
@@ -35,7 +35,41 @@ pub struct FinalOutputObject<V: Default + Serialize> {
     pub values: Vec<V>,
 }
 
-/// A struct implementing `EmitIntermediate` which emits to an `IntermediateOutputObject`.
+/// A struct implementing `EmitFinal` which emits to a `Vec` of intermediate values.
+pub struct VecEmitter<'a, V>
+where
+    V: Default + Serialize + 'a,
+{
+    sink: &'a mut Vec<V>,
+}
+
+impl<'a, V> VecEmitter<'a, V>
+where
+    V: Default + Serialize,
+{
+    /// Constructs a new `VecEmitter` with a mutable reference to a given `Vec`.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - A mutable reference to the `Vec`
+    /// to receive the emitted values.
+    pub fn new(sink: &'a mut Vec<V>) -> Self {
+        VecEmitter { sink: sink }
+    }
+}
+
+impl<'a, V> EmitFinal<V> for VecEmitter<'a, V>
+where
+    V: Default + Serialize,
+{
+    fn emit(&mut self, value: V) -> Result<()> {
+        self.sink.push(value);
+        Ok(())
+    }
+}
+
+/// A struct implementing `EmitPartitionedIntermediate`
+/// which emits to an `IntermediateOutputObject`.
 pub struct IntermediateOutputObjectEmitter<'a, K, V>
 where
     K: Default + Serialize + 'a,
@@ -54,7 +88,8 @@ where
     ///
     /// # Arguments
     ///
-    /// * `sink` - A mutable reference to the `IntermediateOutputObject` to receive the emitted values.
+    /// * `sink` - A mutable reference to the `IntermediateOutputObject`
+    /// to receive the emitted values.
     pub fn new(sink: &'a mut IntermediateOutputObject<K, V>) -> Self {
         IntermediateOutputObjectEmitter { sink: sink }
     }
@@ -136,12 +171,12 @@ mod tests {
 
         let output = IntermediateOutputObject { partitions: partitions };
         let mut output_set = HashSet::new();
-        let expected_json_string1 =
+        let expected_string1 =
             r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}],"1":[{"key":"foo_intermediate2","value":"bar"}]}}"#;
-        let expected_json_string2 =
+        let expected_string2 =
             r#"{"partitions":{"1":[{"key":"foo_intermediate2","value":"bar"}],"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}]}}"#;
-        output_set.insert(expected_json_string1.to_owned());
-        output_set.insert(expected_json_string2.to_owned());
+        output_set.insert(expected_string1.to_owned());
+        output_set.insert(expected_string2.to_owned());
 
         let json_string = serde_json::to_string(&output).unwrap();
 

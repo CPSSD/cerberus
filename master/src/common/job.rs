@@ -24,6 +24,8 @@ pub struct JobOptions {
     pub output_directory: Option<String>,
     /// Determines if paths should be validated. Should only be disabled during tests.
     pub validate_paths: bool,
+    /// Priority that should be applied to all tasks for the job.
+    pub priority: u32,
 }
 
 impl From<pb::MapReduceRequest> for JobOptions {
@@ -38,6 +40,7 @@ impl From<pb::MapReduceRequest> for JobOptions {
                 None
             },
             validate_paths: true,
+            priority: other.priority,
         }
     }
 }
@@ -50,6 +53,8 @@ pub struct Job {
     pub binary_path: String,
     pub input_directory: String,
     pub output_directory: String,
+
+    pub priority: u32,
 
     pub status: pb::Status,
     pub status_details: Option<String>,
@@ -77,6 +82,7 @@ pub enum SerializableJobStatus {
     IN_QUEUE,
     FAILED,
     UNKNOWN,
+    CANCELLED,
 }
 
 impl Job {
@@ -102,6 +108,8 @@ impl Job {
             binary_path: options.binary_path,
             input_directory: input_directory,
             output_directory: output_directory,
+
+            priority: options.priority,
 
             status: pb::Status::IN_QUEUE,
             status_details: None,
@@ -148,10 +156,7 @@ impl Job {
         )?;
         if !is_dir {
             return Err(
-                format!(
-                    "Input directory does not exist: {:?}",
-                    data_abstraction_layer.absolute_path(input_path)
-                ).into(),
+                format!("Input directory does not exist: {:?}", input_path).into(),
             );
         }
 
@@ -160,12 +165,7 @@ impl Job {
             || "Error checking if path is a file",
         )?;
         if !is_file {
-            return Err(
-                format!(
-                    "Binary does not exist: {:?}",
-                    data_abstraction_layer.absolute_path(binary_path)
-                ).into(),
-            );
+            return Err(format!("Binary does not exist: {:?}", binary_path).into());
         }
 
         // Binary exists, so run sanity-check on it to verify that it's a libcerberus binary.
@@ -178,7 +178,7 @@ impl Job {
     ) -> Result<()> {
         let binary_path = Path::new(&self.binary_path);
         let absolute_path = data_abstraction_layer
-            .absolute_path(binary_path)
+            .get_local_file(binary_path)
             .chain_err(|| "unable to get absolute path")?;
         let child = Command::new(absolute_path)
             .arg("sanity-check")
@@ -208,16 +208,18 @@ impl Job {
             SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
             SerializableJobStatus::FAILED => pb::Status::FAILED,
             SerializableJobStatus::UNKNOWN => pb::Status::UNKNOWN,
+            SerializableJobStatus::CANCELLED => pb::Status::CANCELLED,
         }
     }
 
-    fn get_serializable_status(&self) -> SerializableJobStatus {
+    pub fn get_serializable_status(&self) -> SerializableJobStatus {
         match self.status {
             pb::Status::DONE => SerializableJobStatus::DONE,
             pb::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
             pb::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
             pb::Status::FAILED => SerializableJobStatus::FAILED,
             pb::Status::UNKNOWN => SerializableJobStatus::UNKNOWN,
+            pb::Status::CANCELLED => SerializableJobStatus::CANCELLED,
         }
     }
 }
@@ -234,6 +236,9 @@ impl StateHandling for Job {
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
             validate_paths: false,
+            priority: serde_json::from_value(data["priority"].clone()).chain_err(
+                || "Unable to convert priority",
+            )?,
         };
 
         let mut job = Job::new_no_validate(options).chain_err(
@@ -260,6 +265,8 @@ impl StateHandling for Job {
             "binary_path": self.binary_path,
             "input_directory": self.input_directory,
             "output_directory": self.output_directory,
+
+            "priority": self.priority,
 
             "status": self.get_serializable_status(),
             "status_details": self.status_details,
@@ -364,6 +371,7 @@ mod tests {
             input_directory: "/tmp/input/".to_owned(),
             output_directory: Some("/tmp/output/".to_owned()),
             validate_paths: false,
+            priority: 1,
         }).unwrap();
 
         assert_eq!("/tmp/input/output/", job1.output_directory);
