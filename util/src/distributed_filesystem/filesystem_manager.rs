@@ -11,11 +11,14 @@ use cerberus_proto::filesystem as pb;
 use errors::*;
 use distributed_filesystem::{FileSystemWorkerInterface, WorkerInfoProvider};
 use logging::output_error;
+use serde_json;
+use state::SimpleStateHandling;
 
 const MIN_DISTRIBUTION_LEVEL: usize = 2;
 const MAX_DISTRIBUTION_LEVEL: usize = 3;
 const MAX_DISTRIBUTION_FAILURES: usize = 3;
 
+#[derive(Deserialize, Serialize)]
 struct FileChunk {
     start_byte: u64,
     end_byte: u64,
@@ -24,11 +27,13 @@ struct FileChunk {
     workers: Vec<String>,
 }
 
+#[derive(Deserialize, Serialize)]
 struct FileInfo {
     length: u64,
     chunks: Vec<FileChunk>,
 }
 
+#[derive(Deserialize, Serialize)]
 struct DirInfo {
     // List of files in the directory
     children: Vec<String>,
@@ -272,5 +277,61 @@ impl FileSystemManager {
         let mut response = pb::FileInfoResponse::new();
         response.set_exists(false);
         response
+    }
+}
+
+impl SimpleStateHandling<Error> for FileSystemManager {
+    fn dump_state(&self) -> Result<serde_json::Value> {
+        let file_info_map = self.file_info_map.read().unwrap();
+        let dir_info_map = self.dir_info_map.read().unwrap();
+
+        let mut file_info_vec: Vec<serde_json::Value> = Vec::new();
+        for (file_path, file_info) in file_info_map.iter() {
+            file_info_vec.push(json!({"file_path": file_path, "file_info": file_info}));
+        }
+
+        let mut dir_info_vec: Vec<serde_json::Value> = Vec::new();
+        for (dir_path, dir_info) in dir_info_map.iter() {
+            dir_info_vec.push(json!({"dir_path": dir_path, "dir_info": dir_info}));
+        }
+
+        Ok(json!({
+            "file_info_array": file_info_vec,
+            "dir_info_array": dir_info_vec,
+        }))
+    }
+
+    // Updates the object to match the JSON state provided.
+    fn load_state(&self, data: serde_json::Value) -> Result<()> {
+        let mut file_info_map = self.file_info_map.write().unwrap();
+        let mut dir_info_map = self.dir_info_map.write().unwrap();
+
+        if let serde_json::Value::Array(ref file_info_array) = data["file_info_array"] {
+            for file_json in file_info_array {
+                let file_path: String = serde_json::from_value(file_json["file_path"].clone())
+                    .chain_err(|| "Unable to convert file path")?;
+                let file_info = serde_json::from_value(file_json["file_info"].clone())
+                    .chain_err(|| "Unable to convert file info")?;
+
+                file_info_map.insert(file_path, file_info);
+            }
+        } else {
+            return Err("Error processing file info array.".into());
+        }
+
+        if let serde_json::Value::Array(ref dir_info_array) = data["dir_info_array"] {
+            for dir_json in dir_info_array {
+                let dir_path: String = serde_json::from_value(dir_json["dir_path"].clone())
+                    .chain_err(|| "Unable to convert dir path")?;
+                let dir_info = serde_json::from_value(dir_json["dir_info"].clone())
+                    .chain_err(|| "Unable to convert dir info")?;
+
+                dir_info_map.insert(dir_path.to_owned(), dir_info);
+            }
+        } else {
+            return Err("Error processing dir info array.".into());
+        }
+
+        Ok(())
     }
 }

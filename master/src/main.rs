@@ -146,7 +146,7 @@ fn run() -> Result<()> {
         Arc::clone(&data_abstraction_layer_arc),
     );
 
-    let file_system_service = FileSystemService::new(filesystem_manager);
+    let file_system_service = FileSystemService::new(filesystem_manager.clone());
 
     let srv = Server::new(port, client_service, worker_service, file_system_service)
         .chain_err(|| "Error building grpc server.")?;
@@ -154,6 +154,7 @@ fn run() -> Result<()> {
     let state_handler = StateHandler::new(
         Arc::clone(&map_reduce_scheduler),
         Arc::clone(&worker_manager),
+        filesystem_manager,
         create_dump_dir,
         dump_dir,
     ).chain_err(|| "Unable to create StateHandler")?;

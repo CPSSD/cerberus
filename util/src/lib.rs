@@ -8,6 +8,10 @@ extern crate grpc;
 extern crate log;
 extern crate protobuf;
 extern crate rand;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+#[macro_use]
 extern crate serde_json;
 extern crate uuid;
 
