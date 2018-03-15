@@ -8,15 +8,17 @@ extern crate grpc;
 extern crate log;
 extern crate protobuf;
 extern crate rand;
+extern crate serde_json;
 extern crate uuid;
 
 pub mod errors {
     error_chain!{}
 }
 
-pub mod logging;
 pub mod data_layer;
 pub mod distributed_filesystem;
+pub mod logging;
+pub mod state;
 
 pub use logging::init_logger;
 pub use logging::output_error;

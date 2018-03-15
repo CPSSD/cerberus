@@ -8,33 +8,8 @@ use serde_json::Value as json;
 
 use errors::*;
 use scheduling::Scheduler;
+use util::state::SimpleStateHandling;
 use worker_management::WorkerManager;
-
-/// The `StateHandling` trait defines an object that can have it's state saved
-/// and subsequently loaded from a file.
-pub trait StateHandling {
-    // Creates a new object from the JSON data provided.
-    fn new_from_json(data: serde_json::Value) -> Result<Self>
-    where
-        Self: Sized;
-
-    // Returns a JSON representation of the object.
-    fn dump_state(&self) -> Result<serde_json::Value>;
-
-    // Updates the object to match the JSON state provided.
-    fn load_state(&mut self, data: serde_json::Value) -> Result<()>;
-}
-
-/// The `SimpleStateHandling` trait defines an object that can have it's state saved
-/// and subsequently loaded from a file but doesn't have a new from json method. A mutable
-/// reference is not needed to load it's state.
-pub trait SimpleStateHandling {
-    // Returns a JSON representation of the object.
-    fn dump_state(&self) -> Result<serde_json::Value>;
-
-    // Updates the object to match the JSON state provided.
-    fn load_state(&self, data: serde_json::Value) -> Result<()>;
-}
 
 pub struct StateHandler {
     scheduler: Arc<Scheduler>,
