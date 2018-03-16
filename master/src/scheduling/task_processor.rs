@@ -118,6 +118,11 @@ impl TaskProcessorImpl {
         let paths = self.data_abstraction_layer
             .read_dir(input_directory)
             .chain_err(|| "Unable to read directory")?;
+
+        if paths.is_empty() {
+            return Err("No files in map input directory".into());
+        }
+
         for path in paths {
             if self.data_abstraction_layer
                 .is_file(path.as_path())
@@ -168,6 +173,10 @@ impl TaskProcessor for TaskProcessorImpl {
                 map_task_info.input_locations,
                 job.priority,
             ));
+        }
+
+        if map_tasks.is_empty() {
+            return Err("No map tasks created for job".into());
         }
 
         Ok(map_tasks)
