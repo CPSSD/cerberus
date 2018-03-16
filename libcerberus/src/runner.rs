@@ -24,9 +24,9 @@ use super::VERSION;
 pub struct UserImplRegistry<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     mapper: &'a M,
     reducer: &'a R,
@@ -38,9 +38,9 @@ where
 pub struct UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     mapper: Option<&'a M>,
     reducer: Option<&'a R>,
@@ -51,10 +51,12 @@ where
 impl<'a, M, R, P, C> Default for UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value>
+        + 'a,
     P: Partition<M::Key, M::Value>
         + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value>
+        + 'a,
 {
     fn default() -> UserImplRegistryBuilder<'a, M, R, P, C> {
         UserImplRegistryBuilder {
@@ -69,9 +71,9 @@ where
 impl<'a, M, R, P, C> UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     pub fn new() -> UserImplRegistryBuilder<'a, M, R, P, C> {
         Default::default()
@@ -123,11 +125,12 @@ where
 /// A null implementation for `Combine` as this is optional component.
 /// This should not be used by user code.
 pub struct NullCombiner;
-impl<V> Combine<V> for NullCombiner
+impl<K, V> Combine<K, V> for NullCombiner
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
 {
-    fn combine<E>(&self, _input: IntermediateInputKV<V>, _emitter: E) -> Result<()>
+    fn combine<E>(&self, _input: IntermediateInputKV<K, V>, _emitter: E) -> Result<()>
     where
         E: EmitFinal<V>,
     {
@@ -139,7 +142,7 @@ where
 impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<
         M::Key,
         M::Value,
@@ -178,9 +181,9 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
 pub fn run<M, R, P, C>(matches: &ArgMatches, registry: &UserImplRegistry<M, R, P, C>) -> Result<()>
 where
     M: Map,
-    R: Reduce,
+    R: Reduce<M::Key, M::Value>,
     P: Partition<M::Key, M::Value>,
-    C: Combine<R::Value>,
+    C: Combine<M::Key, M::Value>,
 {
     match matches.subcommand_name() {
         Some("map") => {
@@ -249,13 +252,17 @@ where
     Ok(())
 }
 
-fn run_reduce<R: Reduce>(reducer: &R) -> Result<()> {
+fn run_reduce<K, V, R: Reduce<K, V>>(reducer: &R) -> Result<()>
+where
+    K: Default + Serialize + DeserializeOwned,
+    V: Default + Serialize + DeserializeOwned,
+{
     let mut source = stdin();
     let mut sink = stdout();
     let input_kv = read_intermediate_input(&mut source).chain_err(
         || "Error getting input to reduce.",
     )?;
-    let mut output_object = FinalOutputObject::<R::Value>::default();
+    let mut output_object = FinalOutputObject::<V>::default();
 
     reducer
         .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
@@ -267,10 +274,11 @@ fn run_reduce<R: Reduce>(reducer: &R) -> Result<()> {
     Ok(())
 }
 
-fn run_combine<V, C>(combiner: &C) -> Result<()>
+fn run_combine<K, V, C>(combiner: &C) -> Result<()>
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
-    C: Combine<V>,
+    C: Combine<K, V>,
 {
     let mut source = stdin();
     let mut sink = stdout();
@@ -289,10 +297,11 @@ where
     Ok(())
 }
 
-fn run_has_combine<V, C>(combiner: Option<&C>)
+fn run_has_combine<K, V, C>(combiner: Option<&C>)
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
-    C: Combine<V>,
+    C: Combine<K, V>,
 {
     match combiner {
         Some(_) => println!("yes"),

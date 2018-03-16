@@ -27,11 +27,10 @@ impl Map for WordCountMapper {
 }
 
 struct WordCountReducer;
-impl Reduce for WordCountReducer {
-    type Value = u64;
-    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
+impl Reduce<String, u64> for WordCountReducer {
+    fn reduce<E>(&self, input: IntermediateInputKV<String, u64>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<Self::Value>,
+        E: EmitFinal<u64>,
     {
         let mut total: u64 = 0;
         for val in input.values {
@@ -45,8 +44,8 @@ impl Reduce for WordCountReducer {
 }
 
 pub struct WordCountCombiner;
-impl Combine<u64> for WordCountCombiner {
-    fn combine<E>(&self, input: IntermediateInputKV<u64>, mut emitter: E) -> Result<()>
+impl Combine<String, u64> for WordCountCombiner {
+    fn combine<E>(&self, input: IntermediateInputKV<String, u64>, mut emitter: E) -> Result<()>
     where
         E: EmitFinal<u64>,
     {

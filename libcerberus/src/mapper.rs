@@ -1,5 +1,6 @@
 use emitter::EmitIntermediate;
 use errors::*;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 /// The `MapInputKV` is a struct for passing input data to a `Map`.
@@ -35,8 +36,8 @@ impl MapInputKV {
 /// An empty result used for returning an error. Outputs of the map operation are sent out through
 /// the `emitter`.
 pub trait Map {
-    type Key: Default + Serialize;
-    type Value: Default + Serialize;
+    type Key: Default + Serialize + DeserializeOwned;
+    type Value: Default + Serialize + DeserializeOwned;
     fn map<E>(&self, input: MapInputKV, emitter: E) -> Result<()>
     where
         E: EmitIntermediate<Self::Key, Self::Value>;
