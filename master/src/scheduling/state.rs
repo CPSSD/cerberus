@@ -301,6 +301,18 @@ impl State {
         }
         job_count
     }
+
+    pub fn set_job_completed(&mut self, job_id: &str) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", job_id).into()),
+        };
+
+        scheduled_job.job.status = pb::Status::DONE;
+        scheduled_job.job.time_completed = Some(Utc::now());
+
+        Ok(())
+    }
 }
 
 impl StateHandling<Error> for State {

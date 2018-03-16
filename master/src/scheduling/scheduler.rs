@@ -37,6 +37,44 @@ impl Scheduler {
         }
     }
 
+    fn schedule_reduce_tasks(&self, job_id: &str) -> Result<()> {
+        info!("Creating reduce tasks for job {}", job_id);
+
+        let mut state = self.state.lock().unwrap();
+
+        let job = state.get_job(job_id).chain_err(
+            || "Error scheduling reduce tasks",
+        )?;
+
+        let reduce_tasks = {
+            let map_tasks = state.get_map_tasks(job_id).chain_err(|| {
+                format!("Could not get map tasks for job {}", job_id)
+            })?;
+
+            self.task_processor
+                .create_reduce_tasks(&job, map_tasks)
+                .chain_err(|| {
+                    format!("Could not create reduce tasks for job {}", job_id)
+                })?
+        };
+
+        if reduce_tasks.is_empty() {
+            state.set_job_completed(job_id).chain_err(|| {
+                format!("Could not set job with id {} completed", job_id)
+            })?;
+        } else {
+            state
+                .add_tasks_for_job(job_id, reduce_tasks.clone())
+                .chain_err(|| format!("Could not add reduce tasks to job {}", job_id))?;
+
+            for task in reduce_tasks {
+                self.schedule_task(task);
+            }
+        }
+
+        Ok(())
+    }
+
     fn process_completed_task(&self, task: &Task) -> Result<()> {
         info!(
             "Processing completed task {} with status {:?}",
@@ -44,40 +82,22 @@ impl Scheduler {
             task.status
         );
 
-        let mut state = self.state.lock().unwrap();
+        let reduce_tasks_required = {
+            let mut state = self.state.lock().unwrap();
 
-        state.add_completed_task(task.clone()).chain_err(
-            || "Error processing completed task result",
-        )?;
-
-        let reduce_tasks_required = state.reduce_tasks_required(&task.job_id).chain_err(
-            || "Error processing completed task result",
-        )?;
-
-        if reduce_tasks_required {
-            info!("Creating reduce tasks for job {}", task.job_id);
-
-            let job = state.get_job(&task.job_id).chain_err(
-                || "Error processing completed task result.",
+            state.add_completed_task(task.clone()).chain_err(
+                || "Error processing completed task result",
             )?;
 
-            let reduce_tasks = {
-                let map_tasks = state.get_map_tasks(&task.job_id).chain_err(
-                    || "Error processing completed task result.",
-                )?;
+            state.reduce_tasks_required(&task.job_id).chain_err(
+                || "Error processing completed task result",
+            )?
+        };
 
-                self.task_processor
-                    .create_reduce_tasks(&job, map_tasks)
-                    .chain_err(|| "Error processing completed task results.")?
-            };
-
-            state
-                .add_tasks_for_job(&task.job_id, reduce_tasks.clone())
-                .chain_err(|| "Error processing completed task results.")?;
-
-            for task in reduce_tasks {
-                self.schedule_task(task);
-            }
+        if reduce_tasks_required {
+            self.schedule_reduce_tasks(&task.job_id).chain_err(|| {
+                format!("Could not schedule reduce tasks for job {}", task.job_id)
+            })?;
         }
         Ok(())
     }
