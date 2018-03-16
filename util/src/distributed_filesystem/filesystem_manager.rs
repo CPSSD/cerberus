@@ -98,7 +98,33 @@ impl FileSystemManager {
         dir_info.children.push(file_path.to_owned());
     }
 
+    fn validate_upload_chunk(&self, file_path: &str, start_byte: u64) -> Result<()> {
+        let file_info_map = self.file_info_map.read().unwrap();
+
+        if start_byte == 0 {
+            // Verify that file does not exist already
+            if file_info_map.contains_key(file_path) {
+                return Err("File already exists".into());
+            }
+        } else {
+            // Verify that the chunk being uploaded starts directly after last chunk
+            let file_info = match file_info_map.get(file_path) {
+                Some(file_info) => file_info,
+                None => return Err("File does not exist".into()),
+            };
+
+            if file_info.length != start_byte {
+                return Err("Upload chunk does not start at correct location".into());
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn upload_file_chunk(&self, file_path: &str, start_byte: u64, data: &[u8]) -> Result<()> {
+        self.validate_upload_chunk(file_path, start_byte)
+            .chain_err(|| "Error validating upload chunk request")?;
+
         let mut active_workers = self.worker_info_provider.get_workers();
 
         if active_workers.len() < MIN_DISTRIBUTION_LEVEL {
@@ -153,7 +179,10 @@ impl FileSystemManager {
         };
 
         self.update_file_info(file_path, file_chunk);
-        self.update_dir_info(file_path);
+        // If the file is not already part of the directory.
+        if start_byte == 0 {
+            self.update_dir_info(file_path);
+        }
 
         Ok(())
     }
