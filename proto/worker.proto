@@ -28,6 +28,8 @@ service WorkerService {
 message RegisterWorkerRequest {
     // The workers ip and port where its MRWorkerService is exposed.
     string worker_address = 1;
+    // Optional worker id, allows the worker to attempt to register with it's old worker id.
+    string worker_id = 2;
 }
 
 message RegisterWorkerResponse {

@@ -395,6 +395,10 @@ impl State {
         self.tasks.contains_key(task_id)
     }
 
+    pub fn has_worker(&self, worker_id: &str) -> bool {
+        self.workers.contains_key(worker_id)
+    }
+
     pub fn increment_failed_task_assignments(&mut self, worker_id: &str) -> Result<()> {
         let should_remove_worker = {
             let worker = self.workers.get_mut(worker_id).chain_err(|| {

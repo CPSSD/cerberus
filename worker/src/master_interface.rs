@@ -30,11 +30,15 @@ impl MasterInterface {
         })
     }
 
-    pub fn register_worker(&self, address: &SocketAddr) -> Result<()> {
+    pub fn register_worker(&self, address: &SocketAddr, worker_id: &str) -> Result<String> {
         let worker_addr = address.to_string();
 
         let mut req = pb::RegisterWorkerRequest::new();
         req.set_worker_address(worker_addr);
+
+        if worker_id != "" {
+            req.set_worker_id(worker_id.to_owned());
+        }
 
         let response = self.client
             .register_worker(RequestOptions::new(), req)
@@ -44,7 +48,7 @@ impl MasterInterface {
 
         *self.worker_id.write().unwrap() = response.get_worker_id().to_owned();
 
-        Ok(())
+        Ok(response.get_worker_id().to_owned())
     }
 
     pub fn update_worker_status(

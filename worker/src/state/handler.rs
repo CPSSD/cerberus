@@ -13,6 +13,7 @@ use util::state::SimpleStateHandling;
 pub struct StateHandler {
     local_file_manager: Option<Arc<LocalFileManager>>,
     dump_dir: String,
+    worker_id: String,
 }
 
 impl StateHandler {
@@ -30,7 +31,16 @@ impl StateHandler {
         Ok(StateHandler {
             local_file_manager: local_file_manager,
             dump_dir: dir.into(),
+            worker_id: String::new(),
         })
+    }
+
+    pub fn get_worker_id(&self) -> String {
+        self.worker_id.to_owned()
+    }
+
+    pub fn set_worker_id(&mut self, worker_id: &str) {
+        self.worker_id = worker_id.to_owned();
     }
 
     pub fn dump_state(&self) -> Result<()> {
@@ -46,6 +56,7 @@ impl StateHandler {
 
         let json = json!({
             "local_file_manager": local_file_manager_json,
+            "worker_id": self.worker_id,
         });
 
         // Write the state to file.
@@ -63,7 +74,7 @@ impl StateHandler {
         Ok(())
     }
 
-    pub fn load_state(&self) -> Result<()> {
+    pub fn load_state(&mut self) -> Result<()> {
         info!("Loading worker from state!");
         let mut file = File::open(format!("{}/worker.dump", self.dump_dir))
             .chain_err(|| "Unable to open file")?;
@@ -86,6 +97,11 @@ impl StateHandler {
                     .chain_err(|| "Error reloading local file manager state")?;
             }
         }
+
+        // Reset worker id
+        let worker_id: String = serde_json::from_value(json["worker_id"].clone())
+            .chain_err(|| "Unable to convert worker_id")?;
+        self.worker_id = worker_id;
 
         info!("Succesfully loaded from state!");
         Ok(())

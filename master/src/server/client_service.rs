@@ -263,7 +263,7 @@ mod tests {
     fn cluster_status() {
         let worker_manager = WorkerManager::new(Arc::new(NullWorkerInterface {}));
         for _x in 0..10 {
-            let w = Worker::new("172.30.0.1:8008").unwrap();
+            let w = Worker::new("172.30.0.1:8008", "").unwrap();
             worker_manager.register_worker(w).unwrap();
         }
 

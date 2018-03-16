@@ -77,14 +77,22 @@ const DEFAULT_WORKER_IP: &str = "[::]";
 const DFS_FILE_DIRECTORY: &str = "/tmp/cerberus/dfs/";
 const DEFAULT_DUMP_DIR: &str = "/var/lib/cerberus";
 
-fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
+fn register_worker(
+    master_interface: &MasterInterface,
+    address: &SocketAddr,
+    worker_id: &str,
+) -> Result<String> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
+    let mut new_worker_id = String::new();
     while retries > 0 {
         info!("Attempting to register with the master");
         retries -= 1;
 
-        match master_interface.register_worker(address) {
-            Ok(_) => break,
+        match master_interface.register_worker(address, worker_id) {
+            Ok(new_id) => {
+                new_worker_id = new_id;
+                break;
+            }
             Err(err) => {
                 debug!("Error registering worker with master: {:?}", err);
                 if retries == 0 {
@@ -98,7 +106,7 @@ fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> 
         ));
     }
 
-    Ok(())
+    Ok(new_worker_id)
 }
 
 type AbstractionLayerArc = Arc<AbstractionLayer + Send + Sync>;
@@ -166,16 +174,20 @@ fn run() -> Result<()> {
         get_data_abstraction_layer(master_addr, &matches)
             .chain_err(|| "Error creating data abstraction layer.")?;
 
-    let state_handler = StateHandler::new(local_file_manager.clone(), create_dump_dir, dump_dir)
-        .chain_err(|| "Unable to create StateHandler")?;
+    let mut state_handler =
+        StateHandler::new(local_file_manager.clone(), create_dump_dir, dump_dir)
+            .chain_err(|| "Unable to create StateHandler")?;
 
-    if !fresh && Path::new(&format!("{}/worker.dump", dump_dir)).exists() {
-        state_handler.load_state().chain_err(
-            || "Error loading state",
-        )?;
-    }
-
-    // If our state dump file exists and we aren't running a fresh copy of master we
+    let mut worker_id = {
+        if !fresh && Path::new(&format!("{}/worker.dump", dump_dir)).exists() {
+            state_handler.load_state().chain_err(
+                || "Error loading state",
+            )?;
+            state_handler.get_worker_id()
+        } else {
+            String::new()
+        }
+    };
 
     let operation_handler = Arc::new(OperationHandler::new(
         Arc::clone(&master_interface),
@@ -200,9 +212,11 @@ fn run() -> Result<()> {
         local_ip_addr,
         srv.addr().port(),
     )).chain_err(|| "Not a valid address of the worker")?;
-    register_worker(&*master_interface, &local_addr).chain_err(
-        || "Failed to register worker.",
-    )?;
+
+    worker_id = register_worker(&*master_interface, &local_addr, &worker_id)
+        .chain_err(|| "Failed to register worker.")?;
+
+    state_handler.set_worker_id(&worker_id);
 
     info!(
         "Successfully registered worker ({}) with master on {}",
@@ -217,12 +231,16 @@ fn run() -> Result<()> {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
         if current_health_check_failures >= MAX_HEALTH_CHECK_FAILURES {
-            if let Err(err) = register_worker(&*master_interface, &local_addr) {
-                error!("Failed to re-register worker after disconnecting: {}", err);
-                thread::sleep(time::Duration::from_millis(RECONNECT_FAILED_WAIT_MS));
-            } else {
-                info!("Successfully re-registered with master after being disconnected.");
-                current_health_check_failures = 0;
+            match register_worker(&*master_interface, &local_addr, &worker_id) {
+                Ok(worker_id) => {
+                    info!("Successfully re-registered with master after being disconnected.");
+                    state_handler.set_worker_id(&worker_id);
+                    current_health_check_failures = 0;
+                }
+                Err(err) => {
+                    error!("Failed to re-register worker after disconnecting: {}", err);
+                    thread::sleep(time::Duration::from_millis(RECONNECT_FAILED_WAIT_MS));
+                }
             }
         } else if let Err(err) = operation_handler.update_worker_status() {
             error!("Could not send updated worker status to master: {}", err);
