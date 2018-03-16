@@ -27,8 +27,9 @@ mod errors {
     }
 }
 
+mod commands;
+mod common;
 mod parser;
-mod runner;
 
 quick_main!(run);
 
@@ -46,16 +47,16 @@ fn run() -> Result<()> {
     match matches.subcommand() {
         ("run", Some(sub)) => {
             println!("Scheduling MapReduce...");
-            runner::run(&client, sub)
+            commands::run(&client, sub)
         }
         ("cluster_status", _) => {
             println!("Getting Cluster Status...");
-            runner::cluster_status(&client)
+            commands::cluster_status(&client)
         }
-        ("cancel", sub) => runner::cancel(&client, sub),
-        ("status", Some(sub)) => runner::status(&client, sub),
-        ("upload", Some(sub)) => runner::upload(&master_addr, sub),
-        ("download", Some(sub)) => runner::download(&master_addr, sub),
+        ("cancel", sub) => commands::cancel(&client, sub),
+        ("status", Some(sub)) => commands::status(&client, sub),
+        ("upload", Some(sub)) => commands::upload(&master_addr, sub),
+        ("download", Some(sub)) => commands::download(&master_addr, sub),
         _ => Err(matches.usage().into()),
     }
 }
