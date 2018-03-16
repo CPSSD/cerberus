@@ -10,6 +10,7 @@ extern crate log;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
 extern crate serde_json;
 extern crate uuid;
 
@@ -32,6 +33,7 @@ pub mod intermediate;
 pub mod mapper;
 pub mod partition;
 pub mod reducer;
+pub mod registry;
 pub mod runner;
 pub mod serialise;
 
@@ -42,5 +44,6 @@ pub use intermediate::IntermediateInputKV;
 pub use mapper::{Map, MapInputKV};
 pub use partition::{HashPartitioner, Partition, PartitionInputPairs};
 pub use reducer::Reduce;
+pub use registry::{UserImplRegistry, UserImplRegistryBuilder};
 pub use runner::*;
 pub use serialise::{FinalOutputObject, IntermediateOutputObject};

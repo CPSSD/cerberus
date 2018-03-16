@@ -1,158 +1,25 @@
+use std::collections::HashMap;
 use std::io::{stdin, stdout};
 
 use chrono::prelude::*;
 use clap::{App, ArgMatches, SubCommand};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde_json;
 use uuid::Uuid;
 
 use combiner::Combine;
-use emitter::{EmitFinal, IntermediateVecEmitter};
+use emitter::IntermediateVecEmitter;
 use errors::*;
-use io::*;
 use intermediate::IntermediateInputKV;
+use io::*;
 use mapper::Map;
 use partition::{Partition, PartitionInputPairs};
 use reducer::Reduce;
+use registry::UserImplRegistry;
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
                 IntermediateOutputObjectEmitter, VecEmitter};
 use super::VERSION;
-
-/// `UserImplRegistry` tracks the user's implementations of Map, Reduce, etc.
-///
-/// The user should use the `UserImplRegistryBuilder` to create this and then pass it in to `run`.
-pub struct UserImplRegistry<'a, M, R, P, C>
-where
-    M: Map + 'a,
-    R: Reduce<M::Key, M::Value> + 'a,
-    P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<M::Key, M::Value> + 'a,
-{
-    mapper: &'a M,
-    reducer: &'a R,
-    partitioner: &'a P,
-    combiner: Option<&'a C>,
-}
-
-/// `UserImplRegistryBuilder` is used to create a `UserImplRegistry`.
-pub struct UserImplRegistryBuilder<'a, M, R, P, C>
-where
-    M: Map + 'a,
-    R: Reduce<M::Key, M::Value> + 'a,
-    P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<M::Key, M::Value> + 'a,
-{
-    mapper: Option<&'a M>,
-    reducer: Option<&'a R>,
-    partitioner: Option<&'a P>,
-    combiner: Option<&'a C>,
-}
-
-impl<'a, M, R, P, C> Default for UserImplRegistryBuilder<'a, M, R, P, C>
-where
-    M: Map + 'a,
-    R: Reduce<M::Key, M::Value>
-        + 'a,
-    P: Partition<M::Key, M::Value>
-        + 'a,
-    C: Combine<M::Key, M::Value>
-        + 'a,
-{
-    fn default() -> UserImplRegistryBuilder<'a, M, R, P, C> {
-        UserImplRegistryBuilder {
-            mapper: None,
-            reducer: None,
-            partitioner: None,
-            combiner: None,
-        }
-    }
-}
-
-impl<'a, M, R, P, C> UserImplRegistryBuilder<'a, M, R, P, C>
-where
-    M: Map + 'a,
-    R: Reduce<M::Key, M::Value> + 'a,
-    P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<M::Key, M::Value> + 'a,
-{
-    pub fn new() -> UserImplRegistryBuilder<'a, M, R, P, C> {
-        Default::default()
-    }
-
-    pub fn mapper(&mut self, mapper: &'a M) -> &mut UserImplRegistryBuilder<'a, M, R, P, C> {
-        self.mapper = Some(mapper);
-        self
-    }
-
-    pub fn reducer(&mut self, reducer: &'a R) -> &mut UserImplRegistryBuilder<'a, M, R, P, C> {
-        self.reducer = Some(reducer);
-        self
-    }
-
-    pub fn partitioner(
-        &mut self,
-        partitioner: &'a P,
-    ) -> &mut UserImplRegistryBuilder<'a, M, R, P, C> {
-        self.partitioner = Some(partitioner);
-        self
-    }
-
-    pub fn combiner(&mut self, combiner: &'a C) -> &mut UserImplRegistryBuilder<'a, M, R, P, C> {
-        self.combiner = Some(combiner);
-        self
-    }
-
-    pub fn build(&self) -> Result<UserImplRegistry<'a, M, R, P, C>> {
-        let mapper = self.mapper.chain_err(
-            || "Error building UserImplRegistry: No Mapper provided",
-        )?;
-        let reducer = self.reducer.chain_err(
-            || "Error building UserImplRegistry: No Reducer provided",
-        )?;
-        let partitioner = self.partitioner.chain_err(
-            || "Error building UserImplRegistry: No Partitioner provided",
-        )?;
-
-        Ok(UserImplRegistry {
-            mapper: mapper,
-            reducer: reducer,
-            partitioner: partitioner,
-            combiner: self.combiner,
-        })
-    }
-}
-
-/// A null implementation for `Combine` as this is optional component.
-/// This should not be used by user code.
-pub struct NullCombiner;
-impl<K, V> Combine<K, V> for NullCombiner
-where
-    K: Default + Serialize + DeserializeOwned,
-    V: Default + Serialize + DeserializeOwned,
-{
-    fn combine<E>(&self, _input: IntermediateInputKV<K, V>, _emitter: E) -> Result<()>
-    where
-        E: EmitFinal<V>,
-    {
-        Err("This code should never run".into())
-    }
-}
-
-/// Construct a `UserImplRegistryBuilder` that does not need a `Combine` implementation
-impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
-where
-    M: Map + 'a,
-    R: Reduce<M::Key, M::Value> + 'a,
-    P: Partition<
-        M::Key,
-        M::Value,
-    >
-        + 'a,
-{
-    pub fn new_no_combiner() -> UserImplRegistryBuilder<'a, M, R, P, NullCombiner> {
-        Default::default()
-    }
-}
 
 /// `parse_command_line` uses `clap` to parse the command-line arguments passed to the payload.
 ///
@@ -187,9 +54,8 @@ where
 {
     match matches.subcommand_name() {
         Some("map") => {
-            run_map(registry.mapper, registry.partitioner).chain_err(
-                || "Error running map",
-            )?;
+            run_map(registry.mapper, registry.partitioner, registry.combiner)
+                .chain_err(|| "Error running map")?;
             Ok(())
         }
         Some("reduce") => {
@@ -221,10 +87,11 @@ where
     }
 }
 
-fn run_map<M, P>(mapper: &M, partitioner: &P) -> Result<()>
+fn run_map<M, P, C>(mapper: &M, partitioner: &P, combiner_option: Option<&C>) -> Result<()>
 where
     M: Map,
     P: Partition<M::Key, M::Value>,
+    C: Combine<M::Key, M::Value>,
 {
     let mut source = stdin();
     let mut sink = stdout();
@@ -237,6 +104,14 @@ where
     mapper
         .map(input_kv, IntermediateVecEmitter::new(&mut pairs_vec))
         .chain_err(|| "Error running map operation.")?;
+
+    if let Some(combiner) = combiner_option {
+        let new_pairs_vec = run_internal_combine(combiner, &mut pairs_vec).chain_err(
+            || "Error running combine on map results",
+        )?;
+
+        pairs_vec = new_pairs_vec;
+    }
 
     let mut output_object = IntermediateOutputObject::<M::Key, M::Value>::default();
 
@@ -295,6 +170,64 @@ where
     write_intermediate_vector(&mut sink, &output_object)
         .chain_err(|| "Error writing combine output to stdout.")?;
     Ok(())
+}
+
+fn run_internal_combine<K, V, C>(combiner: &C, pairs: &mut Vec<(K, V)>) -> Result<Vec<(K, V)>>
+where
+    K: Default + Serialize + DeserializeOwned,
+    V: Default + Serialize + DeserializeOwned,
+    C: Combine<K, V>,
+{
+    let mut kv_map: HashMap<String, Vec<V>> = HashMap::new();
+
+    for pair in pairs.drain(0..) {
+        let mut key = pair.0;
+        let mut value = pair.1;
+
+        // Use serde_json to serialize the key to a string.
+        let key_str = json!(key).to_string();
+
+        let vec = kv_map.entry(key_str).or_insert_with(Vec::new);
+        vec.push(value);
+    }
+
+    let mut results = Vec::new();
+
+    for (key_str, mut values) in kv_map.drain() {
+        let key_json: serde_json::Value = serde_json::from_str(&key_str).chain_err(
+            || "Error parsing combine key.",
+        )?;
+
+        // Retrieve the original key from the serialized version.
+        let key = serde_json::from_value(key_json.clone()).chain_err(
+            || "Error converting combine key string to key type",
+        )?;
+
+        if values.len() > 1 {
+            let input_kv = IntermediateInputKV {
+                key: key,
+                values: values,
+            };
+
+            let mut result_values = Vec::<V>::new();
+
+            combiner
+                .combine(input_kv, VecEmitter::new(&mut result_values))
+                .chain_err(|| "Error running combine operation.")?;
+
+            for value in result_values {
+                let key = serde_json::from_value(key_json.clone()).chain_err(
+                    || "Error converting combine key string to key type",
+                )?;
+
+                results.push((key, value));
+            }
+        } else if values.len() == 1 {
+            results.push((key, values.remove(0)));
+        }
+    }
+
+    Ok(results)
 }
 
 fn run_has_combine<K, V, C>(combiner: Option<&C>)
