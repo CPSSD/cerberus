@@ -1,4 +1,3 @@
-#![feature(conservative_impl_trait)]
 #![cfg_attr(test, feature(proc_macro))]
 
 extern crate bson;

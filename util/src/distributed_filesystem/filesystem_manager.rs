@@ -3,13 +3,15 @@ use std::cmp::max;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::sync::mpsc::Receiver;
+use std::thread;
 
 use protobuf::repeated::RepeatedField;
 use rand::random;
 
 use cerberus_proto::filesystem as pb;
 use errors::*;
-use distributed_filesystem::{FileSystemWorkerInterface, WorkerInfoProvider};
+use distributed_filesystem::{FileChunk, FileSystemWorkerInterface};
 use logging::output_error;
 use serde_json;
 use state::SimpleStateHandling;
@@ -17,15 +19,6 @@ use state::SimpleStateHandling;
 const MIN_DISTRIBUTION_LEVEL: usize = 2;
 const MAX_DISTRIBUTION_LEVEL: usize = 3;
 const MAX_DISTRIBUTION_FAILURES: usize = 3;
-
-#[derive(Deserialize, Serialize)]
-struct FileChunk {
-    start_byte: u64,
-    end_byte: u64,
-
-    // The worker ids of the workers this chunk is stored on.
-    workers: Vec<String>,
-}
 
 #[derive(Deserialize, Serialize)]
 struct FileInfo {
@@ -39,21 +32,52 @@ struct DirInfo {
     children: Vec<String>,
 }
 
+#[derive(PartialEq)]
+pub enum WorkerInfoUpdateType {
+    Available,
+    Unavailable,
+}
+
+pub struct WorkerInfoUpdate {
+    update_type: WorkerInfoUpdateType,
+    worker_id: String,
+    address: Option<SocketAddr>,
+}
+
+impl WorkerInfoUpdate {
+    pub fn new(
+        update_type: WorkerInfoUpdateType,
+        worker_id: String,
+        address: Option<SocketAddr>,
+    ) -> WorkerInfoUpdate {
+        WorkerInfoUpdate {
+            update_type: update_type,
+            worker_id: worker_id,
+            address: address,
+        }
+    }
+}
+
 pub struct FileSystemManager {
     file_info_map: RwLock<HashMap<String, FileInfo>>,
     dir_info_map: RwLock<HashMap<String, DirInfo>>,
+    active_workers: RwLock<HashMap<String, SocketAddr>>,
     worker_interface: FileSystemWorkerInterface,
-    worker_info_provider: Arc<WorkerInfoProvider + Send + Sync>,
 }
 
 impl FileSystemManager {
-    pub fn new(worker_info_provider: Arc<WorkerInfoProvider + Send + Sync>) -> Self {
+    pub fn new() -> Self {
         FileSystemManager {
             file_info_map: RwLock::new(HashMap::new()),
             dir_info_map: RwLock::new(HashMap::new()),
+            active_workers: RwLock::new(HashMap::new()),
             worker_interface: FileSystemWorkerInterface::new(),
-            worker_info_provider: worker_info_provider,
         }
+    }
+
+    fn get_active_workers(&self) -> HashMap<String, SocketAddr> {
+        let workers = self.active_workers.read().unwrap();
+        workers.clone()
     }
 
     fn get_distribution_level(&self, worker_count: usize) -> usize {
@@ -130,7 +154,7 @@ impl FileSystemManager {
         self.validate_upload_chunk(file_path, start_byte)
             .chain_err(|| "Error validating upload chunk request")?;
 
-        let mut active_workers = self.worker_info_provider.get_workers();
+        let mut active_workers = self.get_active_workers();
 
         if active_workers.len() < MIN_DISTRIBUTION_LEVEL {
             return Err("Not enough workers in cluster".into());
@@ -220,7 +244,7 @@ impl FileSystemManager {
         let file_info_map = self.file_info_map.read().unwrap();
         match file_info_map.get(file_path) {
             Some(file_info) => {
-                let active_workers = self.worker_info_provider.get_workers();
+                let mut active_workers = self.get_active_workers();
 
                 let mut response = pb::FileLocationResponse::new();
                 if end_byte == 0 {
@@ -242,6 +266,15 @@ impl FileSystemManager {
 
                 Ok(response)
             }
+            None => Err(format!("No file info found for {}", file_path).into()),
+        }
+    }
+
+    pub fn get_file_chunks(&self, file_path: &str) -> Result<Vec<FileChunk>> {
+        let file_info_map = self.file_info_map.read().unwrap();
+
+        match file_info_map.get(file_path) {
+            Some(file_info) => Ok(file_info.chunks.clone()),
             None => Err(format!("No file info found for {}", file_path).into()),
         }
     }
@@ -277,6 +310,21 @@ impl FileSystemManager {
         let mut response = pb::FileInfoResponse::new();
         response.set_exists(false);
         response
+    }
+
+    pub fn process_worker_info_update(&self, worker_info_update: &WorkerInfoUpdate) -> Result<()> {
+        let mut worker_map = self.active_workers.write().unwrap();
+        if worker_info_update.update_type == WorkerInfoUpdateType::Available {
+            let address = worker_info_update.address.chain_err(
+                || "No address when adding available worker",
+            )?;
+
+            worker_map.insert(worker_info_update.worker_id.clone(), address);
+        } else {
+            worker_map.remove(&worker_info_update.worker_id);
+        }
+
+        Ok(())
     }
 }
 
@@ -333,5 +381,34 @@ impl SimpleStateHandling<Error> for FileSystemManager {
         }
 
         Ok(())
+    }
+}
+
+pub fn run_worker_info_upate_loop(
+    file_system_manager_option: &Option<Arc<FileSystemManager>>,
+    worker_info_receiver: Receiver<WorkerInfoUpdate>,
+) {
+    if let &Some(ref file_system_manager) = file_system_manager_option {
+        let file_system_manager = Arc::clone(&file_system_manager);
+
+        thread::spawn(move || loop {
+            match worker_info_receiver.recv() {
+                Err(e) => error!("Error receiving worker info update: {}", e),
+                Ok(worker_info_update) => {
+                    let result =
+                        file_system_manager.process_worker_info_update(&worker_info_update);
+                    if let Err(e) = result {
+                        output_error(&e);
+                    }
+                }
+            }
+        });
+    } else {
+        thread::spawn(move || loop {
+            match worker_info_receiver.recv() {
+                Err(e) => error!("Error receiving worker info update: {}", e),
+                Ok(_) => {}
+            }
+        });
     }
 }

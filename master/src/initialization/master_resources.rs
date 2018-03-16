@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::mpsc::channel;
 
 use clap::ArgMatches;
 
@@ -9,7 +10,6 @@ use initialization::{initialize_dashboard_server, initialize_grpc_server, initia
 use scheduling::{TaskProcessorImpl, Scheduler};
 use server::Server;
 use state::StateHandler;
-use util::distributed_filesystem::WorkerInfoProvider;
 use worker_communication::WorkerInterfaceImpl;
 use worker_management::WorkerManager;
 
@@ -23,12 +23,17 @@ pub struct MasterResources {
 
 impl MasterResources {
     pub fn new(matches: &ArgMatches) -> Result<Self> {
-        let worker_manager = Arc::new(WorkerManager::new(Arc::new(WorkerInterfaceImpl::new())));
-        let worker_info_provider = Arc::clone(&worker_manager) as
-            Arc<WorkerInfoProvider + Send + Sync>;
+        let (worker_info_sender, worker_info_receiver) = channel();
+
         let (data_abstraction_layer_arc, filesystem_manager) =
-            initialization::get_data_abstraction_layer(matches, &worker_info_provider)
-                .chain_err(|| "Unable to create data abstraction layer")?;
+            initialization::get_data_abstraction_layer(matches, worker_info_receiver)
+                .chain_err(|| "Error initilizing data abstraction layer")?;
+
+        let worker_manager = Arc::new(WorkerManager::new(
+            Arc::new(WorkerInterfaceImpl::new()),
+            Arc::clone(&data_abstraction_layer_arc),
+            worker_info_sender,
+        ));
 
         let task_processor = Arc::new(TaskProcessorImpl::new(
             Arc::clone(&data_abstraction_layer_arc),

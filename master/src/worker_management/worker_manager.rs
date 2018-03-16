@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use chrono::prelude::*;
 use futures::future;
@@ -12,11 +11,10 @@ use serde_json;
 use cerberus_proto::worker as pb;
 use common::{Task, TaskStatus, TaskType, Worker};
 use errors::*;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::{Sender, Receiver};
-use util::distributed_filesystem::WorkerInfoProvider;
-use util::state::{StateHandling, SimpleStateHandling};
+use util::data_layer::AbstractionLayer;
+use util::distributed_filesystem::{WorkerInfoUpdate, WorkerInfoUpdateType};
 use util::output_error;
+use util::state::{StateHandling, SimpleStateHandling};
 use worker_communication::WorkerInterface;
 use worker_management::state::State;
 
@@ -33,23 +31,40 @@ pub struct WorkerManager {
     worker_interface: Arc<WorkerInterface + Send + Sync>,
 
     task_update_sender: Mutex<Sender<Task>>,
-    task_update_reciever: Arc<Mutex<Receiver<Task>>>,
+    task_update_receiver: Arc<Mutex<Receiver<Task>>>,
+
+    worker_info_sender: Mutex<Sender<WorkerInfoUpdate>>,
 }
 
 impl WorkerManager {
-    pub fn new(worker_interface: Arc<WorkerInterface + Send + Sync>) -> Self {
+    pub fn new(
+        worker_interface: Arc<WorkerInterface + Send + Sync>,
+        data_layer: Arc<AbstractionLayer + Send + Sync>,
+        worker_info_sender: Sender<WorkerInfoUpdate>,
+    ) -> Self {
         let (sender, receiver) = channel();
         WorkerManager {
-            state: Arc::new(Mutex::new(State::new())),
+            state: Arc::new(Mutex::new(State::new(data_layer))),
             worker_interface: worker_interface,
 
             task_update_sender: Mutex::new(sender),
-            task_update_reciever: Arc::new(Mutex::new(receiver)),
+            task_update_receiver: Arc::new(Mutex::new(receiver)),
+
+            worker_info_sender: Mutex::new(worker_info_sender),
         }
     }
 
-    pub fn get_update_reciever(&self) -> Arc<Mutex<Receiver<Task>>> {
-        Arc::clone(&self.task_update_reciever)
+    fn send_worker_info_update(&self, info_update: WorkerInfoUpdate) -> Result<()> {
+        let worker_info_sender = self.worker_info_sender.lock().unwrap();
+        worker_info_sender.send(info_update).chain_err(
+            || "Error sending worker info update.",
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_update_receiver(&self) -> Arc<Mutex<Receiver<Task>>> {
+        Arc::clone(&self.task_update_receiver)
     }
 
     // Returns a count of workers registered with the master.
@@ -65,9 +80,18 @@ impl WorkerManager {
             || "Error registering worker.",
         )?;
 
+        let worker_id = worker.worker_id.clone();
+        let worker_address = Some(worker.address);
+
         state.add_worker(worker).chain_err(
             || "Error registering worker.",
         )?;
+
+        self.send_worker_info_update(WorkerInfoUpdate::new(
+            WorkerInfoUpdateType::Available,
+            worker_id,
+            worker_address,
+        )).chain_err(|| "Error sending worker info update")?;
 
         Ok(())
     }
@@ -189,6 +213,16 @@ impl WorkerManager {
             let result = state.remove_worker(&worker_id);
             if let Err(err) = result {
                 output_error(&err.chain_err(|| "Error removing worker."));
+            }
+
+            let result = self.send_worker_info_update(WorkerInfoUpdate::new(
+                WorkerInfoUpdateType::Unavailable,
+                worker_id,
+                None, /* address */
+            ));
+
+            if let Err(err) = result {
+                output_error(&err.chain_err(|| "Error sending worker info update."));
             }
         }
     }
@@ -402,6 +436,12 @@ impl WorkerManager {
             || "Error removing worker from state",
         )?;
 
+        self.send_worker_info_update(WorkerInfoUpdate::new(
+            WorkerInfoUpdateType::Unavailable,
+            worker_id.to_string(),
+            None, /* address */
+        )).chain_err(|| "Error sending worker info update")?;
+
         Ok(())
     }
 
@@ -435,6 +475,13 @@ impl SimpleStateHandling<Error> for WorkerManager {
             let workers = state.get_workers();
             for worker in workers {
                 let add_client_result = self.worker_interface.add_client(worker);
+
+                self.send_worker_info_update(WorkerInfoUpdate::new(
+                    WorkerInfoUpdateType::Available,
+                    worker.worker_id.clone(),
+                    Some(worker.address),
+                )).chain_err(|| "Error sending worker info update")?;
+
                 if let Err(e) = add_client_result {
                     output_error(&e.chain_err(
                         || format!("Unable to reconnect to worker {}", worker.worker_id),
@@ -447,21 +494,14 @@ impl SimpleStateHandling<Error> for WorkerManager {
             state.remove_worker(&worker_id).chain_err(
                 || "Error creating worker manager from state.",
             )?;
+
+            self.send_worker_info_update(WorkerInfoUpdate::new(
+                WorkerInfoUpdateType::Unavailable,
+                worker_id,
+                None, /* address */
+            )).chain_err(|| "Error sending worker info update")?;
         }
         Ok(())
-    }
-}
-
-impl WorkerInfoProvider for WorkerManager {
-    fn get_workers(&self) -> HashMap<String, SocketAddr> {
-        let mut worker_map = HashMap::new();
-        let state = self.state.lock().unwrap();
-        let workers = state.get_workers();
-        for worker in workers {
-            worker_map.insert(worker.worker_id.to_owned(), worker.address);
-        }
-
-        worker_map
     }
 }
 
