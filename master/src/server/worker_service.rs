@@ -24,7 +24,16 @@ impl grpc_pb::WorkerService for WorkerService {
         _o: RequestOptions,
         request: pb::RegisterWorkerRequest,
     ) -> SingleResponse<pb::RegisterWorkerResponse> {
-        let worker = match Worker::new(request.get_worker_address().to_string()) {
+        let worker_id: String = request.get_worker_id().to_string();
+        if worker_id != "" {
+            if let Err(err) = self.worker_manager.remove_worker(&worker_id) {
+                let response = SingleResponse::err(Error::Panic(err.to_string()));
+                util::output_error(&err.chain_err(|| "Unable to create new worker"));
+                return response;
+            }
+        }
+
+        let worker = match Worker::new(request.get_worker_address().to_string(), worker_id) {
             Ok(worker) => worker,
             Err(err) => {
                 let response = SingleResponse::err(Error::Panic(err.to_string()));

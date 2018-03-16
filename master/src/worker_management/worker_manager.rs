@@ -383,6 +383,26 @@ impl WorkerManager {
 
         Ok(json!(results_vec))
     }
+
+    pub fn remove_worker(&self, worker_id: &str) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        info!("Removing worker {} from list of active workers.", worker_id);
+
+        if !state.has_worker(worker_id) {
+            return Ok(());
+        }
+
+        // Remove worker interface.
+        self.worker_interface.remove_client(worker_id).chain_err(
+            || "Error removing worker client",
+        )?;
+
+        state.remove_worker(worker_id).chain_err(
+            || "Error removing worker from state",
+        )?;
+
+        Ok(())
+    }
 }
 
 impl SimpleStateHandling<Error> for WorkerManager {
