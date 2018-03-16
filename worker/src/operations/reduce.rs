@@ -38,10 +38,17 @@ struct ReduceInput {
     pub values: Vec<serde_json::Value>,
 }
 
+#[derive(Serialize)]
+struct ReduceResult {
+    pub key: String,
+    pub values: serde_json::Value,
+}
+
 struct ReduceOptions {
     reducer_file_path: String,
     output_directory: String,
     task_id: String,
+    partition: u64,
 }
 
 /// `ReduceOperationQueue` is a struct used for storing and executing a queue of `ReduceOperations`.
@@ -50,12 +57,7 @@ pub struct ReduceOperationQueue {
     queue: Vec<ReduceOperation>,
 }
 
-fn run_reducer(
-    reduce_options: &ReduceOptions,
-    reduce_operation: &ReduceOperation,
-    data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
-    mut child: Child,
-) -> Result<()> {
+fn run_reducer(reduce_operation: &ReduceOperation, mut child: Child) -> Result<ReduceResult> {
     if let Some(stdin) = child.stdin.as_mut() {
         stdin
             .write_all(reduce_operation.input.as_bytes())
@@ -82,23 +84,16 @@ fn run_reducer(
         );
     }
 
-    let reduce_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
+    let reduce_output: serde_json::Value = serde_json::from_str(&output_str).chain_err(
         || "Error parsing reduce results.",
     )?;
-    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
-        || "Error prettifying reduce results",
-    )?;
 
-    let mut file_path = PathBuf::new();
-    file_path.push(reduce_options.output_directory.clone());
-    file_path.push(reduce_operation.intermediate_key.clone());
+    let reduce_result = ReduceResult {
+        key: reduce_operation.intermediate_key.to_owned(),
+        values: reduce_output["values"].to_owned(),
+    };
 
-    io::write(
-        data_abstraction_layer_arc,
-        file_path,
-        reduce_results_pretty.as_bytes(),
-    ).chain_err(|| "Failed to write reduce output.")?;
-    Ok(())
+    Ok(reduce_result)
 }
 
 #[cfg_attr(test, mockable)]
@@ -112,7 +107,7 @@ impl ReduceOperationQueue {
         reduce_options: &ReduceOptions,
         reduce_operation: &ReduceOperation,
         data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
-    ) -> Result<()> {
+    ) -> Result<ReduceResult> {
         let absolute_path = data_abstraction_layer_arc
             .get_local_file(Path::new(&reduce_options.reducer_file_path))
             .chain_err(|| "Unable to get absolute path")?;
@@ -124,35 +119,22 @@ impl ReduceOperationQueue {
             .spawn()
             .chain_err(|| "Failed to start reduce operation process.")?;
 
-        data_abstraction_layer_arc
-            .create_dir_all(Path::new(&reduce_options.output_directory))
-            .chain_err(|| "Failed to create output directory")?;
-
-        run_reducer(
-            reduce_options,
-            reduce_operation,
-            data_abstraction_layer_arc,
-            child,
-        ).chain_err(|| "Error running reducer.")?;
-
-        Ok(())
+        run_reducer(reduce_operation, child).chain_err(|| "Error running reducer.")
     }
 
     fn perform_next_reduce_operation(
         &mut self,
         reduce_options: &ReduceOptions,
         data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
-    ) -> Result<()> {
+    ) -> Result<ReduceResult> {
         if let Some(reduce_operation) = self.queue.pop() {
-            self.perform_reduce_operation(
+            return self.perform_reduce_operation(
                 reduce_options,
                 &reduce_operation,
                 data_abstraction_layer_arc,
-            ).chain_err(|| "Error performing reduce operation.")?;
-        } else {
-            return Err("No reduce operations in queue".into());
+            ).chain_err(|| "Error performing reduce operation.");
         }
-        Ok(())
+        Err("No reduce operations in queue".into())
     }
 
     fn is_queue_empty(&self) -> bool {
@@ -283,6 +265,7 @@ fn internal_perform_reduce(
         reducer_file_path: reduce_request.get_reducer_file_path().to_owned(),
         output_directory: reduce_request.get_output_directory().to_owned(),
         task_id: reduce_request.get_task_id().to_owned(),
+        partition: reduce_request.get_partition().to_owned(),
     };
 
     run_reduce_queue(reduce_options, resources, reduce_operations);
@@ -329,6 +312,32 @@ fn handle_reduce_queue_finished(
     }
 }
 
+fn write_reduce_output(
+    reduce_options: &ReduceOptions,
+    reduce_results: HashMap<String, serde_json::Value>,
+    data_abstraction_layer_arc: &Arc<AbstractionLayer + Send + Sync>,
+) -> Result<()> {
+    data_abstraction_layer_arc
+        .create_dir_all(Path::new(&reduce_options.output_directory))
+        .chain_err(|| "Failed to create output directory")?;
+
+    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
+        || "Error prettifying reduce results",
+    )?;
+
+    let mut file_path = PathBuf::new();
+    file_path.push(reduce_options.output_directory.clone());
+    file_path.push(reduce_options.partition.to_string());
+
+    io::write(
+        data_abstraction_layer_arc,
+        file_path,
+        reduce_results_pretty.as_bytes(),
+    ).chain_err(|| "Failed to write reduce output.")?;
+
+    Ok(())
+}
+
 fn run_reduce_queue(
     reduce_options: ReduceOptions,
     resources: &OperationResources,
@@ -339,6 +348,7 @@ fn run_reduce_queue(
 
     thread::spawn(move || {
         let mut reduce_err = None;
+        let mut reduce_results: HashMap<String, serde_json::Value> = HashMap::new();
 
         let mut reduce_queue = ReduceOperationQueue::new();
         reduce_queue.set_queue(reduce_operations);
@@ -368,10 +378,27 @@ fn run_reduce_queue(
                     &reduce_options,
                     &resources.data_abstraction_layer,
                 );
-                if let Err(err) = result {
-                    reduce_err = Some(err);
-                    break;
+
+                match result {
+                    Ok(reduce_result) => {
+                        reduce_results.insert(reduce_result.key, reduce_result.values);
+                    }
+                    Err(err) => {
+                        reduce_err = Some(err);
+                        break;
+                    }
                 }
+            }
+        }
+
+        if reduce_err.is_none() {
+            let write_output_result = write_reduce_output(
+                &reduce_options,
+                reduce_results,
+                &resources.data_abstraction_layer,
+            );
+            if let Err(err) = write_output_result {
+                reduce_err = Some(err);
             }
         }
 
@@ -393,14 +420,12 @@ mod tests {
 
     #[test]
     fn test_reduce_operation_queue() {
-        ReduceOperationQueue::perform_reduce_operation.mock_safe(
-            |_,
-             _,
-             _,
-             _| {
-                return MockResult::Return(Ok(()));
-            },
-        );
+        ReduceOperationQueue::perform_reduce_operation.mock_safe(|_, _, _, _| {
+            return MockResult::Return(Ok(ReduceResult {
+                key: "test".to_owned(),
+                values: json!(null),
+            }));
+        });
 
         let reduce_operation = ReduceOperation {
             input: "foo".to_owned(),
@@ -419,6 +444,7 @@ mod tests {
             output_directory: "foo".to_owned(),
             reducer_file_path: "bar".to_owned(),
             task_id: "task1".to_owned(),
+            partition: 0,
         };
 
         let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync> =

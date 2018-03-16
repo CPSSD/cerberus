@@ -122,10 +122,18 @@ sudo kill ${worker_pids[2]}
 
 echo "Verifying output"
 
+# Remove newlines from output
+cd dfs-integration-test/output
+for file in *
+do 
+    sed ':a;N;$!ba;s/\n//g' "$file" > tmp; mv tmp $file 
+done
+cd ../..
+
 # Verify that the output is correct.
 for key in "${!results[@]}"
 do
-    count=$(grep "[0-9]*" -o dfs-integration-test/output/"${key}")
+    count=$(grep -PR --no-filename --only-matching $key+"\":[[:space:]]*\[[[:space:]]*[0-9]*" dfs-integration-test/output/ | grep -o "[0-9]*")
     if [ "${count}" != "${results[${key}]}" ]
     then
         echo "Error. Expected ${key}=${results[${key}]}, but got: $count"
