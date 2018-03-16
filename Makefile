@@ -16,7 +16,7 @@ clean:
 #############################################################
 
 # Runs all the tests
-test: unit-test integration-test
+test: unit-test integration-test dfs-integration
 
 unit-test:
 	cargo test --verbose --all
@@ -27,6 +27,9 @@ integration-test:
 
 multi-machine:
 	./tests/multi_machine.sh
+
+dfs-integration:
+	./tests/dfs_integration.sh
 
 #############################################################
 
