@@ -7,7 +7,7 @@ use serde_json;
 use uuid::Uuid;
 
 use errors::*;
-use state::StateHandling;
+use util::state::StateHandling;
 
 use cerberus_proto::worker as pb;
 
@@ -224,7 +224,7 @@ impl Task {
     }
 }
 
-impl StateHandling for Task {
+impl StateHandling<Error> for Task {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let task_type: TaskType = serde_json::from_value(data["task_type"].clone())
             .chain_err(|| "Unable to convert task_type")?;

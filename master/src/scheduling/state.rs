@@ -6,8 +6,7 @@ use serde_json;
 use cerberus_proto::mapreduce as pb;
 use common::{Task, TaskType, TaskStatus, Job};
 use errors::*;
-use state;
-use state::StateHandling;
+use util::state::StateHandling;
 
 /// A `ScheduledJob` holds the information about a scheduled `Job` and the `Task`s that relate to
 /// that job.
@@ -37,7 +36,7 @@ impl ScheduledJob {
     }
 }
 
-impl state::StateHandling for ScheduledJob {
+impl StateHandling<Error> for ScheduledJob {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let (job, tasks) = ScheduledJob::process_json(&data)?;
 
@@ -304,7 +303,7 @@ impl State {
     }
 }
 
-impl state::StateHandling for State {
+impl StateHandling<Error> for State {
     fn new_from_json(_: serde_json::Value) -> Result<Self> {
         Err("Unable to create Scheduler State from JSON.".into())
     }

@@ -4,11 +4,10 @@ use std::str::FromStr;
 use chrono::prelude::*;
 use uuid::Uuid;
 use serde_json;
-use errors::*;
-
-use state::StateHandling;
 
 use cerberus_proto::worker as pb;
+use errors::*;
+use util::state::StateHandling;
 
 #[derive(Serialize, Deserialize)]
 /// `WorkerStatus` is the serializable counterpart to `pb::WorkerStatus`.
@@ -99,7 +98,7 @@ impl Worker {
     }
 }
 
-impl StateHandling for Worker {
+impl StateHandling<Error> for Worker {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         // Convert address from a serde_json::Value to a String.
         let address: String = serde_json::from_value(data["address"].clone()).chain_err(

@@ -7,7 +7,7 @@ use serde_json;
 use cerberus_proto::worker as pb;
 use common::{PriorityTask, Task, TaskStatus, Worker};
 use errors::*;
-use state;
+use util::state::StateHandling;
 
 const MAX_TASK_FAILURE_COUNT: u16 = 10;
 const MAX_TASK_ASSIGNMENT_FAILURE: u16 = 5;
@@ -427,7 +427,7 @@ impl State {
     }
 }
 
-impl state::StateHandling for State {
+impl StateHandling<Error> for State {
     fn new_from_json(_: serde_json::Value) -> Result<Self> {
         Err("Unable to create WorkerManager State from JSON.".into())
     }

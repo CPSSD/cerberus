@@ -42,6 +42,7 @@ mod errors {
 mod master_interface;
 mod operations;
 mod server;
+mod state;
 mod parser;
 mod worker_interface;
 
@@ -57,6 +58,7 @@ use errors::*;
 use master_interface::MasterInterface;
 use operations::OperationHandler;
 use server::{Server, ScheduleOperationService, IntermediateDataService, FileSystemService};
+use state::StateHandler;
 use util::init_logger;
 use util::data_layer::{AbstractionLayer, NullAbstractionLayer, NFSAbstractionLayer};
 use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
@@ -65,6 +67,7 @@ use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const MAX_HEALTH_CHECK_FAILURES: u16 = 10;
 const MAIN_LOOP_SLEEP_MS: u64 = 3000;
+const DUMP_LOOP_MS: u64 = 5000;
 const RECONNECT_FAILED_WAIT_MS: u64 = 5000;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
 // Setting the port to 0 means a random available port will be selected
@@ -72,6 +75,7 @@ const DEFAULT_PORT: &str = "0";
 const DEFAULT_MASTER_ADDR: &str = "[::]:8081";
 const DEFAULT_WORKER_IP: &str = "[::]";
 const DFS_FILE_DIRECTORY: &str = "/tmp/cerberus/dfs/";
+const DEFAULT_DUMP_DIR: &str = "/var/lib/cerberus";
 
 fn register_worker(master_interface: &MasterInterface, address: &SocketAddr) -> Result<()> {
     let mut retries = WORKER_REGISTRATION_RETRIES;
@@ -146,6 +150,14 @@ fn run() -> Result<()> {
     let port = u16::from_str(matches.value_of("port").unwrap_or(DEFAULT_PORT))
         .chain_err(|| "Error parsing port")?;
 
+    let fresh = matches.is_present("fresh");
+    let create_dump_dir = !matches.is_present("nodump");
+
+    let dump_dir = matches.value_of("state-location").unwrap_or(
+        DEFAULT_DUMP_DIR,
+    );
+
+
     let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(
         || "Error creating master interface.",
     )?);
@@ -153,6 +165,17 @@ fn run() -> Result<()> {
     let (data_abstraction_layer, local_file_manager) =
         get_data_abstraction_layer(master_addr, &matches)
             .chain_err(|| "Error creating data abstraction layer.")?;
+
+    let state_handler = StateHandler::new(local_file_manager.clone(), create_dump_dir, dump_dir)
+        .chain_err(|| "Unable to create StateHandler")?;
+
+    if !fresh && Path::new(&format!("{}/worker.dump", dump_dir)).exists() {
+        state_handler.load_state().chain_err(
+            || "Error loading state",
+        )?;
+    }
+
+    // If our state dump file exists and we aren't running a fresh copy of master we
 
     let operation_handler = Arc::new(OperationHandler::new(
         Arc::clone(&master_interface),
@@ -189,6 +212,7 @@ fn run() -> Result<()> {
 
     let mut current_health_check_failures = 0;
 
+    let mut dump_count = 0;
     loop {
         thread::sleep(time::Duration::from_millis(MAIN_LOOP_SLEEP_MS));
 
@@ -209,6 +233,16 @@ fn run() -> Result<()> {
 
         if !srv.is_alive() {
             return Err("Worker interface server has unexpectingly died.".into());
+        }
+
+        if create_dump_dir {
+            dump_count += 1;
+            if dump_count * MAIN_LOOP_SLEEP_MS >= DUMP_LOOP_MS {
+                state_handler.dump_state().chain_err(
+                    || "Unable to dump state",
+                )?;
+                dump_count = 0
+            }
         }
     }
 }

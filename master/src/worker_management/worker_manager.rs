@@ -12,14 +12,13 @@ use serde_json;
 use cerberus_proto::worker as pb;
 use common::{Task, TaskStatus, TaskType, Worker};
 use errors::*;
-use util::output_error;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
-use state;
-use state::StateHandling;
+use util::distributed_filesystem::WorkerInfoProvider;
+use util::state::{StateHandling, SimpleStateHandling};
+use util::output_error;
 use worker_communication::WorkerInterface;
 use worker_management::state::State;
-use util::distributed_filesystem::WorkerInfoProvider;
 
 const HEALTH_CHECK_LOOP_MS: u64 = 100;
 const TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S: i64 = 60;
@@ -386,7 +385,7 @@ impl WorkerManager {
     }
 }
 
-impl state::SimpleStateHandling for WorkerManager {
+impl SimpleStateHandling<Error> for WorkerManager {
     fn dump_state(&self) -> Result<serde_json::Value> {
         let state = self.state.lock().unwrap();
         state.dump_state()

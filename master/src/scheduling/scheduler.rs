@@ -8,10 +8,9 @@ use common::{Task, TaskStatus, Job};
 use errors::*;
 use scheduling::state::{ScheduledJob, State};
 use scheduling::task_processor::TaskProcessor;
-use state;
-use state::StateHandling;
-use worker_management::WorkerManager;
+use util::state::{StateHandling, SimpleStateHandling};
 use util::output_error;
+use worker_management::WorkerManager;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
 ///
@@ -233,7 +232,7 @@ impl Scheduler {
     }
 }
 
-impl state::SimpleStateHandling for Scheduler {
+impl SimpleStateHandling<Error> for Scheduler {
     fn dump_state(&self) -> Result<serde_json::Value> {
         let state = self.state.lock().unwrap();
         state.dump_state()
