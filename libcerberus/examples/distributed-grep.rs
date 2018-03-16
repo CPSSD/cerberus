@@ -4,8 +4,6 @@ extern crate env_logger;
 extern crate error_chain;
 extern crate regex;
 
-use std::path::Path;
-
 use regex::Regex;
 
 use cerberus::*;
@@ -13,9 +11,21 @@ use cerberus::*;
 const MAP_OUTPUT_PARTITIONS: u64 = 15;
 const REGEX: &str = r"\b\w{15,}\b";
 
+fn get_longest_word(line: &str) -> String {
+    let mut longest: String = "".to_string();
+
+    for word in line.split(|c: char| !c.is_alphabetic()) {
+        if word.len() > longest.len() {
+            longest = word.to_string();
+        }
+    }
+
+    longest
+}
+
 struct GrepMapper;
 impl Map for GrepMapper {
-    type Key = String;
+    type Key = usize;
     type Value = String;
     fn map<E>(&self, input: MapInputKV, mut emitter: E) -> Result<()>
     where
@@ -24,17 +34,13 @@ impl Map for GrepMapper {
         let regex = Regex::new(REGEX).chain_err(
             || "Error creating regex object.",
         )?;
-        let output_key = Path::new(&input.key)
-            .file_name()
-            .chain_err(|| "Error getting output key.")?
-            .to_str()
-            .chain_err(|| "Error getting output key.")?;
 
         for line in input.value.lines() {
             if regex.is_match(line) {
-                emitter
-                    .emit(output_key.to_owned(), line.to_owned())
-                    .chain_err(|| "Error emitting map key-value pair.")?;
+                let word = get_longest_word(line);
+                emitter.emit(word.len(), line.to_owned()).chain_err(
+                    || "Error emitting map key-value pair.",
+                )?;
             }
         }
         Ok(())
@@ -42,16 +48,10 @@ impl Map for GrepMapper {
 }
 
 struct GrepReducer;
-impl Reduce for GrepReducer {
-    type Key = String;
-    type Value = String;
-    fn reduce<E>(
-        &self,
-        input: IntermediateInputKV<Self::Key, Self::Value>,
-        mut emitter: E,
-    ) -> Result<()>
+impl Reduce<usize, String> for GrepReducer {
+    fn reduce<E>(&self, input: IntermediateInputKV<usize, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<Self::Value>,
+        E: EmitFinal<String>,
     {
         for val in input.values {
             emitter.emit(val).chain_err(|| "Error emitting value.")?;

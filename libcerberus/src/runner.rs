@@ -24,7 +24,7 @@ use super::VERSION;
 pub struct UserImplRegistry<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
     C: Combine<M::Key, M::Value> + 'a,
 {
@@ -38,7 +38,7 @@ where
 pub struct UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
     C: Combine<M::Key, M::Value> + 'a,
 {
@@ -51,7 +51,8 @@ where
 impl<'a, M, R, P, C> Default for UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value>
+        + 'a,
     P: Partition<M::Key, M::Value>
         + 'a,
     C: Combine<M::Key, M::Value>
@@ -70,7 +71,7 @@ where
 impl<'a, M, R, P, C> UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<M::Key, M::Value> + 'a,
     C: Combine<M::Key, M::Value> + 'a,
 {
@@ -141,7 +142,7 @@ where
 impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
 where
     M: Map + 'a,
-    R: Reduce + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
     P: Partition<
         M::Key,
         M::Value,
@@ -180,7 +181,7 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
 pub fn run<M, R, P, C>(matches: &ArgMatches, registry: &UserImplRegistry<M, R, P, C>) -> Result<()>
 where
     M: Map,
-    R: Reduce,
+    R: Reduce<M::Key, M::Value>,
     P: Partition<M::Key, M::Value>,
     C: Combine<M::Key, M::Value>,
 {
@@ -251,13 +252,17 @@ where
     Ok(())
 }
 
-fn run_reduce<R: Reduce>(reducer: &R) -> Result<()> {
+fn run_reduce<K, V, R: Reduce<K, V>>(reducer: &R) -> Result<()>
+where
+    K: Default + Serialize + DeserializeOwned,
+    V: Default + Serialize + DeserializeOwned,
+{
     let mut source = stdin();
     let mut sink = stdout();
     let input_kv = read_intermediate_input(&mut source).chain_err(
         || "Error getting input to reduce.",
     )?;
-    let mut output_object = FinalOutputObject::<R::Value>::default();
+    let mut output_object = FinalOutputObject::<V>::default();
 
     reducer
         .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))

@@ -34,7 +34,7 @@ struct ReduceOperation {
 
 #[derive(Serialize)]
 struct ReduceInput {
-    pub key: String,
+    pub key: serde_json::Value,
     pub values: Vec<serde_json::Value>,
 }
 
@@ -196,9 +196,7 @@ fn create_reduce_operations(
 
         if let serde_json::Value::Array(ref pairs) = parsed_value {
             for pair in pairs {
-                let key = pair["key"].as_str().chain_err(
-                    || "Error parsing reduce input key.",
-                )?;
+                let key = pair["key"].to_string();
 
                 let value = pair["value"].clone();
                 if value.is_null() {
@@ -213,12 +211,25 @@ fn create_reduce_operations(
 
     let mut reduce_operations: Vec<ReduceOperation> = Vec::new();
     for (intermediate_key, reduce_array) in reduce_map {
+        let key_value: serde_json::Value = serde_json::from_str(&intermediate_key).chain_err(
+            || "Error parsing intermediate_key",
+        )?;
+
         let reduce_input = ReduceInput {
-            key: intermediate_key.to_owned(),
+            key: key_value.clone(),
             values: reduce_array,
         };
+
+        let intermediate_key_string = {
+            if let Some(key_str) = key_value.as_str() {
+                key_str.to_string()
+            } else {
+                key_value.to_string()
+            }
+        };
+
         let reduce_operation = ReduceOperation {
-            intermediate_key: intermediate_key.to_owned(),
+            intermediate_key: intermediate_key_string,
             input: serde_json::to_string(&reduce_input).chain_err(
                 || "Error seralizing reduce operation input.",
             )?,
