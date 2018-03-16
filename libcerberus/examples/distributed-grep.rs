@@ -43,8 +43,13 @@ impl Map for GrepMapper {
 
 struct GrepReducer;
 impl Reduce for GrepReducer {
+    type Key = String;
     type Value = String;
-    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
+    fn reduce<E>(
+        &self,
+        input: IntermediateInputKV<Self::Key, Self::Value>,
+        mut emitter: E,
+    ) -> Result<()>
     where
         E: EmitFinal<Self::Value>,
     {

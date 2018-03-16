@@ -26,7 +26,7 @@ where
     M: Map + 'a,
     R: Reduce + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     mapper: &'a M,
     reducer: &'a R,
@@ -40,7 +40,7 @@ where
     M: Map + 'a,
     R: Reduce + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     mapper: Option<&'a M>,
     reducer: Option<&'a R>,
@@ -54,7 +54,8 @@ where
     R: Reduce + 'a,
     P: Partition<M::Key, M::Value>
         + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value>
+        + 'a,
 {
     fn default() -> UserImplRegistryBuilder<'a, M, R, P, C> {
         UserImplRegistryBuilder {
@@ -71,7 +72,7 @@ where
     M: Map + 'a,
     R: Reduce + 'a,
     P: Partition<M::Key, M::Value> + 'a,
-    C: Combine<R::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     pub fn new() -> UserImplRegistryBuilder<'a, M, R, P, C> {
         Default::default()
@@ -123,11 +124,12 @@ where
 /// A null implementation for `Combine` as this is optional component.
 /// This should not be used by user code.
 pub struct NullCombiner;
-impl<V> Combine<V> for NullCombiner
+impl<K, V> Combine<K, V> for NullCombiner
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
 {
-    fn combine<E>(&self, _input: IntermediateInputKV<V>, _emitter: E) -> Result<()>
+    fn combine<E>(&self, _input: IntermediateInputKV<K, V>, _emitter: E) -> Result<()>
     where
         E: EmitFinal<V>,
     {
@@ -180,7 +182,7 @@ where
     M: Map,
     R: Reduce,
     P: Partition<M::Key, M::Value>,
-    C: Combine<R::Value>,
+    C: Combine<M::Key, M::Value>,
 {
     match matches.subcommand_name() {
         Some("map") => {
@@ -267,10 +269,11 @@ fn run_reduce<R: Reduce>(reducer: &R) -> Result<()> {
     Ok(())
 }
 
-fn run_combine<V, C>(combiner: &C) -> Result<()>
+fn run_combine<K, V, C>(combiner: &C) -> Result<()>
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
-    C: Combine<V>,
+    C: Combine<K, V>,
 {
     let mut source = stdin();
     let mut sink = stdout();
@@ -289,10 +292,11 @@ where
     Ok(())
 }
 
-fn run_has_combine<V, C>(combiner: Option<&C>)
+fn run_has_combine<K, V, C>(combiner: Option<&C>)
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
-    C: Combine<V>,
+    C: Combine<K, V>,
 {
     match combiner {
         Some(_) => println!("yes"),

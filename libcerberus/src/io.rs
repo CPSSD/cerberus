@@ -27,9 +27,10 @@ pub fn read_map_input<R: Read>(source: &mut R) -> Result<MapInputKV> {
 ///
 /// It attempts to parse the string from the input source as JSON and returns an `errors::Error` if
 /// the attempt fails.
-pub fn read_intermediate_input<R, V>(source: &mut R) -> Result<IntermediateInputKV<V>>
+pub fn read_intermediate_input<R, K, V>(source: &mut R) -> Result<IntermediateInputKV<K, V>>
 where
     R: Read,
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
 {
     let mut input_string = String::new();
@@ -134,7 +135,8 @@ mod tests {
             values: vec!["bar".to_owned(), "baz".to_owned()],
         };
 
-        let result: IntermediateInputKV<String> = read_intermediate_input(&mut cursor).unwrap();
+        let result: IntermediateInputKV<String, String> = read_intermediate_input(&mut cursor)
+            .unwrap();
 
         assert_eq!(expected_result, result);
     }
@@ -145,7 +147,7 @@ mod tests {
         let test_string = "";
         let mut cursor = Cursor::new(test_string);
 
-        let _: IntermediateInputKV<String> = read_intermediate_input(&mut cursor).unwrap();
+        let _: IntermediateInputKV<String, String> = read_intermediate_input(&mut cursor).unwrap();
     }
 
     #[test]
