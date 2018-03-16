@@ -51,7 +51,7 @@ sleep 1
 
 # Launch a worker.
 echo "Launching worker"
-./worker -m "${local_ip}:10009" -i "${local_ip}" > state-integration-test/logs/worker.log 2>&1 &
+./worker -m "${local_ip}:10009" -i "${local_ip}" --fresh --nodump > state-integration-test/logs/worker.log 2>&1 &
 worker_pid=$!
 
 # Launch the CLI to monitor status.
