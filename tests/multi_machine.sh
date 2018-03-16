@@ -50,7 +50,7 @@ do
         break;
     fi
     sleep 1
-    attempt_counter+=1
+    attempt_counter=$(( attempt_counter+1 ))
 done
 
 # Take down the docker containers
