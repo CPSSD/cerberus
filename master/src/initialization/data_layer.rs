@@ -8,7 +8,7 @@ use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
                                    LocalFileSystemMasterInterface, FileSystemManager,
                                    WorkerInfoProvider};
 
-const DFS_FILE_DIRECTORY: &str = "/tmp/cerberus/dfs/";
+const DEFAULT_DFS_DIRECTORY: &str = "/tmp/cerberus/dfs/";
 
 pub fn get_data_abstraction_layer(
     matches: &ArgMatches,
@@ -24,7 +24,10 @@ pub fn get_data_abstraction_layer(
         filesystem_manager = None;
     } else if dfs {
         let mut storage_dir = PathBuf::new();
-        storage_dir.push(DFS_FILE_DIRECTORY);
+        storage_dir.push(matches.value_of("dfs-location").unwrap_or(
+            DEFAULT_DFS_DIRECTORY,
+        ));
+
         let local_file_manager_arc = Arc::new(LocalFileManager::new(storage_dir));
         let file_manager_arc = Arc::new(FileSystemManager::new(Arc::clone(worker_info_provider)));
 
