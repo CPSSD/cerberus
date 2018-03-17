@@ -16,6 +16,7 @@ pub struct StateHandler {
     scheduler: Arc<Scheduler>,
     worker_manager: Arc<WorkerManager>,
     filesystem_manager: Option<Arc<FileSystemManager>>,
+    should_dump_state: bool,
     dump_dir: String,
 }
 
@@ -24,10 +25,10 @@ impl StateHandler {
         scheduler: Arc<Scheduler>,
         worker_manager: Arc<WorkerManager>,
         filesystem_manager: Option<Arc<FileSystemManager>>,
-        create_dir: bool,
+        should_dump_state: bool,
         dir: &str,
     ) -> Result<Self> {
-        if create_dir {
+        if should_dump_state {
             fs::create_dir_all(dir).chain_err(|| {
                 format!("Unable to create dir: {}", dir)
             })?;
@@ -37,6 +38,7 @@ impl StateHandler {
             scheduler: scheduler,
             worker_manager: worker_manager,
             filesystem_manager: filesystem_manager,
+            should_dump_state: should_dump_state,
             dump_dir: dir.into(),
         })
     }
@@ -131,5 +133,9 @@ impl StateHandler {
 
         info!("Succesfully loaded from state!");
         Ok(())
+    }
+
+    pub fn get_should_dump_state(&self) -> bool {
+        self.should_dump_state
     }
 }
