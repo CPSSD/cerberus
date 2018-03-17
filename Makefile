@@ -23,6 +23,7 @@ unit-test:
 
 integration-test:
 	./tests/integration.sh
+	./tests/distributed_grep_test.sh
 	./tests/state_saving.sh
 
 multi-machine:
