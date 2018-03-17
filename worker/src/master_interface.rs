@@ -14,6 +14,7 @@ use errors::*;
 pub struct MasterInterface {
     client: grpc_pb::WorkerServiceClient,
     worker_id: RwLock<String>,
+    master_addr: SocketAddr,
 }
 
 impl MasterInterface {
@@ -27,7 +28,12 @@ impl MasterInterface {
         Ok(MasterInterface {
             client: client,
             worker_id: RwLock::new(String::new()),
+            master_addr: master_addr,
         })
+    }
+
+    pub fn get_master_addr(&self) -> SocketAddr {
+        self.master_addr
     }
 
     pub fn register_worker(&self, address: &SocketAddr, worker_id: &str) -> Result<String> {
