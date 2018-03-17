@@ -97,7 +97,15 @@ do
     echo "Checking Status using CLI..."
     status=$(./cli -m "${local_ip}:10011" status 2>&1 | grep 'DONE\|FAILED\|IN_PROGRESS\|IN_QUEUE' -o)
     echo "    - MapReduce Status: " $status
-    if [ "$status" == "DONE" ] || [ "$status" == "FAILED" ]; then break; fi
+    if [ "$status" == "DONE" ] || [ "$status" == "FAILED" ]; then
+
+        # Download output
+        ./cli -m "${local_ip}:10011" download \
+        -l "$PWD"/dfs-integration-test/output \
+        -r /dfs/output/
+
+        break; 
+    fi
 
     if [ $attempt_counter -gt 15 ]; then
         echo "Error: Unable to reach an expected status after 15 iterations"
@@ -107,10 +115,6 @@ do
     attempt_counter=$(( attempt_counter+1 ))
 done
 
-# Download output
-./cli -m "${local_ip}:10011" download \
-    -l "$PWD"/dfs-integration-test/output \
-    -r /dfs/output/
 
 echo "Killing spawned processes"
 
