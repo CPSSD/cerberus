@@ -12,17 +12,19 @@ use util::state::SimpleStateHandling;
 
 pub struct StateHandler {
     local_file_manager: Option<Arc<LocalFileManager>>,
-    dump_dir: String,
     worker_id: String,
+
+    dump_dir: String,
+    should_dump_state: bool,
 }
 
 impl StateHandler {
     pub fn new(
         local_file_manager: Option<Arc<LocalFileManager>>,
-        create_dir: bool,
+        should_dump_state: bool,
         dir: &str,
     ) -> Result<Self> {
-        if create_dir {
+        if should_dump_state {
             fs::create_dir_all(dir).chain_err(|| {
                 format!("Unable to create dir: {}", dir)
             })?;
@@ -30,9 +32,15 @@ impl StateHandler {
 
         Ok(StateHandler {
             local_file_manager: local_file_manager,
-            dump_dir: dir.into(),
             worker_id: String::new(),
+
+            dump_dir: dir.into(),
+            should_dump_state: should_dump_state,
         })
+    }
+
+    pub fn get_should_dump_state(&self) -> bool {
+        self.should_dump_state
     }
 
     pub fn get_worker_id(&self) -> String {
