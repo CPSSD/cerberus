@@ -240,15 +240,8 @@ fn process_map_result(
     }
 
     // If we have cancelled the current task then we should avoid processing the map results.
-    {
-        let cancelled = {
-            let operation_state = resources.operation_state.lock().unwrap();
-            operation_state.task_cancelled(task_id)
-        };
-        if cancelled {
-            operation_handler::set_cancelled_status(&resources.operation_state);
-            return;
-        }
+    if operation_handler::check_task_cancelled(&resources.operation_state, task_id) {
+        return;
     }
 
     match result {
@@ -326,16 +319,12 @@ fn internal_perform_map(
 
     for input_location in input_locations {
         // Make sure the job hasn't been cancelled before continuing.
+        if operation_handler::check_task_cancelled(
+            &resources.operation_state,
+            &map_options.task_id,
+        )
         {
-            let cancelled = {
-                let operation_state = resources.operation_state.lock().unwrap();
-                operation_state.task_cancelled(&map_options.task_id)
-            };
-            if cancelled {
-                operation_handler::set_cancelled_status(&resources.operation_state);
-                println!("Succesfully cancelled task: {}", map_options.task_id);
-                return Ok(());
-            }
+            return Ok(());
         }
 
         info!(

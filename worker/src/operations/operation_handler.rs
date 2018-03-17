@@ -65,12 +65,28 @@ pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     );
 }
 
-pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
+fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     set_operation_handler_status(
         operation_state_arc,
         pb::WorkerStatus::AVAILABLE,
         pb::OperationStatus::CANCELLED,
     );
+}
+
+// Checks if the tasks is cancelled and handles this case. Returns true if the task was canceled.
+pub fn check_task_cancelled(
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    task_id: &str,
+) -> bool {
+    let cancelled = {
+        let operation_state = operation_state_arc.lock().unwrap();
+        operation_state.task_cancelled(task_id)
+    };
+    if cancelled {
+        set_cancelled_status(operation_state_arc);
+        println!("Succesfully cancelled task: {}", task_id);
+    }
+    cancelled
 }
 
 pub fn set_busy_status(operation_state_arc: &Arc<Mutex<OperationState>>) {

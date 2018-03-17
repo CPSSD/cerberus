@@ -356,37 +356,29 @@ fn run_reduce_queue(
         loop {
             if reduce_queue.is_queue_empty() {
                 break;
-            } else {
+            }
 
-                // Make sure the job hasn't been cancelled before continuing.
-                {
-                    let cancelled = {
-                        let operation_state = resources.operation_state.lock().unwrap();
-                        operation_state.task_cancelled(&reduce_options.task_id)
-                    };
-                    if cancelled {
-                        operation_handler::set_cancelled_status(&resources.operation_state);
-                        println!(
-                            "Succesfully cancelled reduce task: {}",
-                            &reduce_options.task_id
-                        );
-                        return;
-                    }
+            // Make sure the job hasn't been cancelled before continuing.
+            if operation_handler::check_task_cancelled(
+                &resources.operation_state,
+                &reduce_options.task_id,
+            )
+            {
+                return;
+            }
+
+            let result = reduce_queue.perform_next_reduce_operation(
+                &reduce_options,
+                &resources.data_abstraction_layer,
+            );
+
+            match result {
+                Ok(reduce_result) => {
+                    reduce_results.insert(reduce_result.key, reduce_result.values);
                 }
-
-                let result = reduce_queue.perform_next_reduce_operation(
-                    &reduce_options,
-                    &resources.data_abstraction_layer,
-                );
-
-                match result {
-                    Ok(reduce_result) => {
-                        reduce_results.insert(reduce_result.key, reduce_result.values);
-                    }
-                    Err(err) => {
-                        reduce_err = Some(err);
-                        break;
-                    }
+                Err(err) => {
+                    reduce_err = Some(err);
+                    break;
                 }
             }
         }
