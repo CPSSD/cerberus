@@ -64,5 +64,12 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(false)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("dfs-location")
+                .long("dfs-location")
+                .help("Directory to store dfs files.")
+                .takes_value(false)
+                .required(false),
+        )
         .get_matches()
 }

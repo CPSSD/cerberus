@@ -15,7 +15,9 @@ mkdir -p dfs-integration-test/worker3-state
 
 # Launch the master.
 echo "Launching Master."
-sudo ./master --dfs --fresh --state-location="$PWD"/dfs-integration-test/master-state --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
+./master --dfs --fresh --state-location="$PWD"/dfs-integration-test/master-state \
+    --dfs-location="$PWD"/dfs-integration-test/master-state \
+    --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
 local_ip="127.0.0.1"
@@ -25,7 +27,8 @@ worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
-    sudo ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs --fresh \
+    ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs --fresh \
+        --dfs-location="$PWD"/dfs-integration-test/worker"${i}"-state \
         --state-location="$PWD"/dfs-integration-test/worker"${i}"-state > dfs-integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
@@ -58,15 +61,14 @@ sleep 2
 sleep 10
 
 # Kill the master and workers.
-sudo kill ${master_pid}
-sudo kill ${worker_pids[0]}
-sudo kill ${worker_pids[1]}
-sudo kill ${worker_pids[2]}
+$(kill -9 ${master_pid} ${worker_pids[*]});
 
 sleep 1
 
 echo "Relaunching Master."
-sudo ./master --dfs --state-location="$PWD"/dfs-integration-test/master-state --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
+./master --dfs --state-location="$PWD"/dfs-integration-test/master-state \
+    --dfs-location="$PWD"/dfs-integration-test/master-state \
+    --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
 echo "Relaunching Workers."
@@ -74,7 +76,8 @@ worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
-    sudo ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs \
+    ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs \
+        --dfs-location="$PWD"/dfs-integration-test/worker"${i}"-state \
         --state-location="$PWD"/dfs-integration-test/worker"${i}"-state > dfs-integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
@@ -119,10 +122,7 @@ done
 echo "Killing spawned processes"
 
 # Kill any spawned processes.
-sudo kill ${master_pid}
-sudo kill ${worker_pids[0]}
-sudo kill ${worker_pids[1]}
-sudo kill ${worker_pids[2]}
+$(kill -9 ${master_pid} ${worker_pids[*]});
 
 echo "Verifying output"
 
@@ -148,4 +148,4 @@ done
 echo "Integration test passed succesfully"
 
 # Cleanup.
-sudo rm -rf dfs-integration-test
+rm -rf dfs-integration-test

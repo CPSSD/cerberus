@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::cmp::{max, min};
-use std::fs::{File, OpenOptions};
-use std::fs;
+use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{Read, Write, Seek, SeekFrom};
 use std::sync::RwLock;
 use std::path::PathBuf;
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 use uuid::Uuid;
 
@@ -48,7 +47,9 @@ impl LocalFileManager {
         let mut storage_path = PathBuf::new();
         storage_path.push(self.storage_directory.clone());
 
-        fs::create_dir_all(&storage_path).chain_err(
+        let mut dir_builder = DirBuilder::new();
+        let dir_builder = dir_builder.recursive(true).mode(0o777);
+        dir_builder.create(&storage_path).chain_err(
             || "Failed to create storage directory",
         )?;
 
@@ -93,7 +94,9 @@ impl LocalFileManager {
         storage_path.push(self.storage_directory.clone());
         storage_path.push(COMPLETE_SUB_DIR);
 
-        fs::create_dir_all(&storage_path).chain_err(
+        let mut dir_builder = DirBuilder::new();
+        let dir_builder = dir_builder.recursive(true).mode(0o777);
+        dir_builder.create(&storage_path).chain_err(
             || "Failed to create storage directory",
         )?;
 
