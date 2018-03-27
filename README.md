@@ -49,3 +49,44 @@ python3 benchmarks.py
 
 ## System Requirements
 The project currently only works on Linux. macOS and other platforms are planned for the future.
+
+---
+
+## Setting up deployment on AWS
+
+#### Requirements:
+```
+pip install boto3
+```
+
+#### Deployment steps:
+1. **Add AWS credentials to ~/.aws/credentials**
+
+	A sample file is located in aws/credentials. Simply replace *ACCESS_KEY_ID* and *SECRET_ACCESS_KEY* with their respective values.
+
+2. **Update parameters in aws.py script**
+
+3. **Ensure that you push the latest version of the master/worker containers to DockerHub**
+
+	This can be done by running `./production-deployment` in the cerberus root directory.
+
+5. **Configure Launch Templates**
+
+	You need to create two Launch Templates for EC2.
+
+	Each template **MUST** have the same name as described below and must have the given tag associated with it. Any other settings can be changed as you see fit.
+
+	| Template Name | Tag |
+	|----|----|
+	| Master | Key: "type", Value: "worker" |
+	| Worker | Key: "type", Value: "master" |
+
+6. **Deploy Instances**
+
+	To create 1 master and N workers and deploy our containers to them we can run the following  command: `python aws.py --create N --deploy`
+	
+_Useful commands:_
+* To restart currently running instances we can run `python aws.py --terminate --deploy`
+* To kill all of the instances we can use `python aws.py --kill`
+
+---

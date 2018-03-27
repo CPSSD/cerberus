@@ -1,0 +1,10 @@
+FROM ubuntu:17.10
+
+EXPOSE 3000
+
+COPY target/release/worker /bin/worker
+COPY aws/worker-startup.sh /bin/launch-worker
+
+RUN mkdir -p /tmp/cerberus/dfs/output
+
+CMD ["/bin/launch-worker"]
