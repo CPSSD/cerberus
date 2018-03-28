@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::future;
 use futures::prelude::*;
 use libc::_SC_CLK_TCK;
 use procinfo::pid::stat_self;
+use serde_json;
 use uuid::Uuid;
 
 use cerberus_proto::worker as pb;
@@ -13,6 +15,8 @@ use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;
 use super::state::OperationState;
+
+pub type PartitionMap = HashMap<u64, HashMap<String, Vec<serde_json::Value>>>;
 
 /// `OperationResources` is used to hold resources passed to map and reduce operation functions.
 #[derive(Clone)]

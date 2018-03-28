@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -6,7 +5,7 @@ use std::process::{Command, Stdio};
 use serde_json;
 
 use errors::*;
-use super::operation_handler::OperationResources;
+use super::operation_handler::{OperationResources, PartitionMap};
 
 fn check_has_combine(resources: &OperationResources) -> Result<bool> {
     let absolute_path = resources
@@ -82,77 +81,41 @@ fn do_combine_operation(
     Ok(combine_results)
 }
 
-fn run_combine(resources: &OperationResources) -> Result<()> {
-    let partition_map;
-    {
-        let operation_state = resources.operation_state.lock().unwrap();
-        partition_map = operation_state.intermediate_map_results.clone();
-    }
-
-    let mut new_partition_map = HashMap::new();
-    for (partition, values) in (&partition_map).iter() {
-        let mut kv_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
-
-        for pair in values {
-            let key = pair["key"].as_str().chain_err(
-                || "Error parsing map output key to run combine.",
-            )?;
-
-            let value = pair["value"].clone();
-            if value.is_null() {
-                return Err("Error parsing map output value to run combine.".into());
-            }
-
-            let vec = kv_map.entry(key.to_string()).or_insert_with(Vec::new);
-            vec.push(value);
-        }
-
-        let mut partition_results: Vec<serde_json::Value> = Vec::new();
-
-        for (key, values) in (&kv_map).iter() {
+fn run_combine(resources: &OperationResources, partition_map: &mut PartitionMap) -> Result<()> {
+    for (_, kv_map) in partition_map.iter_mut() {
+        for (key, values) in kv_map.iter_mut() {
             if values.len() > 1 {
                 let results = do_combine_operation(resources, key, values).chain_err(
                     || "Failed to run combine operation.",
                 )?;
 
-                if let serde_json::Value::Array(ref values) = results {
-                    for value in values {
-                        partition_results.push(json!({
-                            "key": key,
-                            "value": value
-                        }));
+                values.clear();
+
+                if let serde_json::Value::Array(new_values) = results {
+                    for value in new_values {
+                        values.push(value);
                     }
                 } else {
-                    partition_results.push(json!({
-                        "key": key,
-                        "value": results
-                    }));
+                    values.push(results);
                 }
-            } else if let Some(value) = values.first() {
-                partition_results.push(json!({
-                    "key": key,
-                    "value": value
-                }));
             }
         }
-
-        new_partition_map.insert(*partition, partition_results);
     }
-
-    let mut operation_state = resources.operation_state.lock().unwrap();
-    operation_state.intermediate_map_results = new_partition_map;
 
     Ok(())
 }
 
 /// Optionally run a combine operation if it's implemented by the `MapReduce` binary.
-pub fn optional_run_combine(resources: &OperationResources) -> Result<()> {
+pub fn optional_run_combine(
+    resources: &OperationResources,
+    partition_map: &mut PartitionMap,
+) -> Result<()> {
     let has_combine = check_has_combine(resources).chain_err(
         || "Error running has-combine command.",
     )?;
 
     if has_combine {
-        return run_combine(resources);
+        return run_combine(resources, partition_map);
     }
 
     Ok(())
