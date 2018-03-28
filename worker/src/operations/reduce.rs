@@ -173,20 +173,22 @@ fn create_reduce_operations(
             .chain_err(|| "Couldn't read reduce input file")?;
 
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
-            || "Error parsing map response.",
+            || "Error parsing reduce input",
         )?;
 
-        if let serde_json::Value::Array(ref pairs) = parsed_value {
-            for pair in pairs {
-                let key = pair["key"].to_string();
+        let parsed_object = parsed_value.as_object().chain_err(
+            || "Error parsing reduce input",
+        )?;
 
-                let value = pair["value"].clone();
-                if value.is_null() {
-                    return Err("Error parsing reduce input value.".into());
+        for (key, values) in parsed_object.iter() {
+            let key = key.to_string();
+            if let &serde_json::Value::Array(ref values) = values {
+                for value in values {
+                    let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);
+                    reduce_array.push(value.to_owned());
                 }
-
-                let reduce_array = reduce_map.entry(key.to_owned()).or_insert_with(Vec::new);
-                reduce_array.push(value);
+            } else {
+                return Err("Error parsing reduce input value.".into());
             }
         }
     }
