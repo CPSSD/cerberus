@@ -201,7 +201,12 @@ fn combine_map_results(
     Ok(())
 }
 
-fn process_map_operation_error(err: Error, resources: &OperationResources, initial_cpu_time: u64) {
+fn process_map_operation_error(
+    err: Error,
+    resources: &OperationResources,
+    initial_cpu_time: u64,
+    task_id: &str,
+) {
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
         if operation_state.map_operation_failed {
@@ -215,6 +220,7 @@ fn process_map_operation_error(err: Error, resources: &OperationResources, initi
     map_result.set_status(pb::ResultStatus::FAILURE);
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
     map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
+    map_result.set_task_id(task_id.to_owned());
 
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
         error!("Could not send map operation failed: {}", err);
@@ -254,12 +260,12 @@ fn process_map_result(
                 let result = combine_map_results(resources, initial_cpu_time, output_dir, task_id);
 
                 if let Err(err) = result {
-                    process_map_operation_error(err, resources, initial_cpu_time);
+                    process_map_operation_error(err, resources, initial_cpu_time, task_id);
                 }
             }
         }
         Err(err) => {
-            process_map_operation_error(err, resources, initial_cpu_time);
+            process_map_operation_error(err, resources, initial_cpu_time, task_id);
         }
     }
 }
