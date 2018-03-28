@@ -7,6 +7,12 @@ use serde_json;
 use errors::*;
 use super::operation_handler::{OperationResources, PartitionMap};
 
+#[derive(Serialize)]
+struct CombineInput {
+    pub key: serde_json::Value,
+    pub values: Vec<serde_json::Value>,
+}
+
 fn check_has_combine(resources: &OperationResources) -> Result<bool> {
     let absolute_path = resources
         .data_abstraction_layer
@@ -25,13 +31,8 @@ fn check_has_combine(resources: &OperationResources) -> Result<bool> {
 
 fn do_combine_operation(
     resources: &OperationResources,
-    key: &str,
-    values: &[serde_json::Value],
+    combine_input: &[CombineInput],
 ) -> Result<serde_json::Value> {
-    let combine_input = json!({
-        "key": key.to_owned(),
-        "values": values,
-    });
     let combine_input_str = serde_json::to_string(&combine_input).chain_err(
         || "Error seralizing combine operation input.",
     )?;
@@ -83,22 +84,50 @@ fn do_combine_operation(
 
 fn run_combine(resources: &OperationResources, partition_map: &mut PartitionMap) -> Result<()> {
     for (_, kv_map) in partition_map.iter_mut() {
-        for (key, values) in kv_map.iter_mut() {
+        // Do one combine for each partition.
+        let mut combine_keys = Vec::new();
+        let mut combine_inputs = Vec::new();
+        for (key, values) in kv_map.iter() {
             if values.len() > 1 {
-                let results = do_combine_operation(resources, key, values).chain_err(
-                    || "Failed to run combine operation.",
+                combine_keys.push(key.to_owned());
+
+                let key_value: serde_json::Value =
+                    serde_json::from_str(key).chain_err(|| "Error parsing key")?;
+                let combine_input = CombineInput {
+                    key: key_value,
+                    values: values.to_owned(),
+                };
+                combine_inputs.push(combine_input);
+            }
+        }
+
+        if combine_inputs.is_empty() {
+            continue;
+        }
+
+        let results = do_combine_operation(resources, &combine_inputs).chain_err(
+            || "Failed to run combine operation.",
+        )?;
+
+        // Use results of combine operations.
+        if let serde_json::Value::Array(results) = results {
+            for (i, result) in results.iter().enumerate() {
+                let values = kv_map.get_mut(&combine_keys[i]).chain_err(
+                    || "Error running combine",
                 )?;
 
                 values.clear();
 
-                if let serde_json::Value::Array(new_values) = results {
+                if let serde_json::Value::Array(ref new_values) = *result {
                     for value in new_values {
-                        values.push(value);
+                        values.push(value.to_owned());
                     }
                 } else {
-                    values.push(results);
+                    values.push(result.to_owned());
                 }
             }
+        } else {
+            return Err("Error parsing combine output as Array".into());
         }
     }
 
