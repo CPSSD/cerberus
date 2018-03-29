@@ -126,15 +126,9 @@ impl State {
             None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
         };
 
-        let job_status = scheduled_job.job.status;
-        if !(job_status == pb::Status::IN_PROGRESS || job_status == pb::Status::IN_QUEUE) {
-            return Err(
-                format!("Unable to cancel job. Expected IN_PROGRESS or IN_QUEUE job. Got {:?}",
-                        job_status).into(),
-            );
+        if scheduled_job.job.status != pb::Status::FAILED {
+            scheduled_job.job.status = pb::Status::CANCELLED;
         }
-
-        scheduled_job.job.status = pb::Status::CANCELLED;
         Ok(())
     }
 
