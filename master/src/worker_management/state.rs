@@ -35,8 +35,10 @@ impl State {
     pub fn remove_queued_tasks_for_job(&mut self, job_id: &str) -> Result<()> {
         let mut new_priority_queue: BinaryHeap<PriorityTask> = BinaryHeap::new();
 
+        self.tasks.retain(|_, v| v.job_id != job_id);
+
         for priority_task in self.priority_task_queue.drain() {
-            if let Some(task) = self.tasks.get(&priority_task.id.clone()) {
+            if let Some(task) = self.tasks.get_mut(&priority_task.id.clone()) {
                 if task.job_id != job_id {
                     new_priority_queue.push(priority_task);
                 }
@@ -44,6 +46,7 @@ impl State {
         }
 
         self.priority_task_queue = new_priority_queue;
+
         Ok(())
     }
 
@@ -387,6 +390,8 @@ impl State {
         let previous_task_id = worker.current_task_id.clone();
         worker.last_cancelled_task_id = Some(worker.current_task_id.clone());
         worker.current_task_id = String::new();
+
+        self.tasks.remove(&previous_task_id);
 
         Ok(previous_task_id)
     }
