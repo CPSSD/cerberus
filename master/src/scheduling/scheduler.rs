@@ -92,7 +92,15 @@ impl Scheduler {
             state.reduce_tasks_required(&task.job_id).chain_err(
                 || "Error processing completed task result",
             )?
+
         };
+
+        if task.status != TaskStatus::Complete {
+            self.cancel_job(&task.job_id).chain_err(|| {
+                format!("Unable to cancel job with ID {}", &task.job_id)
+            })?;
+            return Ok(());
+        }
 
         if reduce_tasks_required {
             self.schedule_reduce_tasks(&task.job_id).chain_err(|| {
