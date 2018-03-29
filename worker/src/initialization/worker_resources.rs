@@ -32,8 +32,9 @@ impl WorkerResources {
         )?);
 
         let (data_abstraction_layer, local_file_manager) =
-            get_data_abstraction_layer(master_addr, &matches)
-                .chain_err(|| "Error creating data abstraction layer.")?;
+            get_data_abstraction_layer(master_addr, matches).chain_err(
+                || "Error creating data abstraction layer.",
+            )?;
 
         let operation_handler = Arc::new(OperationHandler::new(
             Arc::clone(&master_interface),

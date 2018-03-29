@@ -44,8 +44,8 @@ fn send_map_result(
     Ok(())
 }
 
-fn parse_map_results(map_result_string: String, partition_map: &mut PartitionMap) -> Result<()> {
-    let parse_value: serde_json::Value = serde_json::from_str(&map_result_string).chain_err(
+fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) -> Result<()> {
+    let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 
@@ -59,7 +59,7 @@ fn parse_map_results(map_result_string: String, partition_map: &mut PartitionMap
             || "Error parsing map response.",
         )?;
         let partition_hashmap = partition_map.entry(partition).or_insert_with(HashMap::new);
-        if let &serde_json::Value::Array(ref pairs) = pairs {
+        if let serde_json::Value::Array(ref pairs) = *pairs {
             for pair in pairs {
                 let key_str = pair["key"].to_string();
                 let value_vec = partition_hashmap.entry(key_str).or_insert_with(Vec::new);
@@ -71,9 +71,9 @@ fn parse_map_results(map_result_string: String, partition_map: &mut PartitionMap
     Ok(())
 }
 
-fn map_operation_thread_impl(map_input_value: bson::Document, mut child: Child) -> Result<String> {
+fn map_operation_thread_impl(map_input_value: &bson::Document, mut child: Child) -> Result<String> {
     let mut input_buf = Vec::new();
-    bson::encode_document(&mut input_buf, &map_input_value)
+    bson::encode_document(&mut input_buf, map_input_value)
         .chain_err(|| "Could not encode map_input as BSON.")?;
 
     if let Some(stdin) = child.stdin.as_mut() {
@@ -164,7 +164,7 @@ fn combine_map_results(
     }
 
     for map_result in map_results_vec {
-        parse_map_results(map_result, &mut partition_map)
+        parse_map_results(&map_result, &mut partition_map)
             .chain_err(|| "Error parsing map result")?;
     }
 
@@ -351,7 +351,7 @@ fn internal_perform_map(
         let resources = resources.clone();
 
         thread::spawn(move || {
-            let result = map_operation_thread_impl(map_input_document, child);
+            let result = map_operation_thread_impl(&map_input_document, child);
 
             process_map_result(
                 result,
@@ -379,7 +379,7 @@ mod tests {
         r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
         let mut partition_map: PartitionMap = HashMap::new();
 
-        parse_map_results(map_results.to_string(), &mut partition_map).unwrap();
+        parse_map_results(map_results, &mut partition_map).unwrap();
         assert_eq!(partition_map.len(), 2);
     }
 
@@ -391,7 +391,7 @@ mod tests {
             r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
         let mut partition_map: PartitionMap = HashMap::new();
 
-        let result = parse_map_results(map_results.to_string(), &mut partition_map);
+        let result = parse_map_results(map_results, &mut partition_map);
         assert!(result.is_err());
     }
 }

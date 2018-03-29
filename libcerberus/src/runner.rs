@@ -134,16 +134,20 @@ where
 {
     let mut source = stdin();
     let mut sink = stdout();
-    let input_kv = read_intermediate_input(&mut source).chain_err(
+    let input_kvs = read_intermediate_input(&mut source).chain_err(
         || "Error getting input to reduce.",
     )?;
-    let mut output_object = FinalOutputObject::<V>::default();
 
-    reducer
-        .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
-        .chain_err(|| "Error running reduce operation.")?;
+    let mut output_objects = Vec::new();
+    for input_kv in input_kvs {
+        let mut output_object = FinalOutputObject::<V>::default();
+        reducer
+            .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
+            .chain_err(|| "Error running reduce operation.")?;
+        output_objects.push(output_object);
+    }
 
-    write_reduce_output(&mut sink, &output_object).chain_err(
+    write_reduce_output(&mut sink, &output_objects).chain_err(
         || "Error writing reduce output to stdout.",
     )?;
     Ok(())
@@ -157,17 +161,21 @@ where
 {
     let mut source = stdin();
     let mut sink = stdout();
-    let input_kv = read_intermediate_input(&mut source).chain_err(
+    let input_kvs = read_intermediate_input(&mut source).chain_err(
         || "Error getting input to combine.",
     )?;
 
-    let mut output_object = Vec::<V>::new();
+    let mut output_objects = Vec::new();
 
-    combiner
-        .combine(input_kv, VecEmitter::new(&mut output_object))
-        .chain_err(|| "Error running combine operation.")?;
+    for input_kv in input_kvs {
+        let mut output_object = Vec::<V>::new();
+        combiner
+            .combine(input_kv, VecEmitter::new(&mut output_object))
+            .chain_err(|| "Error running combine operation.")?;
+        output_objects.push(output_object);
+    }
 
-    write_intermediate_vector(&mut sink, &output_object)
+    write_intermediate_vectors(&mut sink, &output_objects)
         .chain_err(|| "Error writing combine output to stdout.")?;
     Ok(())
 }

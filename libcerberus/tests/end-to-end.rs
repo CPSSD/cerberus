@@ -108,8 +108,8 @@ fn run_map_invalid_input() {
 
 #[test]
 fn run_reduce_valid_input() {
-    let json_input = r#"{"key":"foo","values":["bar","baz"]}"#;
-    let expected_output = r#"{"values":["barbaz"]}"#;
+    let json_input = r#"[{"key":"foo","values":["bar","baz"]}]"#;
+    let expected_output = r#"[{"values":["barbaz"]}]"#;
 
     let mut child = Command::new(get_bin_path())
         .arg("reduce")
