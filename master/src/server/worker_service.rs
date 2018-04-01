@@ -107,4 +107,19 @@ impl grpc_pb::WorkerService for WorkerService {
         let response = pb::EmptyMessage::new();
         SingleResponse::completed(response)
     }
+
+    fn report_worker(
+        &self,
+        _o: RequestOptions,
+        request: pb::ReportWorkerRequest,
+    ) -> SingleResponse<pb::EmptyMessage> {
+        let result = self.worker_manager.handle_worker_report(&request);
+        if let Err(err) = result {
+            let response = SingleResponse::err(Error::Panic(err.to_string()));
+            util::output_error(&err.chain_err(|| "Unable to handle worker report"));
+            return response;
+        }
+
+        SingleResponse::completed(pb::EmptyMessage::new())
+    }
 }

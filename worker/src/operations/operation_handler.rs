@@ -69,7 +69,7 @@ pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     );
 }
 
-fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
+pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     set_operation_handler_status(
         operation_state_arc,
         pb::WorkerStatus::AVAILABLE,
