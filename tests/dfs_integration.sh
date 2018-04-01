@@ -16,7 +16,7 @@ mkdir -p dfs-integration-test/worker3-state
 # Launch the master.
 echo "Launching Master."
 ./master --dfs --fresh --state-location="$PWD"/dfs-integration-test/master-state \
-    --dfs-location="$PWD"/dfs-integration-test/master-state \
+    --storage-location="$PWD"/dfs-integration-test/master-state \
     --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
@@ -28,7 +28,7 @@ for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
     ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs --fresh \
-        --dfs-location="$PWD"/dfs-integration-test/worker"${i}"-state \
+        --storage-location="$PWD"/dfs-integration-test/worker"${i}"-state \
         --state-location="$PWD"/dfs-integration-test/worker"${i}"-state > dfs-integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
@@ -67,7 +67,7 @@ sleep 1
 
 echo "Relaunching Master."
 ./master --dfs --state-location="$PWD"/dfs-integration-test/master-state \
-    --dfs-location="$PWD"/dfs-integration-test/master-state \
+    --storage-location="$PWD"/dfs-integration-test/master-state \
     --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
@@ -77,7 +77,7 @@ for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
     ./worker -m "${local_ip}:10011" -i "${local_ip}" --dfs \
-        --dfs-location="$PWD"/dfs-integration-test/worker"${i}"-state \
+        --storage-location="$PWD"/dfs-integration-test/worker"${i}"-state \
         --state-location="$PWD"/dfs-integration-test/worker"${i}"-state > dfs-integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done

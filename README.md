@@ -50,6 +50,8 @@ python3 benchmarks.py
 ## System Requirements
 The project currently only works on Linux. macOS and other platforms are planned for the future.
 
+OpenSSL is required - See http://github.com/sfackler/rust-openssl#building for installation instructions.
+
 ---
 
 ## Setting up deployment on AWS
