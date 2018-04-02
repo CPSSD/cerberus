@@ -150,3 +150,15 @@ a:link {
     width: 100%;
   }
 }
+
+.button {
+    background-color: #008CBA;
+    border: none;
+    color: white;
+    display: inline-block;
+    font-size: 16px;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    width: 100%;
+}

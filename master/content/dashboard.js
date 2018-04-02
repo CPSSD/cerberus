@@ -20,6 +20,14 @@ function addProperty(name, value, container) {
   $("<td>").text(value).appendTo(row);
 }
 
+function addButton(text, clickedFunc, container) {
+  var button = $("<button/>")
+    .addClass("button")
+    .text(text)
+    .click(clickedFunc)
+    .appendTo(container);
+}
+
 function updateWorkersList() {
   var workersBox = $("#workers");
 
@@ -40,6 +48,18 @@ function updateWorkersList() {
       });
     }
   });
+}
+
+function cancelJobFunction(jobId) {
+  return function() {
+    $.ajax({
+      url: "/api/canceljob/" + jobId,
+      dataType: "json",
+      success: function() {
+        updateJobsList();
+      }
+    });
+  }
 }
 
 function updateJobsList() {
@@ -64,6 +84,9 @@ function updateJobsList() {
         addProperty("Map Tasks Completed", mapTasksText, container);
         var reduceTasksText = jobsInfo.reduce_tasks_completed + "/" + jobsInfo.reduce_tasks_total;
         addProperty("Reduce Tasks Completed", reduceTasksText, container);
+        if (jobsInfo.status == "IN_PROGRESS" || jobsInfo.status == "IN_QUEUE") {
+          addButton("Cancel Job", cancelJobFunction(jobsInfo.job_id), container.parent());
+        }
       });
     }
   });

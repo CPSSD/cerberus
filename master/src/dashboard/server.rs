@@ -19,6 +19,26 @@ struct ApiHandler {
 }
 
 impl ApiHandler {
+    fn get_parameter(&self, req: &Request, param: &str) -> Result<String> {
+        let value: String = {
+            match req.extensions.get::<Router>() {
+                Some(params) => {
+                    match params.find(param) {
+                        Some(value) => value.to_string(),
+                        None => {
+                            return Err(format!("No param found with name {}", param).into());
+                        }
+                    }
+                }
+                None => {
+                    return Err("Failed to get Router for request".into());
+                }
+            }
+        };
+
+        Ok(value)
+    }
+
     /// Returns information about the `Tasks` which are currently in progress.
     fn tasks(&self, _req: &mut Request) -> Result<Response> {
         let tasks_info = self.worker_manager_arc.get_tasks_info().chain_err(
@@ -46,12 +66,25 @@ impl ApiHandler {
         Ok(Response::with((iron::status::Ok, jobs_info.to_string())))
     }
 
+    fn cancel_job(&self, req: &mut Request) -> Result<Response> {
+        let job_id = self.get_parameter(req, "param").chain_err(
+            || "Could not get job_id in request",
+        )?;
+
+        self.scheduler_arc.cancel_job(&job_id).chain_err(|| {
+            format!("Failed to cancel job with id {}", job_id)
+        })?;
+
+        Ok(Response::with((iron::status::Ok, job_id)))
+    }
+
     fn handle_endpoint(&self, endpoint: &str, req: &mut Request) -> IronResult<Response> {
         let result = {
             match endpoint {
                 "tasks" => self.tasks(req),
                 "workers" => self.workers(req),
                 "jobs" => self.jobs(req),
+                "canceljob" => self.cancel_job(req),
                 _ => Err("Invalid endpoint".into()),
             }
         };
@@ -69,33 +102,17 @@ impl ApiHandler {
 
 impl iron::Handler for ApiHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        let endpoint: String = {
-            match req.extensions.get::<Router>() {
-                Some(params) => {
-                    match params.find("endpoint") {
-                        Some(endpoint) => endpoint.to_string(),
-                        None => {
-                            return Err(IronError::new(
-                                Error::from_kind(
-                                    ErrorKind::Msg("No API endpoint found in request".into()),
-                                ),
-                                iron::status::BadRequest,
-                            ));
-                        }
-                    }
-                }
-                None => {
-                    return Err(IronError::new(
-                        Error::from_kind(
-                            ErrorKind::Msg("Failed to get Router for request".into()),
-                        ),
-                        iron::status::InternalServerError,
-                    ));
-                }
-            }
-        };
+        let param_result = self.get_parameter(req, "endpoint");
 
-        self.handle_endpoint(&endpoint, req)
+        match param_result {
+            Ok(endpoint) => self.handle_endpoint(&endpoint, req),
+            Err(err) => {
+                let chained_err = err.chain_err(|| "Error parsing Cluster Dashboard request");
+                output_error(&chained_err);
+                Err(IronError::new(chained_err, iron::status::BadRequest))
+            }
+        }
+
     }
 }
 
@@ -116,6 +133,7 @@ impl DashboardServer {
 
         let mut router = Router::new();
         router.get("/:endpoint", handler.clone(), "api");
+        router.get("/:endpoint/:param", handler.clone(), "api_one_param");
         router.get("/:endpoint/*", handler, "api_query");
 
         let mut mount = Mount::new();
