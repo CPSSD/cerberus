@@ -85,13 +85,13 @@ impl TaskProcessorImpl {
             let new_start_byte =
                 self.get_closest_endline(input_file_path, start_byte, start_byte + MAP_INPUT_SIZE)
                     .chain_err(|| "Error reading input file")?;
-            start_byte = new_start_byte;
-
             let mut input_location = pb::InputLocation::new();
             input_location.set_input_path(input_path_str.to_owned());
             input_location.set_start_byte(start_byte);
             input_location.set_end_byte(new_start_byte);
             input_locations.push(input_location);
+
+            start_byte = new_start_byte;
         }
 
         if start_byte != end_byte {
