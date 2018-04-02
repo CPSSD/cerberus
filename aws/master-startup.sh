@@ -6,15 +6,16 @@ if [ "$DATA_ABSTRACTION_LAYER" == "" ]; then
 	exit 1
 fi
 
-base_command="/bin/worker --port=3000 --master=$MASTER_IP:$MASTER_PORT --ip=$WORKER_IP"
+base_command="/home/master --port 8081 -d [::]:8082"
 
 case $DATA_ABSTRACTION_LAYER in
 	"DFS")
-		echo "Launching worker with DFS support"
+		echo "Launching master with DFS support"
+		echo ${base_command} --dfs
 		${base_command} --dfs
 		;;
 	"S3")
-		echo "Launching worker with S3 support"
+		echo "Launching master with S3 support"
 		${base_command} --s3 $S3_BUCKET
 		;;
 	*)
