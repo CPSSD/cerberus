@@ -5,8 +5,12 @@ EXPOSE 8082
 
 COPY target/release/master /home/master
 COPY master/content /home/content
+COPY aws/master-startup.sh /home/launch-master.sh
+
+RUN apt-get update && apt-get install pkg-config libssl-dev ca-certificates -y
+RUN update-ca-certificates
 
 RUN mkdir -p /tmp/cerberus/dfs/output
 
 WORKDIR /home
-CMD ["./master", "--port=8081", "--dfs", "-d", "[::]:8082"]
+CMD ["./launch-master.sh"]

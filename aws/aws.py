@@ -1,17 +1,20 @@
 #!/usr/bin/python
 
 import argparse
-import time
+import os
 import subprocess
+import time
 
 import boto3
 
 AWS_REGION = "eu-west-1"
 MASTER_WEB_PORT = 80
-MASTER_PORT = 8083
-WORKER_PORT = 3003
+MASTER_PORT = 8081
+WORKER_PORT = 3000
 DOCKER_REPO = "ryanconnell/cerberus-production"
+S3_BUCKET = "cpssd-cerberus"
 PATH_TO_SSH_KEY = "key.pem"
+AWS_CREDENTIALS = "%s/.aws/credentials" % os.environ.get("HOME")
 
 # Setup our argument parser.
 parser = argparse.ArgumentParser(description='Manage AWS Deployments. Arguments ' \
@@ -23,8 +26,9 @@ parser.add_argument('-c', '--create', type=int, metavar='N',
         help="Create servers. 1 Master and N workers.")
 parser.add_argument('-t', '--terminate', action='store_true',
         help="Terminates containers on all running servers.")
-parser.add_argument('-d', '--deploy', action='store_true',
-        help="Deploys containers on all running servers.")
+parser.add_argument('-d', '--deploy', type=str, choices=["DFS", "S3"], 
+        metavar='DATA_ABSTRACTION_LAYER', action='store',
+        help="Deploys containers on all running servers. Valid abstraction layers are DFS and S3")
 args = parser.parse_args()
 
 # Create our EC2 interface
@@ -34,13 +38,18 @@ ec2_client = boto3.client('ec2', region_name=AWS_REGION)
 # Setup commands for various tasks.
 docker_command = "sudo yum install docker -y && sudo service docker start"
 
-common_tmpl = 'sudo docker run -d -e MASTER_IP="%%s" -e MASTER_PORT="%s"' % MASTER_PORT
+common_tmpl = 'sudo docker run -d -e MASTER_IP="%%s" -e MASTER_PORT="%s" ' \
+              '-e DATA_ABSTRACTION_LAYER="%%s" -e S3_BUCKET="%s" ' \
+              '-v /home/ec2-user/.aws:/home/.aws -e ' \
+              'AWS_SHARED_CREDENTIALS_FILE=/home/.aws/credentials ' \
+              '-e SSL_CERT_DIR=/etc/ssl/certs' % (
+                      MASTER_PORT, S3_BUCKET)
 master_tmpl = '%s -p %d:8081 -p %d:8082 %s:latest-master' % (
         common_tmpl, MASTER_PORT, MASTER_WEB_PORT, DOCKER_REPO)
 worker_tmpl = '%s -p %d:3000 -e WORKER_IP="%%s" %s:latest-worker' % (
         common_tmpl, WORKER_PORT, DOCKER_REPO)
 
-def deploy_containers():
+def deploy_containers(data_abstraction_layer):
     instances = get_instances(["master", "worker"])
     wait_for_ips(instances["master"] + instances["worker"])
 
@@ -54,14 +63,21 @@ def deploy_containers():
     worker_ips = [ worker.public_ip_address for worker in workers ]
     master_ip = master.public_ip_address
 
+    # TODO: Come up with a more secure solution to this
+    # If we are using S3 as our DataAbstractionLayer then we need to send over our
+    # credentials.
+    if data_abstraction_layer == "S3":
+        send_credentials([master_ip] + worker_ips)
+
     # Setup master
-    master_result = run_command(master_tmpl % master_ip, [master_ip],
-                                hide_stdout=False, wait=True)
+    master_result = run_command(master_tmpl % (master_ip, data_abstraction_layer),
+                                [master_ip], hide_stdout=False, wait=True)
 
     # Setup workers
     worker_results = []
     for ip in worker_ips:
-        result = run_command(worker_tmpl % (master_ip, ip), [ip], hide_stdout=False)
+        result = run_command(worker_tmpl % (master_ip, data_abstraction_layer, ip),
+                             [ip], hide_stdout=False)
         worker_results += result
 
     for result in worker_results:
@@ -158,6 +174,18 @@ def wait_for_ssh(ip):
         attempts += 1
     return False
 
+def send_credentials(ips):
+    results = []
+    run_command("sudo mkdir /home/ec2-user/.aws && sudo chown ec2-user /home/ec2-user/.aws",
+                ips, wait=True)
+    for ip in ips:
+        cmd = [ "scp", "-i", PATH_TO_SSH_KEY, "-o", "StrictHostKeyChecking=no",
+                AWS_CREDENTIALS, "ec2-user@%s:/home/ec2-user/.aws/credentials" % ip]
+        print(cmd)
+        results += [ subprocess.Popen(cmd) ]
+    for result in results:
+        result.wait()
+
 def wait_for_ips(instances):
     for instance in instances:
         while(instance.public_ip_address is None):
@@ -207,4 +235,4 @@ if args.terminate:
     terminate_containers()
 
 if args.deploy:
-    deploy_containers()
+    deploy_containers(args.deploy)
