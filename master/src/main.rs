@@ -20,8 +20,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate staticfile;
-extern crate uuid;
+extern crate urlencoded;
 extern crate util;
+extern crate uuid;
 
 mod errors {
     error_chain! {

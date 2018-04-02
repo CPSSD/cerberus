@@ -41,8 +41,12 @@ impl MasterResources {
         let scheduler = Arc::new(Scheduler::new(Arc::clone(&worker_manager), task_processor));
 
         Ok(MasterResources {
-            dashboard_server: initialize_dashboard_server(matches, &worker_manager, &scheduler)
-                .chain_err(|| "Error initilizing cluster dashboard")?,
+            dashboard_server: initialize_dashboard_server(
+                matches,
+                &worker_manager,
+                &scheduler,
+                &data_abstraction_layer_arc,
+            ).chain_err(|| "Error initilizing cluster dashboard")?,
 
             grpc_server: initialize_grpc_server(
                 matches,

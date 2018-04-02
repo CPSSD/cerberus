@@ -3,23 +3,27 @@
 }
 
 html, body {
-  height: 100%;
-  margin: 0;
+  margin-top:-10px;
+  min-height: 100%;
   width: 100%;
 }
 
 body {
   font-family: Arial, Helvetica, sans-serif;
+  margin-bottom: 40px;
 }
 
 .stats-table {
   border-collapse: collapse;
+  table-layout: fixed;
   width: 100%;
 }
 
 td, th {
   border: 1px solid #ddd;
+  font-size: 14px;
   font-weight: normal;
+  overflow-wrap: break-word;
   padding: 8px;
 }
 
@@ -40,11 +44,16 @@ tr:hover {
 }
 
 .header {
+  align-items: center;
   background-color: #2196f3;
   color: #fff;
+  display: flex;
   font-size: 20px;
   height: 70px;
-  padding: 1px;
+  justify-content: center;
+  margin-top: 0;
+  padding: 0;
+  padding-top: 0;
   text-align: center;
 }
 
@@ -74,11 +83,15 @@ tr:hover {
 }
 
 .lower {
-  height: 50%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .row {
-  height: 100%;
+  min-height: 100%;
+  min-width: 100%;
 }
 
 .ui-all {
@@ -93,10 +106,12 @@ tr:hover {
   border-style: double;
   border-width: medium;
   color: #212121;
+  display: flex;
+  flex-direction: column;
   float: left;
   font-size: 20px;
   font-weight: bold;
-  height: 40%;
+  min-height: 300px;
   overflow: auto;
   padding: 10px;
   text-align: center;
@@ -117,10 +132,13 @@ tr:hover {
   border-style: double;
   border-width: medium;
   color: #212121;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   float: left;
+  font-size: 20px;
   font-weight: bold;
-  height: 100%;
-  overflow: auto;
+  min-height: 300px;
   padding: 10px;
   text-align: center;
   width: 50%;
@@ -134,9 +152,13 @@ tr:hover {
 
 .footer {
   background-color: #b3e5fc;
+  bottom: 0;
+  left: 0;
   padding-bottom: 10px;
   padding-top: 10px;
+  position: fixed;
   text-align: center;
+  width: 100%;
 }
 
 a:link {
@@ -162,3 +184,39 @@ a:link {
     text-decoration: none;
     width: 100%;
 }
+
+.form {
+  float: left;
+  padding-top: 10px;
+}
+
+label {
+  font-weight: normal;
+}
+
+input[type=text], select {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    display: inline-block;
+    font-weight: normal;
+    margin: 8px 0;
+    padding: 12px 20px;
+    width: 100%;
+}
+
+input[type=submit] {
+    background-color: #008CBA;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    margin: 8px 0;
+    padding: 14px 20px;
+    width: 100%;
+}
+
+input[type=submit]:hover {
+    background-color: #008CB0;
+}
+

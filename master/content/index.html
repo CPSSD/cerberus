@@ -26,6 +26,20 @@
         <div class="container-grid" id="tasks"></div>
       </div>
     </div>
+    <div class="box">Schedule MapReduce
+      <form id="schedule-job">
+        <label for="binary">Binary</label>
+        <input type="text" id="binary" name="binary_path" placeholder="Binary path..">
+
+        <label for="input">Input</label>
+        <input type="text" id="input" name="input_directory" placeholder="Input directory..">
+
+        <label for="output">Output [Optional]</label>
+        <input type="text" id="output" name="output_directory" placeholder="Output directory..">
+
+        <input type="submit" id="submit-job" value="Schedule MapReduce">
+      </form>
+    </div>
   </div>
 
   <div class="footer">
