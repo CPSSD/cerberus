@@ -14,6 +14,8 @@ addons:
         packages:
             - cmake
             - golang
+            - pkg-config
+            - libssl-dev
 
 install:
     - curl -OL https://github.com/google/protobuf/releases/download/v3.5.0/protoc-3.5.0-linux-x86_64.zip

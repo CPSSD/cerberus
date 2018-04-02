@@ -14,6 +14,9 @@ extern crate serde;
 #[macro_use]
 extern crate serde_json;
 extern crate uuid;
+extern crate rusoto_core;
+extern crate rusoto_s3;
+extern crate futures;
 
 pub mod errors {
     error_chain!{}

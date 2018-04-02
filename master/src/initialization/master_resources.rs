@@ -27,7 +27,8 @@ impl MasterResources {
         let worker_info_provider = Arc::clone(&worker_manager) as
             Arc<WorkerInfoProvider + Send + Sync>;
         let (data_abstraction_layer_arc, filesystem_manager) =
-            initialization::get_data_abstraction_layer(matches, &worker_info_provider);
+            initialization::get_data_abstraction_layer(matches, &worker_info_provider)
+                .chain_err(|| "Unable to create data abstraction layer")?;
 
         let task_processor = Arc::new(TaskProcessorImpl::new(
             Arc::clone(&data_abstraction_layer_arc),

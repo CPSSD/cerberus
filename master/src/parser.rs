@@ -65,10 +65,17 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .required(false),
         )
         .arg(
-            Arg::with_name("dfs-location")
-                .long("dfs-location")
-                .help("Directory to store dfs files.")
-                .takes_value(false)
+            Arg::with_name("storage-location")
+                .long("storage-location")
+                .help("Directory to store dfs and s3 files.")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("s3")
+                .long("s3")
+                .help("The Amazon S3 bucket to use for data access.")
+                .takes_value(true)
                 .required(false),
         )
         .get_matches()
