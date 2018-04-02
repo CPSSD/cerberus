@@ -373,7 +373,7 @@ impl StateHandling<Error> for Task {
     }
 }
 
-#[derive(Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PriorityTask {
     pub id: String,
     pub priority: u32,

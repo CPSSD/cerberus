@@ -310,4 +310,9 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
     fn create_dir_all(&self, _: &Path) -> Result<()> {
         Ok(())
     }
+
+    // For S3 all files can be taken to be equally close to each worker.
+    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
+        Ok(1)
+    }
 }

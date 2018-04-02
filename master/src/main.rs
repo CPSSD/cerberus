@@ -1,5 +1,3 @@
-#![feature(conservative_impl_trait)]
-
 extern crate cerberus_proto;
 extern crate chrono;
 #[macro_use]
@@ -61,21 +59,21 @@ fn run() -> Result<()> {
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();
-    let state = MasterResources::new(&matches).chain_err(
+    let resources = MasterResources::new(&matches).chain_err(
         || "Error initilizing master",
     )?;
 
     // Startup worker management loops
-    run_task_assigment_loop(Arc::clone(&state.worker_manager));
-    run_health_check_loop(Arc::clone(&state.worker_manager));
+    run_task_assigment_loop(Arc::clone(&resources.worker_manager));
+    run_health_check_loop(Arc::clone(&resources.worker_manager));
 
     // Startup scheduler loop
     run_task_update_loop(
-        Arc::clone(&state.scheduler),
-        &Arc::clone(&state.worker_manager),
+        Arc::clone(&resources.scheduler),
+        &Arc::clone(&resources.worker_manager),
     );
 
-    main_loop::run_main_loop(state)
+    main_loop::run_main_loop(resources)
 }
 
 // Macro to generate a quick error_chain main function.

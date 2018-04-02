@@ -285,9 +285,9 @@ impl SimpleStateHandling<Error> for Scheduler {
 
 
 pub fn run_task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
-    let reciever = worker_manager.get_update_reciever();
+    let receiver = worker_manager.get_update_receiver();
     thread::spawn(move || loop {
-        let receiver = reciever.lock().unwrap();
+        let receiver = receiver.lock().unwrap();
         match receiver.recv() {
             Err(e) => error!("Error processing task results: {}", e),
             Ok(task) => {

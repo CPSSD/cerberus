@@ -161,6 +161,8 @@ impl grpc_pb::MapReduceService for ClientService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::channel;
+    use std::thread;
     use common::{Job, Task, Worker};
     use errors::*;
     use scheduling::TaskProcessor;
@@ -212,8 +214,21 @@ mod tests {
     }
 
     fn create_scheduler() -> Scheduler {
+        let (sender, receiver) = channel();
+
+        thread::spawn(move || loop {
+            let result = receiver.recv();
+            if let Err(err) = result {
+                break;
+            }
+        });
+
         Scheduler::new(
-            Arc::new(WorkerManager::new(Arc::new(NullWorkerInterface {}))),
+            Arc::new(WorkerManager::new(
+                Arc::new(NullWorkerInterface),
+                Arc::new(NullAbstractionLayer),
+                sender,
+            )),
             Arc::new(NullTaskProcessor {}),
         )
     }
@@ -261,7 +276,20 @@ mod tests {
 
     #[test]
     fn cluster_status() {
-        let worker_manager = WorkerManager::new(Arc::new(NullWorkerInterface {}));
+        let (sender, receiver) = channel();
+        let worker_manager = WorkerManager::new(
+            Arc::new(NullWorkerInterface),
+            Arc::new(NullAbstractionLayer),
+            sender,
+        );
+
+        thread::spawn(move || loop {
+            let result = receiver.recv();
+            if let Err(err) = result {
+                break;
+            }
+        });
+
         for _x in 0..10 {
             let w = Worker::new("172.30.0.1:8008", "").unwrap();
             worker_manager.register_worker(w).unwrap();

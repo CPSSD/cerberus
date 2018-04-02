@@ -225,4 +225,20 @@ impl AbstractionLayer for DFSAbstractionLayer {
         // path.
         Ok(())
     }
+
+    fn get_file_closeness(&self, path: &Path, worker_id: &str) -> Result<u64> {
+        let file_chunks = self.master_interface
+            .get_file_chunks(&path.to_string_lossy())
+            .chain_err(|| "Could not get file locations")?;
+
+        let mut score = 0;
+
+        for chunk in file_chunks {
+            if chunk.workers.contains(&worker_id.to_string()) {
+                score += 1;
+            }
+        }
+
+        Ok(score)
+    }
 }
