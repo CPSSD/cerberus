@@ -5,6 +5,8 @@ extern crate error_chain;
 
 use cerberus::*;
 
+const MIN_RATING_COUNT: u64 = 100;
+
 fn split_cvs_line(line: &str) -> Vec<String> {
     let mut values = Vec::new();
     let mut current_val = String::new();
@@ -55,13 +57,17 @@ impl Map for RatingByGenreMapper {
 
             let movie_genres = movie_genre_str.split('|');
             let rating: f64 = info[2].parse().chain_err(|| "Error parsing movie rating")?;
+            let rating_count: u64 = info[3].parse().chain_err(
+                || "Error parsing movie rating count",
+            )?;
 
-            let rating_pair = format!("\"{}\",{}", movie_title, rating);
-
-            for genre in movie_genres {
-                emitter
-                    .emit(genre.to_owned(), rating_pair.to_owned())
-                    .chain_err(|| "Error emitting map key-value pair.")?;
+            if rating_count > MIN_RATING_COUNT {
+                let rating_pair = format!("\"{}\",{}", movie_title, rating);
+                for genre in movie_genres {
+                    emitter
+                        .emit(genre.to_owned(), rating_pair.to_owned())
+                        .chain_err(|| "Error emitting map key-value pair.")?;
+                }
             }
         }
         Ok(())
