@@ -386,6 +386,7 @@ impl WorkerManager {
         for worker in state.get_workers() {
             let worker_info = json!({
                 "worker_id": worker.worker_id,
+                "address": worker.address.to_string(),
                 "status": worker.get_serializable_worker_status(),
                 "operation_status": worker.get_serializable_operation_status(),
                 "current_task_id": worker.current_task_id,

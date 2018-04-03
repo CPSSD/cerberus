@@ -1,7 +1,12 @@
-function createCard(parent) {
+function createCard(parent, halfSize) {
   var infoBox = $("<div/>")
-    .addClass("card")
-    .appendTo(parent);
+    .addClass("card");
+
+  if (halfSize) {
+    infoBox.css({
+      "width": "22.5%",
+    });
+  }
 
   var container = $("<div/>")
     .addClass("container")
@@ -10,6 +15,8 @@ function createCard(parent) {
   var table = $("<table/>")
     .addClass("stats-table")
     .appendTo(container);
+
+  infoBox.appendTo(parent);
 
   return table;
 }
@@ -42,9 +49,10 @@ function updateWorkersList() {
       workersBox.empty();
 
       workers.forEach(function(workerInfo) {
-        var container = createCard(workersBox);
+        var container = createCard(workersBox, /* halfSize = */ (workers.length > 6));
 
         addProperty("Worker ID", workerInfo.worker_id, container);
+        addProperty("Address", workerInfo.address, container);
         addProperty("Status", workerInfo.status, container);
         addProperty("Operation Status", workerInfo.operation_status, container);
         addProperty("Current Task ID", workerInfo.current_task_id, container);
@@ -88,6 +96,7 @@ function updateJobsList() {
 
         addProperty("Job ID", jobsInfo.job_id, container);
         addProperty("Client ID", jobsInfo.client_id, container);
+        addProperty("Priority", jobsInfo.priority, container);
         addProperty("Binary", jobsInfo.binary_path, container);
         addProperty("Input", jobsInfo.input_directory, container);
         addProperty("Output", jobsInfo.output_directory, container);
@@ -141,6 +150,7 @@ function processScheduleMapReduceForm(e) {
   var binaryPath = encodeURIComponent($("#binary").val());
   var inputPath = encodeURIComponent($("#input").val());
   var outputPath = encodeURIComponent($("#output").val());
+  var priority = encodeURIComponent($("#priority").val());
 
   var submitButton = $("#submit-job");
   submitButton.attr("disabled", true);
@@ -165,8 +175,14 @@ function processScheduleMapReduceForm(e) {
     });
   }
 
+  var requestUrl = "/api/schedule/query?" +
+    "binary_path=" + binaryPath +
+    "&input_path=" + inputPath +
+    "&output_path=" + outputPath +
+    "&priority=" + priority;
+
   $.ajax({
-    url: "/api/schedule/query?binary_path=" + binaryPath + "&input_path=" + inputPath + "&output_path=" + outputPath,
+    url: requestUrl,
     dataType: "json",
     complete: function() {
       submitButton.val("Succesfully scheduled");
@@ -179,6 +195,7 @@ function processScheduleMapReduceForm(e) {
 }
 
 var scheduleFormToggled = false;
+
 function toggleScheduleForm() {
   scheduleFormToggled = !scheduleFormToggled;
   var scheduleForm = document.getElementById("schedule-form");
