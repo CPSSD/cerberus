@@ -35,10 +35,11 @@ impl StateHandler {
         }
 
         Ok(StateHandler {
-            scheduler: scheduler,
-            worker_manager: worker_manager,
-            filesystem_manager: filesystem_manager,
-            should_dump_state: should_dump_state,
+            scheduler,
+            worker_manager,
+            filesystem_manager,
+
+            should_dump_state,
             dump_dir: dir.into(),
         })
     }

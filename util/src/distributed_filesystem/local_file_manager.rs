@@ -39,7 +39,7 @@ impl LocalFileManager {
         LocalFileManager {
             local_file_map: RwLock::new(HashMap::new()),
             complete_file_map: RwLock::new(HashMap::new()),
-            storage_directory: storage_directory,
+            storage_directory,
         }
     }
 
@@ -76,7 +76,7 @@ impl LocalFileManager {
 
         let file_chunk = FileChunk {
             local_file_path: storage_path,
-            start_byte: start_byte,
+            start_byte,
             end_byte: start_byte + (data.len() as u64),
         };
         chunks.push(file_chunk);
@@ -230,7 +230,7 @@ impl LocalFileManager {
                     })?;
 
                     let file_chunk = ReadFileChunk {
-                        start_byte: start_byte,
+                        start_byte,
                         end_byte: start_byte + bytes_to_read,
                         data: bytes,
                     };

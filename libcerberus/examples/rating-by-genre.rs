@@ -90,8 +90,8 @@ fn do_genre_combine(input: IntermediateInputKV<String, String>) -> Result<Combin
     }
 
     Ok(CombineResult {
-        best_rating: best_rating,
-        best_title: best_title,
+        best_rating,
+        best_title,
     })
 }
 

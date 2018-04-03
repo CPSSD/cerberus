@@ -31,11 +31,11 @@ impl StateHandler {
         }
 
         Ok(StateHandler {
-            local_file_manager: local_file_manager,
+            local_file_manager,
             worker_id: String::new(),
 
             dump_dir: dir.into(),
-            should_dump_state: should_dump_state,
+            should_dump_state,
         })
     }
 

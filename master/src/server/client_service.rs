@@ -28,8 +28,8 @@ impl ClientService {
         data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
     ) -> Self {
         ClientService {
-            scheduler: scheduler,
-            data_abstraction_layer: data_abstraction_layer,
+            scheduler,
+            data_abstraction_layer,
             testing: false,
         }
     }
@@ -305,7 +305,7 @@ mod tests {
         let master_impl = ClientService {
             scheduler: Arc::new(scheduler),
             testing: true,
-            data_abstraction_layer: data_abstraction_layer,
+            data_abstraction_layer,
         };
         let response = master_impl.cluster_status(RequestOptions::new(), pb::EmptyMessage::new());
         let (_, item, _) = response.wait().unwrap();

@@ -86,9 +86,9 @@ impl Task {
         Task {
             task_type: TaskType::Map,
             job_id: job_id.into(),
-            id: id,
+            id,
 
-            job_priority: job_priority,
+            job_priority,
             has_completed_before: false,
 
             map_request: Some(map_request),
@@ -180,9 +180,9 @@ impl Task {
         Task {
             task_type: TaskType::Reduce,
             job_id: job_id.into(),
-            id: id,
+            id,
 
-            job_priority: job_priority,
+            job_priority,
             has_completed_before: false,
 
             map_request: None,
@@ -483,14 +483,14 @@ mod tests {
             0,
             "output_file_1".to_owned(),
         );
-        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
+        assert_eq!("output_file_1", &map_task.map_output_files[&0]);
 
         map_task.map_output_files.insert(
             1,
             "output_file_2".to_owned(),
         );
-        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
-        assert_eq!("output_file_2", map_task.map_output_files.get(&1).unwrap());
+        assert_eq!("output_file_1", &map_task.map_output_files[&0]);
+        assert_eq!("output_file_2", &map_task.map_output_files[&1]);
     }
 
     #[test]

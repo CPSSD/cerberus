@@ -21,9 +21,6 @@ where
     V: Default + Serialize,
 {
     pub fn new(key: K, values: Vec<V>) -> Self {
-        IntermediateInputKV {
-            key: key,
-            values: values,
-        }
+        IntermediateInputKV { key, values }
     }
 }

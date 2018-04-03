@@ -25,7 +25,7 @@ where
     V: Default + Serialize,
 {
     pub fn new(pairs: Vec<(K, V)>) -> Self {
-        PartitionInputPairs { pairs: pairs }
+        PartitionInputPairs { pairs }
     }
 }
 
@@ -57,7 +57,7 @@ pub struct HashPartitioner {
 
 impl HashPartitioner {
     pub fn new(partition_count: u64) -> Self {
-        HashPartitioner { partition_count: partition_count }
+        HashPartitioner { partition_count }
     }
 
     fn calculate_hash<T: Hash>(&self, t: &T) -> u64 {

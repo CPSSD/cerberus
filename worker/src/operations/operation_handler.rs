@@ -124,11 +124,11 @@ impl OperationHandler {
     ) -> Self {
         OperationHandler {
             operation_state: Arc::new(Mutex::new(OperationState::new())),
-            master_interface: master_interface,
+            master_interface,
 
             output_dir_uuid: Uuid::new_v4().to_string(),
 
-            data_abstraction_layer: data_abstraction_layer,
+            data_abstraction_layer,
         }
     }
 

@@ -30,10 +30,10 @@ impl Scheduler {
     ) -> Self {
         let state = Arc::new(Mutex::new(State::new()));
         Scheduler {
-            state: state,
+            state,
 
-            worker_manager: worker_manager,
-            task_processor: task_processor,
+            worker_manager,
+            task_processor,
         }
     }
 
@@ -158,7 +158,7 @@ impl Scheduler {
         info!("Starting job with ID {}.", job.id);
 
         let scheduled_job = ScheduledJob {
-            job: job,
+            job,
             tasks: map_tasks,
         };
 

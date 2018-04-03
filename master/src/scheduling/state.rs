@@ -40,10 +40,7 @@ impl StateHandling<Error> for ScheduledJob {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let (job, tasks) = ScheduledJob::process_json(&data)?;
 
-        Ok(ScheduledJob {
-            job: job,
-            tasks: tasks,
-        })
+        Ok(ScheduledJob { job, tasks })
     }
 
     fn dump_state(&self) -> Result<serde_json::Value> {

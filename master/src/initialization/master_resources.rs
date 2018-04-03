@@ -65,7 +65,7 @@ impl MasterResources {
                 filesystem_manager,
             ).chain_err(|| "Error initilizing state handler")?,
 
-            worker_manager: worker_manager,
+            worker_manager,
         })
     }
 }

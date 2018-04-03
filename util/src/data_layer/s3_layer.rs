@@ -23,9 +23,9 @@ impl AmazonS3AbstractionLayer {
         let client = S3Client::simple(S3_REGION);
 
         let s3 = AmazonS3AbstractionLayer {
-            client: client,
-            bucket: bucket,
-            local_file_manager: local_file_manager,
+            client,
+            bucket,
+            local_file_manager,
         };
 
         let exists = s3.bucket_exists().chain_err(

@@ -45,7 +45,7 @@ impl WorkerManager {
         let (sender, receiver) = channel();
         WorkerManager {
             state: Arc::new(Mutex::new(State::new(data_layer))),
-            worker_interface: worker_interface,
+            worker_interface,
 
             task_update_sender: Mutex::new(sender),
             task_update_receiver: Arc::new(Mutex::new(receiver)),

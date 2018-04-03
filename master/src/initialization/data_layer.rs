@@ -14,10 +14,12 @@ use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
 const DEFAULT_DFS_DIRECTORY: &str = "/tmp/cerberus/dfs/";
 const DEFAULT_S3_DIRECTORY: &str = "/tmp/cerberus/s3/";
 
+type AbstractionLayerArc = Arc<AbstractionLayer + Send + Sync>;
+
 pub fn get_data_abstraction_layer(
     matches: &ArgMatches,
     worker_info_receiver: Receiver<WorkerInfoUpdate>,
-) -> Result<(Arc<AbstractionLayer + Send + Sync>, Option<Arc<FileSystemManager>>)> {
+) -> Result<(AbstractionLayerArc, Option<Arc<FileSystemManager>>)> {
     let data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>;
     let filesystem_manager: Option<Arc<FileSystemManager>>;
 

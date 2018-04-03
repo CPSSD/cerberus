@@ -46,14 +46,14 @@ impl ApiHandler {
 
     fn get_parameter(&self, req: &mut Request, param_name: &str) -> Result<String> {
         match req.get_ref::<UrlEncodedQuery>() {
-            Ok(ref hashmap) => {
+            Ok(hashmap) => {
                 let param = self.get_query_param(param_name, hashmap).chain_err(|| {
                     format!("Failed to get param with name {} ", param_name)
                 })?;
 
                 Ok(param)
             }
-            Err(ref e) => return Err(format!("Could not get query params, error: {:?}", e).into()),
+            Err(ref e) => Err(format!("Could not get query params, error: {:?}", e).into()),
         }
     }
 
@@ -127,8 +127,8 @@ impl ApiHandler {
         let input_path = self.get_parameter(req, "input_path").chain_err(
             || "Failed to get input_path",
         )?;
-        let output_path = self.get_parameter(req, "output_path").unwrap_or(
-            "".to_string(),
+        let output_path = self.get_parameter(req, "output_path").unwrap_or_else(
+            |_| "".to_string(),
         );
         let output_path = {
             if output_path.is_empty() {
@@ -139,11 +139,13 @@ impl ApiHandler {
         };
 
         let job_options = JobOptions {
-            client_id: req.remote_addr.clone().to_string(),
-            binary_path: binary_path,
+            client_id: req.remote_addr.to_string(),
+
+            binary_path,
             input_directory: input_path,
             output_directory: output_path,
             validate_paths: true,
+
             priority: DEFAULT_PRIORITY,
         };
 
@@ -208,9 +210,9 @@ impl DashboardServer {
         data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<Self> {
         let handler = ApiHandler {
-            scheduler_arc: scheduler_arc,
-            worker_manager_arc: worker_manager_arc,
-            data_abstraction_layer_arc: data_abstraction_layer_arc,
+            scheduler_arc,
+            worker_manager_arc,
+            data_abstraction_layer_arc,
         };
 
         let mut router = Router::new();

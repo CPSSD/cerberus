@@ -212,10 +212,7 @@ where
         )?;
 
         if values.len() > 1 {
-            let input_kv = IntermediateInputKV {
-                key: key,
-                values: values,
-            };
+            let input_kv = IntermediateInputKV { key, values };
 
             let mut result_values = Vec::<V>::new();
 

@@ -62,7 +62,7 @@ impl Worker {
 
             current_task_id: String::new(),
             last_cancelled_task_id: None,
-            worker_id: worker_id,
+            worker_id,
 
             task_assignments_failed: 0,
         })

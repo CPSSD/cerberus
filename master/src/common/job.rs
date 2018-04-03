@@ -106,8 +106,8 @@ impl Job {
             client_id: options.client_id,
             id: Uuid::new_v4().to_string(),
             binary_path: options.binary_path,
-            input_directory: input_directory,
-            output_directory: output_directory,
+            input_directory,
+            output_directory,
 
             priority: options.priority,
 

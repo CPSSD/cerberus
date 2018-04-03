@@ -13,7 +13,7 @@ pub struct ScheduleOperationService {
 
 impl ScheduleOperationService {
     pub fn new(operation_handler: Arc<OperationHandler>) -> Self {
-        ScheduleOperationService { operation_handler: operation_handler }
+        ScheduleOperationService { operation_handler }
     }
 }
 

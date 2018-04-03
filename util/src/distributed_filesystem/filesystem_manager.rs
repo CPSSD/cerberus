@@ -51,13 +51,14 @@ impl WorkerInfoUpdate {
         address: Option<SocketAddr>,
     ) -> WorkerInfoUpdate {
         WorkerInfoUpdate {
-            update_type: update_type,
-            worker_id: worker_id,
-            address: address,
+            update_type,
+            worker_id,
+            address,
         }
     }
 }
 
+#[derive(Default)]
 pub struct FileSystemManager {
     file_info_map: RwLock<HashMap<String, FileInfo>>,
     dir_info_map: RwLock<HashMap<String, DirInfo>>,
@@ -67,12 +68,7 @@ pub struct FileSystemManager {
 
 impl FileSystemManager {
     pub fn new() -> Self {
-        FileSystemManager {
-            file_info_map: RwLock::new(HashMap::new()),
-            dir_info_map: RwLock::new(HashMap::new()),
-            active_workers: RwLock::new(HashMap::new()),
-            worker_interface: FileSystemWorkerInterface::new(),
-        }
+        Default::default()
     }
 
     fn get_active_workers(&self) -> HashMap<String, SocketAddr> {
@@ -202,7 +198,7 @@ impl FileSystemManager {
         }
 
         let file_chunk = FileChunk {
-            start_byte: start_byte,
+            start_byte,
             end_byte: start_byte + (data.len() as u64),
             workers: used_workers,
         };
@@ -388,8 +384,8 @@ pub fn run_worker_info_upate_loop(
     file_system_manager_option: &Option<Arc<FileSystemManager>>,
     worker_info_receiver: Receiver<WorkerInfoUpdate>,
 ) {
-    if let &Some(ref file_system_manager) = file_system_manager_option {
-        let file_system_manager = Arc::clone(&file_system_manager);
+    if let Some(ref file_system_manager) = *file_system_manager_option {
+        let file_system_manager = Arc::clone(file_system_manager);
 
         thread::spawn(move || loop {
             match worker_info_receiver.recv() {
@@ -405,9 +401,8 @@ pub fn run_worker_info_upate_loop(
         });
     } else {
         thread::spawn(move || loop {
-            match worker_info_receiver.recv() {
-                Err(e) => error!("Error receiving worker info update: {}", e),
-                Ok(_) => {}
+            if let Err(e) = worker_info_receiver.recv() {
+                error!("Error receiving worker info update: {}", e);
             }
         });
     }

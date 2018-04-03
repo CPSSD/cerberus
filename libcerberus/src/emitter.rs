@@ -52,7 +52,7 @@ impl<'a, V: Serialize> FinalVecEmitter<'a, V> {
     ///
     /// * `sink` - A mutable reference to the `Vec` to receive the emitted values.
     pub fn new(sink: &'a mut Vec<V>) -> Self {
-        FinalVecEmitter { sink: sink }
+        FinalVecEmitter { sink }
     }
 }
 
@@ -83,7 +83,7 @@ where
     ///
     /// * `sink` - A mutable reference to the `Vec` to receive the emitted values.
     pub fn new(sink: &'a mut Vec<(K, V)>) -> Self {
-        IntermediateVecEmitter { sink: sink }
+        IntermediateVecEmitter { sink }
     }
 }
 

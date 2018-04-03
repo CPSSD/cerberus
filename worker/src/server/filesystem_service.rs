@@ -19,7 +19,7 @@ pub struct FileSystemService {
 
 impl FileSystemService {
     pub fn new(local_file_manager: Option<Arc<LocalFileManager>>) -> Self {
-        FileSystemService { local_file_manager: local_file_manager }
+        FileSystemService { local_file_manager }
     }
 }
 
