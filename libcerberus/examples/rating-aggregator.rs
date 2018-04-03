@@ -59,6 +59,10 @@ impl Map for RatingAggregatorMapper {
                 emitter.emit(movie_id, rating.to_string()).chain_err(
                     || "Error emitting map key-value pair.",
                 )?;
+
+                emitter.emit(movie_id, "C:1".to_string()).chain_err(
+                    || "Error emitting map key-value pair.",
+                )?;
             }
         }
         Ok(())
@@ -87,21 +91,21 @@ fn do_rating_combine(input: IntermediateInputKV<u32, String>) -> Result<RatingCo
         } else if val.starts_with("G:") {
             movie_genres = val;
             continue;
+        } else if val.starts_with("C:") {
+            let add_count: u32 = val[2..].parse().chain_err(|| "Error parsing movie count")?;
+            rating_count += add_count;
+            continue;
         }
 
         let rating_val: f64 = val.parse().chain_err(|| "Error parsing movie rating")?;
 
         rating += rating_val;
-        rating_count += 1;
-    }
-
-    if rating_count > 0 {
-        rating /= f64::from(rating_count);
     }
 
     Ok(RatingCombineResult {
         rating,
         rating_count,
+
         title: movie_title,
         genres: movie_genres,
     })
@@ -131,6 +135,10 @@ impl Combine<u32, String> for RatingAggregatorCombiner {
             emitter.emit(combine_result.rating.to_string()).chain_err(
                 || "Error emitting value.",
             )?;
+
+            emitter
+                .emit(format!("C:{}", combine_result.rating_count.to_string()))
+                .chain_err(|| "Error emitting value.")?;
         }
 
         Ok(())
@@ -143,14 +151,19 @@ impl Reduce<u32, String> for RatingAggregatorReducer {
     where
         E: EmitFinal<String>,
     {
-        let combine_result = do_rating_combine(input)?;
+        let mut combine_result = do_rating_combine(input)?;
+
+        if combine_result.rating_count > 0 {
+            combine_result.rating /= f64::from(combine_result.rating_count);
+        }
 
         if !combine_result.title.is_empty() {
             let output_str = format!(
-                "\"{}\",\"{}\",{}",
+                "\"{}\",\"{}\",{},{}",
                 combine_result.title[2..].to_string(),
                 combine_result.genres[2..].to_string(),
-                combine_result.rating
+                combine_result.rating,
+                combine_result.rating_count
             );
 
             emitter.emit(output_str).chain_err(
