@@ -96,12 +96,12 @@ fn do_rating_combine(input: IntermediateInputKV<u32, String>) -> Result<RatingCo
     }
 
     if rating_count > 0 {
-        rating = rating / (rating_count as f64);
+        rating /= f64::from(rating_count);
     }
 
     Ok(RatingCombineResult {
-        rating: rating,
-        rating_count: rating_count,
+        rating,
+        rating_count,
         title: movie_title,
         genres: movie_genres,
     })

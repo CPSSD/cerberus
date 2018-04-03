@@ -105,9 +105,9 @@ where
         )?;
 
         Ok(UserImplRegistry {
-            mapper: mapper,
-            reducer: reducer,
-            partitioner: partitioner,
+            mapper,
+            reducer,
+            partitioner,
             combiner: self.combiner,
         })
     }

@@ -41,9 +41,11 @@ impl State {
         State {
             workers: HashMap::new(),
             tasks: HashMap::new(),
+
             completed_tasks: HashMap::new(),
             priority_task_queue: BinaryHeap::new(),
-            data_layer: data_layer,
+
+            data_layer,
         }
     }
 

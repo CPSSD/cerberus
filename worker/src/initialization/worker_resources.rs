@@ -48,9 +48,9 @@ impl WorkerResources {
                 local_file_manager.clone(),
             ).chain_err(|| "Error initializing grpc server")?,
 
-            master_interface: master_interface,
+            master_interface,
 
-            operation_handler: operation_handler,
+            operation_handler,
 
             state_handler: initialize_state_handler(matches, local_file_manager)
                 .chain_err(|| "Error initializing state handler")?,

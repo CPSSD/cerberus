@@ -26,9 +26,9 @@ impl MasterInterface {
         ).chain_err(|| "Error building WorkerService client.")?;
 
         Ok(MasterInterface {
-            client: client,
+            client,
             worker_id: RwLock::new(String::new()),
-            master_addr: master_addr,
+            master_addr,
         })
     }
 

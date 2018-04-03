@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_parse_map_results() {
-        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| MockResult::Return(Ok(())));
 
         let map_results =
         r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn test_parse_map_results_error() {
-        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| MockResult::Return(Ok(())));
 
         let map_results =
             r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;

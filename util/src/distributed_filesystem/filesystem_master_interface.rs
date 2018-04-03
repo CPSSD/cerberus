@@ -47,7 +47,7 @@ impl NetworkFileSystemMasterInterface {
             Default::default(),
         ).chain_err(|| "Error building FileSystemMasterService client.")?;
 
-        Ok(NetworkFileSystemMasterInterface { client: client })
+        Ok(NetworkFileSystemMasterInterface { client })
     }
 }
 
@@ -134,7 +134,7 @@ pub struct LocalFileSystemMasterInterface {
 
 impl LocalFileSystemMasterInterface {
     pub fn new(filesystem_manager: Arc<FileSystemManager>) -> Self {
-        LocalFileSystemMasterInterface { filesystem_manager: filesystem_manager }
+        LocalFileSystemMasterInterface { filesystem_manager }
     }
 }
 

@@ -36,7 +36,7 @@ pub struct TaskProcessorImpl {
 
 impl TaskProcessorImpl {
     pub fn new(data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>) -> Self {
-        TaskProcessorImpl { data_abstraction_layer: data_abstraction_layer }
+        TaskProcessorImpl { data_abstraction_layer }
     }
 
     /// `get_closest_endline` files the endline closest to the end of a given range for input file

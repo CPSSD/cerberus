@@ -180,7 +180,7 @@ mod tests {
                 },
             ],
         );
-        let test_object = IntermediateOutputObject { partitions: partitions };
+        let test_object = IntermediateOutputObject { partitions };
 
         let expected_json_string = String::from(
             r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},

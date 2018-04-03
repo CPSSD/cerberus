@@ -23,8 +23,8 @@ impl DFSAbstractionLayer {
         master_interface: Box<FileSystemMasterInterface + Send + Sync>,
     ) -> Self {
         DFSAbstractionLayer {
-            local_file_manager: local_file_manager,
-            master_interface: master_interface,
+            local_file_manager,
+            master_interface,
             worker_interface: FileSystemWorkerInterface::new(),
         }
     }
