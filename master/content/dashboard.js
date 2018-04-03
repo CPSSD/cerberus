@@ -178,6 +178,13 @@ function processScheduleMapReduceForm(e) {
   return false;
 }
 
+var scheduleFormToggled = false;
+function toggleScheduleForm() {
+  scheduleFormToggled = !scheduleFormToggled;
+  var scheduleForm = document.getElementById("schedule-form");
+  scheduleForm.style.visibility = scheduleFormToggled ? "visible" : "hidden";
+}
+
 $(document).ready(function() {
   var scheduleMapReduceForm = document.getElementById("schedule-job");
   if (scheduleMapReduceForm.attachEvent) {
