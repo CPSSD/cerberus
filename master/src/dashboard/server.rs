@@ -130,11 +130,25 @@ impl ApiHandler {
         let output_path = self.get_parameter(req, "output_path").unwrap_or_else(
             |_| "".to_string(),
         );
+        let priority = self.get_parameter(req, "priority").unwrap_or_else(
+            |_| "".to_string(),
+        );
+
         let output_path = {
             if output_path.is_empty() {
                 None
             } else {
                 Some(output_path)
+            }
+        };
+
+        let priority = {
+            if priority.is_empty() {
+                DEFAULT_PRIORITY
+            } else {
+                priority.parse::<u32>().chain_err(
+                    || "Invalid priority when scheduling job",
+                )?
             }
         };
 
@@ -146,7 +160,7 @@ impl ApiHandler {
             output_directory: output_path,
             validate_paths: true,
 
-            priority: DEFAULT_PRIORITY,
+            priority: priority,
         };
 
         let job = Job::new(job_options, &self.data_abstraction_layer_arc)

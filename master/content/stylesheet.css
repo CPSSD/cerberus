@@ -3,7 +3,7 @@
 }
 
 html, body {
-  margin-top:-10px;
+  margin-top: -10px;
   min-height: 100%;
   width: 100%;
 }
@@ -174,15 +174,15 @@ a:link {
 }
 
 .button {
-    background-color: #008CBA;
-    border: none;
-    color: white;
-    display: inline-block;
-    font-size: 16px;
-    padding: 15px 32px;
-    text-align: center;
-    text-decoration: none;
-    width: 100%;
+  background-color: #008CBA;
+  border: none;
+  color: white;
+  display: inline-block;
+  font-size: 16px;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  width: 100%;
 }
 
 .form {
@@ -195,29 +195,29 @@ label {
 }
 
 input[type=text], select {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
-    display: inline-block;
-    font-weight: normal;
-    margin: 8px 0;
-    padding: 12px 20px;
-    width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  display: inline-block;
+  font-weight: normal;
+  margin: 8px 0;
+  padding: 12px 20px;
+  width: 100%;
 }
 
 input[type=submit] {
-    background-color: #008CBA;
-    border: none;
-    border-radius: 4px;
-    color: white;
-    cursor: pointer;
-    margin: 8px 0;
-    padding: 14px 20px;
-    width: 100%;
+  background-color: #008CBA;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  margin: 8px 0;
+  padding: 14px 20px;
+  width: 100%;
 }
 
 input[type=submit]:hover {
-    background-color: #008CB0;
+  background-color: #008CB0;
 }
 
 div.schedule-button {
@@ -240,7 +240,7 @@ div.hidden-form {
   border-radius: 5px;
   border-width: 1px;
   box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
-  height: 400px;
+  height: 480px;
   left: 50%;
   margin-left: -175px;
   min-height: 300px;

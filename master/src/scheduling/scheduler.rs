@@ -246,6 +246,7 @@ impl Scheduler {
                 "binary_path": job.binary_path,
                 "input_directory": job.input_directory,
                 "output_directory": job.output_directory,
+                "priority": job.priority,
                 "status": job.get_serializable_status(),
                 "map_tasks_completed": job.map_tasks_completed,
                 "map_tasks_total": job.map_tasks_total,
