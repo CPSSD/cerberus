@@ -220,3 +220,48 @@ input[type=submit]:hover {
     background-color: #008CB0;
 }
 
+div.schedule-button {
+  background-color: #bbdefb;
+  border-radius: 10px;
+  box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
+  cursor: pointer;
+  padding: 1px 10px;
+  position: fixed;
+  right: 15px;
+  text-align: center;
+  top: 60px;
+  width: 200px;
+  z-index: 1;
+}
+
+div.hidden-form {
+  background-color: #bbdefb;
+  border-color: black;
+  border-radius: 5px;
+  border-width: 1px;
+  box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
+  height: 400px;
+  left: 50%;
+  margin-left: -175px;
+  min-height: 300px;
+  position: fixed;
+  top: 15%;
+  visibility: hidden;
+  width: 350px;
+}
+
+div.schedule-form {
+  font-size: 20px;
+  font-weight: bold;
+  padding: 25px;
+  text-align: center;
+}
+
+a.exit-form {
+  color: black;
+  cursor: pointer;
+  font-size: 30px;
+  margin-left: 90%;
+  position: absolute;
+  text-decoration: None;
+}
