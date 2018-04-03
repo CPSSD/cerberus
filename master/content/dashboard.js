@@ -20,6 +20,18 @@ function addProperty(name, value, container) {
   $("<td>").text(value).appendTo(row);
 }
 
+function addButton(text, clickedFuncCreator, container) {
+  var button = $("<button/>")
+    .addClass("button")
+    .text(text);
+
+  var clickedFunc = clickedFuncCreator(button);
+
+  button
+    .click(clickedFunc)
+    .appendTo(container);
+}
+
 function updateWorkersList() {
   var workersBox = $("#workers");
 
@@ -40,6 +52,26 @@ function updateWorkersList() {
       });
     }
   });
+}
+
+function cancelJobFunction(jobId) {
+  return function(button) {
+    return function() {
+      button.attr("disabled", true);
+      button.text("Canceling job");
+      button.css({
+        "background-color": "#B3E5FC",
+      });
+
+      $.ajax({
+        url: "/api/canceljob/query?job_id=" + encodeURIComponent(jobId),
+        dataType: "json",
+        success: function() {
+          updateJobsList();
+        }
+      });
+    }
+  }
 }
 
 function updateJobsList() {
@@ -64,6 +96,9 @@ function updateJobsList() {
         addProperty("Map Tasks Completed", mapTasksText, container);
         var reduceTasksText = jobsInfo.reduce_tasks_completed + "/" + jobsInfo.reduce_tasks_total;
         addProperty("Reduce Tasks Completed", reduceTasksText, container);
+        if (jobsInfo.status == "IN_PROGRESS" || jobsInfo.status == "IN_QUEUE") {
+          addButton("Cancel Job", cancelJobFunction(jobsInfo.job_id), container.parent());
+        }
       });
     }
   });
@@ -98,7 +133,59 @@ function updateFunction() {
   updateTasksList();
 }
 
+function processScheduleMapReduceForm(e) {
+  if (e.preventDefault) {
+    e.preventDefault();
+  }
+
+  var binaryPath = encodeURIComponent($("#binary").val());
+  var inputPath = encodeURIComponent($("#input").val());
+  var outputPath = encodeURIComponent($("#output").val());
+
+  var submitButton = $("#submit-job");
+  submitButton.attr("disabled", true);
+  submitButton.val("Submiting request");
+  submitButton.css({
+    "background-color": "#B3E5FC",
+  });
+
+  var restoreAnimation = function() {
+    submitButton.animate({
+      "background-color": "#008CBA",
+    }, {
+      queue: false,
+      duration: 1000,
+      complete: function() {
+        submitButton.attr("disabled", false);
+        submitButton.val("Schedule MapReduce");
+        submitButton.css({
+          "background-color": "#008CBA",
+        });
+      }
+    });
+  }
+
+  $.ajax({
+    url: "/api/schedule/query?binary_path=" + binaryPath + "&input_path=" + inputPath + "&output_path=" + outputPath,
+    dataType: "json",
+    complete: function() {
+      submitButton.val("Succesfully scheduled");
+      restoreAnimation();
+      updateFunction();
+    }
+  });
+
+  return false;
+}
+
 $(document).ready(function() {
+  var scheduleMapReduceForm = document.getElementById("schedule-job");
+  if (scheduleMapReduceForm.attachEvent) {
+    scheduleMapReduceForm.attachEvent("submit", processScheduleMapReduceForm);
+  } else {
+    scheduleMapReduceForm.addEventListener("submit", processScheduleMapReduceForm);
+  }
+
   updateFunction();
 
   setInterval(updateFunction, 2000);

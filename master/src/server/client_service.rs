@@ -218,7 +218,7 @@ mod tests {
 
         thread::spawn(move || loop {
             let result = receiver.recv();
-            if let Err(err) = result {
+            if result.is_err() {
                 break;
             }
         });
@@ -285,7 +285,7 @@ mod tests {
 
         thread::spawn(move || loop {
             let result = receiver.recv();
-            if let Err(err) = result {
+            if result.is_err() {
                 break;
             }
         });
