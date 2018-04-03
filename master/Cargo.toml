@@ -1,6 +1,6 @@
 [package]
 name = "master"
-version = "0.5.0"
+version = "0.6.0"
 build = "build.rs"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
@@ -22,8 +22,9 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 staticfile = "0.4.0"
-util = { path = "../util" }
+urlencoded = "0.6.0"
 uuid = { version = "0.5", features = ["v4"] }
+util = { path = "../util" }
 
 [build-dependencies]
 fs_extra = "1.1.0"

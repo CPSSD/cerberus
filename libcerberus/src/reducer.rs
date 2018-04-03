@@ -18,11 +18,14 @@ use intermediate::IntermediateInputKV;
 ///
 /// An empty result used for returning an error. Outputs of the reduce operation are sent out
 /// through the `emitter`.
-pub trait Reduce {
-    type Value: Default + Serialize + DeserializeOwned;
-    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, emitter: E) -> Result<()>
+pub trait Reduce<K, V>
+where
+    K: Default + Serialize + DeserializeOwned,
+    V: Default + Serialize + DeserializeOwned,
+{
+    fn reduce<E>(&self, input: IntermediateInputKV<K, V>, emitter: E) -> Result<()>
     where
-        E: EmitFinal<Self::Value>;
+        E: EmitFinal<V>;
 }
 
 #[cfg(test)]
@@ -31,11 +34,14 @@ mod tests {
     use emitter::FinalVecEmitter;
 
     struct TestReducer;
-    impl Reduce for TestReducer {
-        type Value = String;
-        fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
+    impl Reduce<String, String> for TestReducer {
+        fn reduce<E>(
+            &self,
+            input: IntermediateInputKV<String, String>,
+            mut emitter: E,
+        ) -> Result<()>
         where
-            E: EmitFinal<Self::Value>,
+            E: EmitFinal<String>,
         {
             emitter.emit(input.values.iter().fold(
                 String::new(),

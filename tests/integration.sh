@@ -21,7 +21,7 @@ worker_pids=(0 0 0)
 for i in ${!worker_pids[*]}
 do
     echo "Launching worker $i"
-    ./worker -m "${local_ip}:10008" -i "${local_ip}" > integration-test/logs/worker-"${i}".log 2>&1 &
+    ./worker -m "${local_ip}:10008" -i "${local_ip}" --fresh --nodump > integration-test/logs/worker-"${i}".log 2>&1 &
     worker_pids[$i]=$!
 done
 
@@ -60,16 +60,24 @@ do
         break;
     fi
     sleep 1
-    attempt_counter+=1
+    attempt_counter=$(( attempt_counter+1 ))
 done
 
 # Kill any spawned processes.
 $(kill -9 ${master_pid} ${worker_pids[*]});
 
+# Remove newlines from output
+cd integration-test/output
+for file in *
+do 
+    sed ':a;N;$!ba;s/\n//g' "$file" > tmp; mv tmp $file 
+done
+cd ../..
+
 # Verify that the output is correct.
 for key in "${!results[@]}"
 do
-    count=$(grep "[0-9]*" -o integration-test/output/"${key}")
+    count=$(grep -PR --no-filename --only-matching $key+"\":[[:space:]]*\[[[:space:]]*[0-9]*" integration-test/output/ | grep -o "[0-9]*")
     if [ "${count}" != "${results[${key}]}" ]
     then
         echo "Error. Expected ${key}=${results[${key}]}, but got: $count"

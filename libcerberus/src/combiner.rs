@@ -19,11 +19,12 @@ use intermediate::IntermediateInputKV;
 ///
 /// An empty result used for returning an error. Outputs of the reduce operation are sent out
 /// through the `emitter`.
-pub trait Combine<V>
+pub trait Combine<K, V>
 where
+    K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
 {
-    fn combine<E>(&self, input: IntermediateInputKV<V>, emitter: E) -> Result<()>
+    fn combine<E>(&self, input: IntermediateInputKV<K, V>, emitter: E) -> Result<()>
     where
         E: EmitFinal<V>;
 }

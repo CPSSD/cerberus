@@ -8,7 +8,7 @@ use serde_json;
 use uuid::Uuid;
 
 use util::data_layer::AbstractionLayer;
-use state::StateHandling;
+use util::state::StateHandling;
 use cerberus_proto::mapreduce as pb;
 
 /// `JobOptions` stores arguments used to construct a `Job`.
@@ -106,8 +106,8 @@ impl Job {
             client_id: options.client_id,
             id: Uuid::new_v4().to_string(),
             binary_path: options.binary_path,
-            input_directory: input_directory,
-            output_directory: output_directory,
+            input_directory,
+            output_directory,
 
             priority: options.priority,
 
@@ -224,7 +224,7 @@ impl Job {
     }
 }
 
-impl StateHandling for Job {
+impl StateHandling<Error> for Job {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let options = JobOptions {
             client_id: serde_json::from_value(data["client_id"].clone())

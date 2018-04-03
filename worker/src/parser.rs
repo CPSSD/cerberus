@@ -48,5 +48,42 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .takes_value(false)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("storage-location")
+                .long("storage-location")
+                .help("Directory to store dfs or s3 files.")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("s3")
+                .long("s3")
+                .help("The Amazon S3 bucket to use for data access.")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("fresh")
+                .long("fresh")
+                .short("f")
+                .help("Skips state loading")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("nodump")
+                .long("nodump")
+                .help("Skips state dumping")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("state-location")
+                .long("state-location")
+                .short("s")
+                .help("The location that state is saved to and loaded from")
+                .takes_value(true)
+                .required(false),
+        )
         .get_matches()
 }

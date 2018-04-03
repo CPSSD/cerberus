@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::future;
 use futures::prelude::*;
 use libc::_SC_CLK_TCK;
 use procinfo::pid::stat_self;
+use serde_json;
 use uuid::Uuid;
 
 use cerberus_proto::worker as pb;
@@ -13,6 +15,8 @@ use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;
 use super::state::OperationState;
+
+pub type PartitionMap = HashMap<u64, HashMap<String, Vec<serde_json::Value>>>;
 
 /// `OperationResources` is used to hold resources passed to map and reduce operation functions.
 #[derive(Clone)]
@@ -73,6 +77,22 @@ pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     );
 }
 
+// Checks if the tasks is cancelled and handles this case. Returns true if the task was canceled.
+pub fn check_task_cancelled(
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    task_id: &str,
+) -> bool {
+    let cancelled = {
+        let operation_state = operation_state_arc.lock().unwrap();
+        operation_state.task_cancelled(task_id)
+    };
+    if cancelled {
+        set_cancelled_status(operation_state_arc);
+        println!("Succesfully cancelled task: {}", task_id);
+    }
+    cancelled
+}
+
 pub fn set_busy_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
     let mut operation_state = operation_state_arc.lock().unwrap();
 
@@ -104,11 +124,11 @@ impl OperationHandler {
     ) -> Self {
         OperationHandler {
             operation_state: Arc::new(Mutex::new(OperationState::new())),
-            master_interface: master_interface,
+            master_interface,
 
             output_dir_uuid: Uuid::new_v4().to_string(),
 
-            data_abstraction_layer: data_abstraction_layer,
+            data_abstraction_layer,
         }
     }
 

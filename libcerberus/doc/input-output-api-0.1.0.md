@@ -56,7 +56,9 @@ The map input is encoded using BSON.
 
 ### Input
 
-*Fields*
+An array of reduce operations to perform.
+
+*Reduce Operation Fields*
 
 * `key` - A *string* containing an intermediate key outputted from a map operation.
 * `values` - An *array* of *strings* each containing an intermediate value as outputted from a map operation.
@@ -64,16 +66,20 @@ The map input is encoded using BSON.
 *Example*
 
 ```json
-{
-    "key": "foo_intermediate",
-    "values": [
-        "bar",
-        "baz"
-    ]
-}
+[
+    {
+        "key": "foo_intermediate",
+        "values": [
+            "bar",
+            "baz"
+        ]
+    }
+]
 ```
 
 ### Output
+
+An array of reduce operation output, corresponding to the reduce input.
 
 *Fields*
 
@@ -82,10 +88,12 @@ The map input is encoded using BSON.
 *Example*
 
 ```json
-{
-    "values": [
-        "barbaz",
-        "bazbar"
-    ]
-}
+[
+    {
+        "values": [
+            "barbaz",
+            "bazbar"
+        ]
+    }
+]
 ```

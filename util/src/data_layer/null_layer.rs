@@ -90,4 +90,8 @@ impl AbstractionLayer for NullAbstractionLayer {
         debug!("Creating directory: {:?}", path);
         fs::create_dir_all(path).chain_err(|| "Unable to create directories")
     }
+
+    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
+        Ok(1)
+    }
 }

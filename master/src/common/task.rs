@@ -7,7 +7,7 @@ use serde_json;
 use uuid::Uuid;
 
 use errors::*;
-use state::StateHandling;
+use util::state::StateHandling;
 
 use cerberus_proto::worker as pb;
 
@@ -42,6 +42,7 @@ pub struct Task {
     pub id: String,
 
     pub job_priority: u32,
+    pub has_completed_before: bool,
 
     // This will only exist if TaskType is Map.
     pub map_request: Option<pb::PerformMapRequest>,
@@ -85,9 +86,10 @@ impl Task {
         Task {
             task_type: TaskType::Map,
             job_id: job_id.into(),
-            id: id,
+            id,
 
-            job_priority: job_priority,
+            job_priority,
+            has_completed_before: false,
 
             map_request: Some(map_request),
             reduce_request: None,
@@ -105,6 +107,17 @@ impl Task {
             time_started: None,
             time_completed: None,
         }
+    }
+
+    pub fn reset_map_task(&mut self) {
+        self.map_output_files = HashMap::new();
+        self.assigned_worker_id = String::new();
+        self.status = TaskStatus::Queued;
+        self.cpu_time = 0;
+        self.failure_count = 0;
+        self.time_started = None;
+        self.time_completed = None;
+        self.has_completed_before = true;
     }
 
     fn new_map_task_from_json(data: serde_json::Value) -> Result<Self> {
@@ -167,9 +180,10 @@ impl Task {
         Task {
             task_type: TaskType::Reduce,
             job_id: job_id.into(),
-            id: id,
+            id,
 
-            job_priority: job_priority,
+            job_priority,
+            has_completed_before: false,
 
             map_request: None,
             reduce_request: Some(reduce_request),
@@ -224,7 +238,7 @@ impl Task {
     }
 }
 
-impl StateHandling for Task {
+impl StateHandling<Error> for Task {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let task_type: TaskType = serde_json::from_value(data["task_type"].clone())
             .chain_err(|| "Unable to convert task_type")?;
@@ -359,7 +373,7 @@ impl StateHandling for Task {
     }
 }
 
-#[derive(Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PriorityTask {
     pub id: String,
     pub priority: u32,
@@ -469,14 +483,14 @@ mod tests {
             0,
             "output_file_1".to_owned(),
         );
-        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
+        assert_eq!("output_file_1", &map_task.map_output_files[&0]);
 
         map_task.map_output_files.insert(
             1,
             "output_file_2".to_owned(),
         );
-        assert_eq!("output_file_1", map_task.map_output_files.get(&0).unwrap());
-        assert_eq!("output_file_2", map_task.map_output_files.get(&1).unwrap());
+        assert_eq!("output_file_1", &map_task.map_output_files[&0]);
+        assert_eq!("output_file_2", &map_task.map_output_files[&1]);
     }
 
     #[test]

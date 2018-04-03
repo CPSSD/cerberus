@@ -8,37 +8,15 @@ use serde_json::Value as json;
 
 use errors::*;
 use scheduling::Scheduler;
+use util::distributed_filesystem::FileSystemManager;
+use util::state::SimpleStateHandling;
 use worker_management::WorkerManager;
-
-/// The `StateHandling` trait defines an object that can have it's state saved
-/// and subsequently loaded from a file.
-pub trait StateHandling {
-    // Creates a new object from the JSON data provided.
-    fn new_from_json(data: serde_json::Value) -> Result<Self>
-    where
-        Self: Sized;
-
-    // Returns a JSON representation of the object.
-    fn dump_state(&self) -> Result<serde_json::Value>;
-
-    // Updates the object to match the JSON state provided.
-    fn load_state(&mut self, data: serde_json::Value) -> Result<()>;
-}
-
-/// The `SimpleStateHandling` trait defines an object that can have it's state saved
-/// and subsequently loaded from a file but doesn't have a new from json method. A mutable
-/// reference is not needed to load it's state.
-pub trait SimpleStateHandling {
-    // Returns a JSON representation of the object.
-    fn dump_state(&self) -> Result<serde_json::Value>;
-
-    // Updates the object to match the JSON state provided.
-    fn load_state(&self, data: serde_json::Value) -> Result<()>;
-}
 
 pub struct StateHandler {
     scheduler: Arc<Scheduler>,
     worker_manager: Arc<WorkerManager>,
+    filesystem_manager: Option<Arc<FileSystemManager>>,
+    should_dump_state: bool,
     dump_dir: String,
 }
 
@@ -46,18 +24,22 @@ impl StateHandler {
     pub fn new(
         scheduler: Arc<Scheduler>,
         worker_manager: Arc<WorkerManager>,
-        create_dir: bool,
+        filesystem_manager: Option<Arc<FileSystemManager>>,
+        should_dump_state: bool,
         dir: &str,
     ) -> Result<Self> {
-        if create_dir {
+        if should_dump_state {
             fs::create_dir_all(dir).chain_err(|| {
                 format!("Unable to create dir: {}", dir)
             })?;
         }
 
         Ok(StateHandler {
-            scheduler: scheduler,
-            worker_manager: worker_manager,
+            scheduler,
+            worker_manager,
+            filesystem_manager,
+
+            should_dump_state,
             dump_dir: dir.into(),
         })
     }
@@ -73,9 +55,20 @@ impl StateHandler {
             || "Unable to dump WorkerManager state",
         )?;
 
+        // Get the filesystem manager state as JSON.
+        let filesystem_manager_json = match self.filesystem_manager {
+            Some(ref filesystem_manager) => {
+                filesystem_manager.dump_state().chain_err(
+                    || "Unable to dump FileSystemManager state",
+                )?
+            }
+            None => json!(null),
+        };
+
         let json = json!({
             "scheduler": scheduler_json,
             "worker_manager": worker_manager_json,
+            "filesystem_manager": filesystem_manager_json,
         });
 
         // Write the state to file.
@@ -128,8 +121,22 @@ impl StateHandler {
             || "Error reloading scheduler state",
         )?;
 
+        // Reset file system manager state from json.
+        let filesystem_manager_json = json["filesystem_manager"].clone();
+        // May be Null if the previous master was not running in distributed filesystem mode
+        if filesystem_manager_json != json::Null {
+            if let Some(ref filesystem_manager) = self.filesystem_manager {
+                filesystem_manager
+                    .load_state(filesystem_manager_json)
+                    .chain_err(|| "Error reloading filesystem manager state")?;
+            }
+        }
 
         info!("Succesfully loaded from state!");
         Ok(())
+    }
+
+    pub fn get_should_dump_state(&self) -> bool {
+        self.should_dump_state
     }
 }

@@ -6,8 +6,7 @@ use serde_json;
 use cerberus_proto::mapreduce as pb;
 use common::{Task, TaskType, TaskStatus, Job};
 use errors::*;
-use state;
-use state::StateHandling;
+use util::state::StateHandling;
 
 /// A `ScheduledJob` holds the information about a scheduled `Job` and the `Task`s that relate to
 /// that job.
@@ -37,14 +36,11 @@ impl ScheduledJob {
     }
 }
 
-impl state::StateHandling for ScheduledJob {
+impl StateHandling<Error> for ScheduledJob {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         let (job, tasks) = ScheduledJob::process_json(&data)?;
 
-        Ok(ScheduledJob {
-            job: job,
-            tasks: tasks,
-        })
+        Ok(ScheduledJob { job, tasks })
     }
 
     fn dump_state(&self) -> Result<serde_json::Value> {
@@ -127,15 +123,9 @@ impl State {
             None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
         };
 
-        let job_status = scheduled_job.job.status;
-        if !(job_status == pb::Status::IN_PROGRESS || job_status == pb::Status::IN_QUEUE) {
-            return Err(
-                format!("Unable to cancel job. Expected IN_PROGRESS or IN_QUEUE job. Got {:?}",
-                        job_status).into(),
-            );
+        if scheduled_job.job.status != pb::Status::FAILED {
+            scheduled_job.job.status = pb::Status::CANCELLED;
         }
-
-        scheduled_job.job.status = pb::Status::CANCELLED;
         Ok(())
     }
 
@@ -263,11 +253,18 @@ impl State {
             None => return Err(format!("Job with ID {} is not found.", &task.job_id).into()),
         };
 
+        if task.has_completed_before && task.task_type == TaskType::Map {
+            scheduled_job.job.reduce_tasks_total = 0;
+            scheduled_job.job.reduce_tasks_completed = 0;
+        }
+
         scheduled_job.job.cpu_time += task.cpu_time;
         if task.status == TaskStatus::Complete {
             match task.task_type {
                 TaskType::Map => {
-                    scheduled_job.job.map_tasks_completed += 1;
+                    if !task.has_completed_before {
+                        scheduled_job.job.map_tasks_completed += 1;
+                    }
                 }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;
@@ -302,9 +299,21 @@ impl State {
         }
         job_count
     }
+
+    pub fn set_job_completed(&mut self, job_id: &str) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", job_id).into()),
+        };
+
+        scheduled_job.job.status = pb::Status::DONE;
+        scheduled_job.job.time_completed = Some(Utc::now());
+
+        Ok(())
+    }
 }
 
-impl state::StateHandling for State {
+impl StateHandling<Error> for State {
     fn new_from_json(_: serde_json::Value) -> Result<Self> {
         Err("Unable to create Scheduler State from JSON.".into())
     }

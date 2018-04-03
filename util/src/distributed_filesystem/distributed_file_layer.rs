@@ -9,6 +9,8 @@ use distributed_filesystem::{LocalFileManager, FileSystemMasterInterface,
                              FileSystemWorkerInterface};
 use errors::*;
 
+const MAX_GET_DATA_RETRIES: usize = 3;
+
 pub struct DFSAbstractionLayer {
     local_file_manager: Arc<LocalFileManager>,
     master_interface: Box<FileSystemMasterInterface + Send + Sync>,
@@ -21,8 +23,8 @@ impl DFSAbstractionLayer {
         master_interface: Box<FileSystemMasterInterface + Send + Sync>,
     ) -> Self {
         DFSAbstractionLayer {
-            local_file_manager: local_file_manager,
-            master_interface: master_interface,
+            local_file_manager,
+            master_interface,
             worker_interface: FileSystemWorkerInterface::new(),
         }
     }
@@ -41,18 +43,33 @@ impl DFSAbstractionLayer {
                 );
             }
 
-            let random_val = random::<usize>() % chunk.worker_address.len();
-            let worker_addr = &chunk.worker_address[random_val];
 
-            let remote_data = self.worker_interface
-                .read_file(
+            let mut retries = MAX_GET_DATA_RETRIES;
+            loop {
+                let random_val = random::<usize>() % chunk.worker_address.len();
+                let worker_addr = &chunk.worker_address[random_val];
+
+                let remote_data_result = self.worker_interface.read_file(
                     worker_addr,
                     file_path,
                     max(start_byte, chunk.start_byte),
                     min(end_byte, chunk.end_byte),
-                )
-                .chain_err(|| "Error getting remote data")?;
-            data.extend(remote_data);
+                );
+
+                retries -= 1;
+
+                match remote_data_result {
+                    Ok(remote_data) => {
+                        data.extend(remote_data);
+                        break;
+                    }
+                    Err(_) => {
+                        if retries == 0 {
+                            return remote_data_result.chain_err(|| "Error reading remote data");
+                        }
+                    }
+                }
+            }
         }
 
         Ok(data)
@@ -207,5 +224,21 @@ impl AbstractionLayer for DFSAbstractionLayer {
         // Creating a directory is not needed for the distributed file system, can write to any
         // path.
         Ok(())
+    }
+
+    fn get_file_closeness(&self, path: &Path, worker_id: &str) -> Result<u64> {
+        let file_chunks = self.master_interface
+            .get_file_chunks(&path.to_string_lossy())
+            .chain_err(|| "Could not get file locations")?;
+
+        let mut score = 0;
+
+        for chunk in file_chunks {
+            if chunk.workers.contains(&worker_id.to_string()) {
+                score += 1;
+            }
+        }
+
+        Ok(score)
     }
 }

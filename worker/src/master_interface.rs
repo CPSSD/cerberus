@@ -14,6 +14,7 @@ use errors::*;
 pub struct MasterInterface {
     client: grpc_pb::WorkerServiceClient,
     worker_id: RwLock<String>,
+    master_addr: SocketAddr,
 }
 
 impl MasterInterface {
@@ -25,16 +26,25 @@ impl MasterInterface {
         ).chain_err(|| "Error building WorkerService client.")?;
 
         Ok(MasterInterface {
-            client: client,
+            client,
             worker_id: RwLock::new(String::new()),
+            master_addr,
         })
     }
 
-    pub fn register_worker(&self, address: &SocketAddr) -> Result<()> {
+    pub fn get_master_addr(&self) -> SocketAddr {
+        self.master_addr
+    }
+
+    pub fn register_worker(&self, address: &SocketAddr, worker_id: &str) -> Result<String> {
         let worker_addr = address.to_string();
 
         let mut req = pb::RegisterWorkerRequest::new();
         req.set_worker_address(worker_addr);
+
+        if worker_id != "" {
+            req.set_worker_id(worker_id.to_owned());
+        }
 
         let response = self.client
             .register_worker(RequestOptions::new(), req)
@@ -44,7 +54,7 @@ impl MasterInterface {
 
         *self.worker_id.write().unwrap() = response.get_worker_id().to_owned();
 
-        Ok(())
+        Ok(response.get_worker_id().to_owned())
     }
 
     pub fn update_worker_status(
@@ -83,6 +93,25 @@ impl MasterInterface {
             .return_reduce_result(RequestOptions::new(), reduce_result)
             .wait()
             .chain_err(|| "Failed to return reduce result to master.")?;
+
+        Ok(())
+    }
+
+    pub fn report_worker(
+        &self,
+        worker_address: String,
+        intermediate_data_path: String,
+        task_id: String,
+    ) -> Result<()> {
+        let mut report_request = pb::ReportWorkerRequest::new();
+        report_request.set_task_id(task_id);
+        report_request.set_worker_id(self.worker_id.read().unwrap().clone());
+        report_request.set_report_address(worker_address);
+        report_request.set_path(intermediate_data_path);
+        self.client
+            .report_worker(RequestOptions::new(), report_request)
+            .wait()
+            .chain_err(|| "Failed to report worker to master.")?;
 
         Ok(())
     }

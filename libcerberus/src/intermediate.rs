@@ -6,22 +6,21 @@ use serde::Serialize;
 /// used for creating a clearer API.
 /// It can be constructed normally or using `IntermediateInputKV::new()`.
 #[derive(Debug, Default, Deserialize, PartialEq)]
-pub struct IntermediateInputKV<V>
+pub struct IntermediateInputKV<K, V>
 where
+    K: Default + Serialize,
     V: Default + Serialize,
 {
-    pub key: String,
+    pub key: K,
     pub values: Vec<V>,
 }
 
-impl<V> IntermediateInputKV<V>
+impl<K, V> IntermediateInputKV<K, V>
 where
+    K: Default + Serialize,
     V: Default + Serialize,
 {
-    pub fn new(key: String, values: Vec<V>) -> Self {
-        IntermediateInputKV {
-            key: key,
-            values: values,
-        }
+    pub fn new(key: K, values: Vec<V>) -> Self {
+        IntermediateInputKV { key, values }
     }
 }

@@ -54,7 +54,7 @@ where
     /// * `sink` - A mutable reference to the `Vec`
     /// to receive the emitted values.
     pub fn new(sink: &'a mut Vec<V>) -> Self {
-        VecEmitter { sink: sink }
+        VecEmitter { sink }
     }
 }
 
@@ -91,7 +91,7 @@ where
     /// * `sink` - A mutable reference to the `IntermediateOutputObject`
     /// to receive the emitted values.
     pub fn new(sink: &'a mut IntermediateOutputObject<K, V>) -> Self {
-        IntermediateOutputObjectEmitter { sink: sink }
+        IntermediateOutputObjectEmitter { sink }
     }
 }
 
@@ -103,8 +103,8 @@ where
     fn emit(&mut self, partition: u64, key: K, value: V) -> Result<()> {
         let output_array = self.sink.partitions.entry(partition).or_insert_with(Default::default);
         output_array.push(IntermediateOutputPair {
-            key: key,
-            value: value,
+            key,
+            value,
         });
         Ok(())
     }
@@ -124,7 +124,7 @@ impl<'a, V: Default + Serialize> FinalOutputObjectEmitter<'a, V> {
     /// * `sink` - A mutable reference to the `FinalOutputObject` to receive the emitted
     /// values.
     pub fn new(sink: &'a mut FinalOutputObject<V>) -> Self {
-        FinalOutputObjectEmitter { sink: sink }
+        FinalOutputObjectEmitter { sink }
     }
 }
 
@@ -169,7 +169,7 @@ mod tests {
             ],
         );
 
-        let output = IntermediateOutputObject { partitions: partitions };
+        let output = IntermediateOutputObject { partitions };
         let mut output_set = HashSet::new();
         let expected_string1 =
             r#"{"partitions":{"0":[{"key":"foo_intermediate","value":"bar"},{"key":"foo_intermediate","value":"baz"}],"1":[{"key":"foo_intermediate2","value":"bar"}]}}"#;
@@ -208,7 +208,7 @@ mod tests {
             ],
         );
 
-        let expected_output = IntermediateOutputObject { partitions: partitions };
+        let expected_output = IntermediateOutputObject { partitions };
 
         {
             let mut emitter = IntermediateOutputObjectEmitter::new(&mut output);

@@ -36,7 +36,7 @@ pub struct TaskProcessorImpl {
 
 impl TaskProcessorImpl {
     pub fn new(data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>) -> Self {
-        TaskProcessorImpl { data_abstraction_layer: data_abstraction_layer }
+        TaskProcessorImpl { data_abstraction_layer }
     }
 
     /// `get_closest_endline` files the endline closest to the end of a given range for input file
@@ -85,13 +85,13 @@ impl TaskProcessorImpl {
             let new_start_byte =
                 self.get_closest_endline(input_file_path, start_byte, start_byte + MAP_INPUT_SIZE)
                     .chain_err(|| "Error reading input file")?;
-            start_byte = new_start_byte;
-
             let mut input_location = pb::InputLocation::new();
             input_location.set_input_path(input_path_str.to_owned());
             input_location.set_start_byte(start_byte);
             input_location.set_end_byte(new_start_byte);
             input_locations.push(input_location);
+
+            start_byte = new_start_byte;
         }
 
         if start_byte != end_byte {
@@ -118,6 +118,11 @@ impl TaskProcessorImpl {
         let paths = self.data_abstraction_layer
             .read_dir(input_directory)
             .chain_err(|| "Unable to read directory")?;
+
+        if paths.is_empty() {
+            return Err("No files in map input directory".into());
+        }
+
         for path in paths {
             if self.data_abstraction_layer
                 .is_file(path.as_path())
@@ -168,6 +173,10 @@ impl TaskProcessor for TaskProcessorImpl {
                 map_task_info.input_locations,
                 job.priority,
             ));
+        }
+
+        if map_tasks.is_empty() {
+            return Err("No map tasks created for job".into());
         }
 
         Ok(map_tasks)

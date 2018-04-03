@@ -20,11 +20,10 @@ impl Map for TestMapper {
 }
 
 struct TestReducer;
-impl Reduce for TestReducer {
-    type Value = String;
-    fn reduce<E>(&self, input: IntermediateInputKV<Self::Value>, mut emitter: E) -> Result<()>
+impl Reduce<String, String> for TestReducer {
+    fn reduce<E>(&self, input: IntermediateInputKV<String, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<Self::Value>,
+        E: EmitFinal<String>,
     {
         emitter.emit(input.values.iter().fold(
             String::new(),

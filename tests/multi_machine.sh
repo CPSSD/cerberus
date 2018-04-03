@@ -50,16 +50,24 @@ do
         break;
     fi
     sleep 1
-    attempt_counter+=1
+    attempt_counter=$(( attempt_counter+1 ))
 done
 
 # Take down the docker containers
 docker-compose -f tests/multi-machine/docker-compose.yml -p cerberus down
 
+# Remove newlines from output
+cd "${nfs_path}"/output
+for file in *
+do 
+    sed ':a;N;$!ba;s/\n//g' "$file" > tmp; mv tmp $file 
+done
+cd ../..
+
 # Verify that the output is correct.
 for key in "${!results[@]}"
 do
-    count=$(grep "[0-9]*" -o "${nfs_path}"/output/"${key}")
+    count=$(grep -PR --no-filename --only-matching $key+"\":[[:space:]]*\[[[:space:]]*[0-9]*" "${nfs_path}"/output/ | grep -o "[0-9]*")
     if [ "${count}" != "${results[${key}]}" ]
     then
         echo "Error. Expected ${key}=${results[${key}]}, but got: $count"

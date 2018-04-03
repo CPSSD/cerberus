@@ -4,11 +4,10 @@ use std::str::FromStr;
 use chrono::prelude::*;
 use uuid::Uuid;
 use serde_json;
-use errors::*;
-
-use state::StateHandling;
 
 use cerberus_proto::worker as pb;
+use errors::*;
+use util::state::StateHandling;
 
 #[derive(Serialize, Deserialize)]
 /// `WorkerStatus` is the serializable counterpart to `pb::WorkerStatus`.
@@ -44,8 +43,13 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new<S: Into<String>>(address: S) -> Result<Self> {
+    pub fn new<S: Into<String>>(address: S, worker_id: S) -> Result<Self> {
         let address: String = address.into();
+        let mut worker_id: String = worker_id.into();
+
+        if worker_id == "" {
+            worker_id = Uuid::new_v4().to_string();
+        }
 
         Ok(Worker {
             address: SocketAddr::from_str(&address).chain_err(
@@ -58,7 +62,7 @@ impl Worker {
 
             current_task_id: String::new(),
             last_cancelled_task_id: None,
-            worker_id: Uuid::new_v4().to_string(),
+            worker_id,
 
             task_assignments_failed: 0,
         })
@@ -99,7 +103,7 @@ impl Worker {
     }
 }
 
-impl StateHandling for Worker {
+impl StateHandling<Error> for Worker {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         // Convert address from a serde_json::Value to a String.
         let address: String = serde_json::from_value(data["address"].clone()).chain_err(
@@ -107,7 +111,7 @@ impl StateHandling for Worker {
         )?;
 
         // Create the worker with the above address.
-        let worker_result = Worker::new(address);
+        let worker_result = Worker::new(address, String::new());
         let mut worker = match worker_result {
             Ok(worker) => worker,
             Err(worker_error) => return Err(worker_error),
@@ -165,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_construct_worker() {
-        let worker_result = Worker::new(String::from("127.0.0.1:8080"));
+        let worker_result = Worker::new(String::from("127.0.0.1:8080"), String::new());
         assert!(!worker_result.is_err());
 
         let worker = worker_result.unwrap();
@@ -180,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_construct_worker_invalid_ip() {
-        let worker_result = Worker::new(String::from("127.0.0.0.01:8080"));
+        let worker_result = Worker::new(String::from("127.0.0.0.01:8080"), String::new());
         assert!(worker_result.is_err());
     }
 }

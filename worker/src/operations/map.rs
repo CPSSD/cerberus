@@ -16,7 +16,7 @@ use master_interface::MasterInterface;
 use super::combine;
 use super::io;
 use super::operation_handler;
-use super::operation_handler::OperationResources;
+use super::operation_handler::{OperationResources, PartitionMap};
 use super::state::OperationState;
 use util::output_error;
 
@@ -44,36 +44,34 @@ fn send_map_result(
     Ok(())
 }
 
-/// `IntermediateMapResults` is a `HashMap` mapping a partition to a JSON value containing
-/// the output for that partition.
-type IntermediateMapResults = HashMap<u64, serde_json::Value>;
-
-fn parse_map_results(map_result_string: &str) -> Result<IntermediateMapResults> {
+fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) -> Result<()> {
     let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
         || "Error parsing map response.",
     )?;
 
-    let mut map_results: IntermediateMapResults = HashMap::new();
-
-    let partition_map = match parse_value["partitions"].as_object() {
+    let partition_map_object = match parse_value["partitions"].as_object() {
         None => return Err("Error parsing partition map.".into()),
         Some(map) => map,
     };
 
-    for (partition_str, pairs) in partition_map.iter() {
+    for (partition_str, pairs) in partition_map_object.iter() {
         let partition: u64 = partition_str.to_owned().parse().chain_err(
             || "Error parsing map response.",
         )?;
-        map_results.insert(partition, pairs.clone());
+        let partition_hashmap = partition_map.entry(partition).or_insert_with(HashMap::new);
+        if let serde_json::Value::Array(ref pairs) = *pairs {
+            for pair in pairs {
+                let key_str = pair["key"].to_string();
+                let value_vec = partition_hashmap.entry(key_str).or_insert_with(Vec::new);
+                value_vec.push(pair["value"].clone());
+            }
+        }
     }
 
-    Ok(map_results)
+    Ok(())
 }
 
-fn map_operation_thread_impl(
-    map_input_value: &bson::Document,
-    mut child: Child,
-) -> Result<IntermediateMapResults> {
+fn map_operation_thread_impl(map_input_value: &bson::Document, mut child: Child) -> Result<String> {
     let mut input_buf = Vec::new();
     bson::encode_document(&mut input_buf, map_input_value)
         .chain_err(|| "Could not encode map_input as BSON.")?;
@@ -104,11 +102,7 @@ fn map_operation_thread_impl(
         );
     }
 
-    let map_results = parse_map_results(&output_str).chain_err(
-        || "Error parsing map results.",
-    )?;
-
-    Ok(map_results)
+    Ok(output_str)
 }
 
 pub fn perform_map(
@@ -158,20 +152,27 @@ fn combine_map_results(
     output_dir: &str,
     task_id: &str,
 ) -> Result<()> {
-    combine::optional_run_combine(resources).chain_err(
-        || "Error running combine operation.",
-    )?;
-
-    let partition_map;
+    // Map of partition to maps of key to value.
+    let mut partition_map: PartitionMap = HashMap::new();
+    let mut map_results_vec = Vec::new();
     {
-        let operation_state = resources.operation_state.lock().unwrap();
-        partition_map = operation_state.intermediate_map_results.clone();
+        let mut operation_state = resources.operation_state.lock().unwrap();
+        for map_result in operation_state.intermediate_map_results.clone() {
+            map_results_vec.push(map_result);
+        }
+        operation_state.intermediate_map_results.clear();
     }
 
-    let mut map_results: HashMap<u64, String> = HashMap::new();
-    let mut intermediate_files = Vec::new();
+    for map_result in map_results_vec {
+        parse_map_results(&map_result, &mut partition_map)
+            .chain_err(|| "Error parsing map result")?;
+    }
 
-    for (partition, values) in (&partition_map).iter() {
+    combine::optional_run_combine(resources, &mut partition_map)
+        .chain_err(|| "Error running combine operation.")?;
+
+    let mut map_result_files: HashMap<u64, String> = HashMap::new();
+    for (partition, values) in partition_map {
         let file_name = Uuid::new_v4().to_string();
         let mut file_path = PathBuf::new();
         file_path.push(output_dir);
@@ -180,18 +181,12 @@ fn combine_map_results(
         let json_values = json!(values);
         io::write_local(file_path.clone(), json_values.to_string().as_bytes())
             .chain_err(|| "failed to write map output")?;
-        intermediate_files.push(file_path.clone());
 
-        map_results.insert(*partition, (*file_path.to_string_lossy()).to_owned());
-    }
-
-    {
-        let mut operation_state = resources.operation_state.lock().unwrap();
-        operation_state.add_intermediate_files(intermediate_files);
+        map_result_files.insert(partition, (*file_path.to_string_lossy()).to_owned());
     }
 
     let mut map_result = pb::MapResult::new();
-    map_result.set_map_results(map_results);
+    map_result.set_map_results(map_result_files);
     map_result.set_status(pb::ResultStatus::SUCCESS);
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
     map_result.set_task_id(task_id.to_owned());
@@ -206,16 +201,26 @@ fn combine_map_results(
     Ok(())
 }
 
-fn process_map_operation_error(err: Error, resources: &OperationResources, initial_cpu_time: u64) {
+fn process_map_operation_error(
+    err: Error,
+    resources: &OperationResources,
+    initial_cpu_time: u64,
+    task_id: &str,
+) {
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
-        operation_state.waiting_map_operations = 0;
+        if operation_state.map_operation_failed {
+            // Already processed an error, no need to send status again.
+            return;
+        }
+        operation_state.map_operation_failed = true;
     }
 
     let mut map_result = pb::MapResult::new();
     map_result.set_status(pb::ResultStatus::FAILURE);
     map_result.set_cpu_time(operation_handler::get_cpu_time() - initial_cpu_time);
     map_result.set_failure_details(operation_handler::failure_details_from_error(&err));
+    map_result.set_task_id(task_id.to_owned());
 
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
         error!("Could not send map operation failed: {}", err);
@@ -224,76 +229,43 @@ fn process_map_operation_error(err: Error, resources: &OperationResources, initi
 }
 
 fn process_map_result(
-    result: Result<IntermediateMapResults>,
+    result: Result<String>,
     resources: &OperationResources,
     initial_cpu_time: u64,
     output_dir: &str,
     task_id: &str,
 ) {
-    {
-        // The number of operations waiting will be 0 if we have already processed one
-        // that has failed.
-        let operation_state = resources.operation_state.lock().unwrap();
-        if operation_state.waiting_map_operations == 0 {
-            return;
-        }
-    }
-
     // If we have cancelled the current task then we should avoid processing the map results.
-    {
-        let cancelled = {
-            let operation_state = resources.operation_state.lock().unwrap();
-            operation_state.task_cancelled(task_id)
-        };
-        if cancelled {
-            operation_handler::set_cancelled_status(&resources.operation_state);
-            return;
-        }
+    if operation_handler::check_task_cancelled(&resources.operation_state, task_id) {
+        return;
     }
 
     match result {
         Ok(map_result) => {
-            let (finished, parse_failed) = {
-                let mut parse_failed = false;
-
+            let finished = {
                 let mut operation_state = resources.operation_state.lock().unwrap();
-                for (partition, value) in map_result {
-                    let vec = operation_state
-                        .intermediate_map_results
-                        .entry(partition)
-                        .or_insert_with(Vec::new);
 
-                    if let serde_json::Value::Array(ref pairs) = value {
-                        for pair in pairs {
-                            vec.push(pair.clone());
-                        }
-                    } else {
-                        parse_failed = true;
-                    }
+                if operation_state.map_operation_failed {
+                    // The map operation has failed, no need to continue.
+                    return;
                 }
 
+                operation_state.intermediate_map_results.push(map_result);
                 operation_state.waiting_map_operations -= 1;
-                (operation_state.waiting_map_operations == 0, parse_failed)
+                operation_state.waiting_map_operations == 0
             };
 
-            if parse_failed {
-                process_map_operation_error(
-                    Error::from_kind(ErrorKind::Msg(
-                        "Failed to parse map operation output".to_owned(),
-                    )),
-                    resources,
-                    initial_cpu_time,
-                );
-            } else if finished {
+            if finished {
+                info!("Map operations finished");
                 let result = combine_map_results(resources, initial_cpu_time, output_dir, task_id);
 
                 if let Err(err) = result {
-                    process_map_operation_error(err, resources, initial_cpu_time);
+                    process_map_operation_error(err, resources, initial_cpu_time, task_id);
                 }
             }
         }
         Err(err) => {
-            process_map_operation_error(err, resources, initial_cpu_time);
+            process_map_operation_error(err, resources, initial_cpu_time, task_id);
         }
     }
 }
@@ -319,23 +291,20 @@ fn internal_perform_map(
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
         operation_state.waiting_map_operations = input_locations.len();
-        operation_state.intermediate_map_results = HashMap::new();
+        operation_state.map_operation_failed = false;
+        operation_state.intermediate_map_results.clear();
 
         initial_cpu_time = operation_state.initial_cpu_time;
     }
 
     for input_location in input_locations {
         // Make sure the job hasn't been cancelled before continuing.
+        if operation_handler::check_task_cancelled(
+            &resources.operation_state,
+            &map_options.task_id,
+        )
         {
-            let cancelled = {
-                let operation_state = resources.operation_state.lock().unwrap();
-                operation_state.task_cancelled(&map_options.task_id)
-            };
-            if cancelled {
-                operation_handler::set_cancelled_status(&resources.operation_state);
-                println!("Succesfully cancelled task: {}", map_options.task_id);
-                return Ok(());
-            }
+            return Ok(());
         }
 
         info!(
@@ -404,23 +373,25 @@ mod tests {
 
     #[test]
     fn test_parse_map_results() {
-        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| MockResult::Return(Ok(())));
 
         let map_results =
         r#"{"partitions":{"1":[{"key":"zar","value":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
+        let mut partition_map: PartitionMap = HashMap::new();
 
-        let map = parse_map_results(&map_results).unwrap();
-        assert_eq!(map.len(), 2);
+        parse_map_results(map_results, &mut partition_map).unwrap();
+        assert_eq!(partition_map.len(), 2);
     }
 
     #[test]
     fn test_parse_map_results_error() {
-        io::write_local.mock_safe(|_: PathBuf, _| { return MockResult::Return(Ok(())); });
+        io::write_local.mock_safe(|_: PathBuf, _| MockResult::Return(Ok(())));
 
         let map_results =
             r#"{:{"1":[{"key":"zavalue":"test"}],"0":[{"key":"bar","value":"test"}]}}"#;
+        let mut partition_map: PartitionMap = HashMap::new();
 
-        let result = parse_map_results(&map_results);
+        let result = parse_map_results(map_results, &mut partition_map);
         assert!(result.is_err());
     }
 }

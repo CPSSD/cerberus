@@ -1,0 +1,13 @@
+FROM ubuntu:17.10
+
+EXPOSE 3000
+
+COPY target/release/worker /bin/worker
+COPY aws/worker-startup.sh /bin/launch-worker
+
+RUN apt-get update && apt-get install pkg-config libssl-dev ca-certificates -y
+RUN update-ca-certificates
+
+RUN mkdir -p /tmp/cerberus/dfs/output
+
+CMD ["/bin/launch-worker"]

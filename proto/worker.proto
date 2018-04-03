@@ -23,11 +23,16 @@ service WorkerService {
 
     // Used by the worker to return the result of a Reduce operation.
     rpc ReturnReduceResult (ReduceResult) returns (EmptyMessage);
+
+    // Used by the worker to inform the master of failed intermediate data fetching.
+    rpc ReportWorker (ReportWorkerRequest) returns (EmptyMessage);
 }
 
 message RegisterWorkerRequest {
     // The workers ip and port where its MRWorkerService is exposed.
     string worker_address = 1;
+    // Optional worker id, allows the worker to attempt to register with it's old worker id.
+    string worker_id = 2;
 }
 
 message RegisterWorkerResponse {
@@ -84,6 +89,17 @@ message ReduceResult {
     // Details on the error if the status is failure
     string failure_details = 4;
     string task_id = 5;
+}
+
+message ReportWorkerRequest {
+    // ID of the worker sending the request.
+    string worker_id = 1;
+    // Address of the worker being reported.
+    string report_address = 2;
+    // Path to the intermediate file.
+    string path = 3;
+    // ID of the task being run.
+    string task_id = 4;
 }
 
 // ScheduleOperationService is used by the master to schedule Map and Reduce operations on the

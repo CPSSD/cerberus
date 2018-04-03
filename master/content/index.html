@@ -28,6 +28,44 @@
     </div>
   </div>
 
+  <div class="schedule-button" onClick="toggleScheduleForm()">
+    <p>Schedule MapReduce</p>
+  </div>
+
+  <div class="hidden-form" id="schedule-form">
+    <a class="exit-form" href='#' onclick="toggleScheduleForm()">&times;</a>
+    <div class="schedule-form">Schedule MapReduce
+      <hr>
+      <form id="schedule-job">
+        <label for="binary">Binary</label>
+        <input type="text" id="binary" name="binary_path" placeholder="Binary path..">
+
+        <label for="input">Input</label>
+        <input type="text" id="input" name="input_directory" placeholder="Input directory..">
+
+        <label for="output">Output [Optional]</label>
+        <input type="text" id="output" name="output_directory" placeholder="Output directory..">
+
+        <label for="priority">Priority [Optional]</label>
+        <select id="priority" name="job_priority">
+          <option value="">Default</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+        </select>
+
+        <input type="submit" id="submit-job" value="Schedule MapReduce">
+      </form>
+    </div>
+  </div>
+
   <div class="footer">
     <a href="https://github.com/CPSSD/cerberus/">Cerberus MapReduce Project on Github</a>
   </div>
