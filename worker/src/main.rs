@@ -8,7 +8,6 @@ extern crate clap;
 extern crate error_chain;
 extern crate futures;
 extern crate grpc;
-extern crate local_ip;
 extern crate libc;
 #[macro_use]
 extern crate log;
