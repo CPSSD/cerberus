@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use errors::*;
 use cerberus_proto::worker as pb;
-use master_interface::MasterInterface;
+use communication::MasterInterface;
 use super::combine;
 use super::io;
 use super::operation_handler;

@@ -7,7 +7,7 @@ use clap::ArgMatches;
 
 use errors::*;
 use initialization::{get_data_abstraction_layer, initialize_grpc_server, initialize_state_handler};
-use master_interface::MasterInterface;
+use communication::MasterInterface;
 use operations::OperationHandler;
 use server::Server;
 use state::StateHandler;
