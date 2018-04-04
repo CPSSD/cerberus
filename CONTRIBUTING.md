@@ -50,6 +50,6 @@ All code must be submitted via pull requests, *not* checked straight into the re
 request will be from a single feature branch, which will not be used for any other features after
 merging. Ideally, it will be deleted after a merge.
 
-All pull requests must be reviewed by at least two people who are not the submitter. You can ask
+All pull requests must be reviewed by at least one person who are not the submitter. You can ask
 in Slack for a review, or use Github's assign feature to assign the pull request to a specific
 person.
