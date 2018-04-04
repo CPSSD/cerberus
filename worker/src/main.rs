@@ -37,14 +37,13 @@ mod errors {
     }
 }
 
+mod communication;
 mod initialization;
 mod main_loop;
-mod master_interface;
 mod operations;
+mod parser;
 mod server;
 mod state;
-mod parser;
-mod worker_interface;
 
 use std::net::SocketAddr;
 use std::str::FromStr;

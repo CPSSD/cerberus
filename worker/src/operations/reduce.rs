@@ -8,14 +8,13 @@ use std::thread;
 use serde_json;
 
 use errors::*;
-use master_interface::MasterInterface;
+use communication::{MasterInterface, WorkerInterface};
 use super::io;
 use super::operation_handler;
 use super::operation_handler::OperationResources;
 use super::state::OperationState;
 use util::output_error;
 use util::data_layer::AbstractionLayer;
-use worker_interface::WorkerInterface;
 
 use cerberus_proto::worker as pb;
 

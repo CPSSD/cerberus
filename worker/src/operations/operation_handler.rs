@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use cerberus_proto::worker as pb;
 use errors::*;
-use master_interface::MasterInterface;
+use communication::MasterInterface;
 use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;

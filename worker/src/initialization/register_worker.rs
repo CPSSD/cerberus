@@ -2,7 +2,7 @@ use std::{thread, time};
 use std::net::SocketAddr;
 
 use errors::*;
-use master_interface::MasterInterface;
+use communication::MasterInterface;
 
 const WORKER_REGISTRATION_RETRIES: u16 = 5;
 const WORKER_REGISTRATION_RETRY_WAIT_DURATION_MS: u64 = 1000;
