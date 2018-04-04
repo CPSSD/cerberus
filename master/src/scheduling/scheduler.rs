@@ -190,7 +190,7 @@ impl Scheduler {
             .cancel_workers_tasks(workers)
             .chain_err(|| "Unable to cancel task on workers")?;
 
-        println!("Succesfully cancelled job {}", job_id);
+        info!("Succesfully cancelled job {}", job_id);
         Ok(())
     }
 

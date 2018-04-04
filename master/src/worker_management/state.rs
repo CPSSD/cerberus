@@ -506,7 +506,7 @@ impl State {
 
         let scheduled_task_id: String = match task_option {
             Some(priority_task) => {
-                println!(
+                info!(
                     "Popped off task {} with priority {}",
                     priority_task.id,
                     priority_task.priority

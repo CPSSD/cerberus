@@ -160,7 +160,7 @@ impl ApiHandler {
             output_directory: output_path,
             validate_paths: true,
 
-            priority: priority,
+            priority,
         };
 
         let job = Job::new(job_options, &self.data_abstraction_layer_arc)

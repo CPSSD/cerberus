@@ -134,7 +134,7 @@ impl grpc_pb::MapReduceService for ClientService {
         };
         response.set_mapreduce_id(job_id.clone());
 
-        println!("Attempting to cancel MapReduce: {}", job_id);
+        info!("Attempting to cancel MapReduce: {}", job_id);
         let result = self.scheduler.cancel_job(job_id.as_ref());
         if let Err(err) = result {
             output_error(&err.chain_err(|| "Error cancelling MapReduce"));
