@@ -16,8 +16,6 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
         _o: RequestOptions,
         req: pb::IntermediateDataRequest,
     ) -> SingleResponse<pb::IntermediateData> {
-        // TODO: After the unnecessary stuff is removed from the request path, add the absolute
-        //       path for this worker.
         info!("Serving file {}", &req.get_path());
         match io::read_local(req.get_path()) {
             Ok(data) => {
