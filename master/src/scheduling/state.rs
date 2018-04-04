@@ -129,9 +129,9 @@ impl State {
         Ok(())
     }
 
-    pub fn get_job(&self, job_id: &str) -> Result<Job> {
+    pub fn get_job(&self, job_id: &str) -> Result<&Job> {
         match self.scheduled_jobs.get(job_id) {
-            Some(scheduled_job) => Ok(scheduled_job.job.clone()),
+            Some(scheduled_job) => Ok(&scheduled_job.job),
             None => Err(format!("Job with ID {} is not found.", &job_id).into()),
         }
     }
@@ -145,11 +145,11 @@ impl State {
         jobs
     }
 
-    pub fn get_jobs(&self, client_id: &str) -> Vec<Job> {
+    pub fn get_jobs(&self, client_id: &str) -> Vec<&Job> {
         let mut jobs = Vec::new();
         for scheduled_job in self.scheduled_jobs.values() {
             if scheduled_job.job.client_id == client_id {
-                jobs.push(scheduled_job.job.clone());
+                jobs.push(&scheduled_job.job);
             }
         }
 

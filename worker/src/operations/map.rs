@@ -119,21 +119,11 @@ pub fn perform_map(
         operation_state.initial_cpu_time = operation_handler::get_cpu_time();
     }
 
-    let input_files: Vec<String> = map_options
-        .get_input()
-        .get_input_locations()
-        .into_iter()
-        .map(|loc| loc.input_path.clone())
-        .collect();
-
-
     info!(
         "Performing map operation. mapper={} number of inputs={}",
         map_options.mapper_file_path,
         map_options.get_input().get_input_locations().len()
     );
-
-    debug!("Input files: {:?}", input_files);
 
     {
         let mut state = resources.operation_state.lock().unwrap();
@@ -172,10 +162,9 @@ fn combine_map_results(
             return Ok(());
         }
 
-        for map_result in operation_state.intermediate_map_results.clone() {
+        for map_result in operation_state.intermediate_map_results.drain(0..) {
             map_results_vec.push(map_result);
         }
-        operation_state.intermediate_map_results.clear();
     }
 
     for map_result in map_results_vec {
