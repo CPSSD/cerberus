@@ -7,8 +7,6 @@ package mapreduce;
 service MapReduceService {
     // Schedules a map reduce. Returns various gRPC error codes if the
     // operation failed before even starting.
-    // TODO(voy): Decide do we want to return more information about scheduled
-    //            request.
     rpc PerformMapReduce (MapReduceRequest) returns (MapReduceResponse);
 
     // Gets the status of the map reduce.
@@ -25,7 +23,6 @@ service MapReduceService {
 message EmptyMessage {}
 
 message MapReduceRequest {
-    // TODO(voy): Rename/Remove this field once we actually send a library.
     string binary_path = 1;
 
     // Location of the input data on an accessible filesystem.
@@ -37,7 +34,6 @@ message MapReduceRequest {
 
     // ID of the client. Generated to be used for easier recognising who is
     // making the request. Generated on a single machine for now
-    // TODO(voy): Convert to unique identity once we have authentication.
     string client_id = 4;
 
     // Priority of the MapReduce
@@ -57,9 +53,6 @@ message MapReduceStatusRequest {
 
     // Optionally instead of the client_id the specific ID of the map reduce
     // can be given to get its status.
-    // TODO(voy): Add restrictions on the type of data that is returned if the
-    //            client performing the MapReduce is not the same as the client
-    //            requesting the status.
     string mapreduce_id = 2;
 }
 
