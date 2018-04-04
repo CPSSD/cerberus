@@ -29,9 +29,13 @@ pub struct MapInput {
     pub value: String,
 }
 
-fn log_map_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+fn log_map_operation_err(
+    err: Error,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    task_id: &str,
+) {
     output_error(&err.chain_err(|| "Error running map operation."));
-    operation_handler::set_failed_status(operation_state_arc);
+    operation_handler::set_failed_status(operation_state_arc, task_id);
 }
 
 fn send_map_result(
@@ -131,15 +135,20 @@ pub fn perform_map(
 
     debug!("Input files: {:?}", input_files);
 
-    if operation_handler::get_worker_status(&resources.operation_state) == pb::WorkerStatus::BUSY {
-        warn!("Map operation requested while worker is busy");
-        return Err("Worker is busy.".into());
+    {
+        let mut state = resources.operation_state.lock().unwrap();
+        if state.current_task_id != "" {
+            warn!("Map operation requested while worker is busy");
+            return Err("Worker is busy.".into());
+        }
+
+        state.current_task_id = map_options.task_id.clone();
+        state.operation_status = pb::OperationStatus::IN_PROGRESS;
     }
-    operation_handler::set_busy_status(&resources.operation_state);
 
     let result = internal_perform_map(map_options, resources, output_dir_uuid);
     if let Err(err) = result {
-        log_map_operation_err(err, &resources.operation_state);
+        log_map_operation_err(err, &resources.operation_state, &map_options.task_id);
         return Err("Error starting map operation.".into());
     }
 
@@ -157,6 +166,12 @@ fn combine_map_results(
     let mut map_results_vec = Vec::new();
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
+
+        // Task has been cancelled
+        if operation_state.current_task_id != task_id {
+            return Ok(());
+        }
+
         for map_result in operation_state.intermediate_map_results.clone() {
             map_results_vec.push(map_result);
         }
@@ -192,10 +207,10 @@ fn combine_map_results(
     map_result.set_task_id(task_id.to_owned());
 
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
-        log_map_operation_err(err, &resources.operation_state);
+        log_map_operation_err(err, &resources.operation_state, task_id);
     } else {
         info!("Map operation completed sucessfully.");
-        operation_handler::set_complete_status(&resources.operation_state);
+        operation_handler::set_complete_status(&resources.operation_state, task_id);
     }
 
     Ok(())
@@ -209,11 +224,11 @@ fn process_map_operation_error(
 ) {
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
-        if operation_state.map_operation_failed {
+        if operation_state.current_task_id != task_id {
             // Already processed an error, no need to send status again.
             return;
         }
-        operation_state.map_operation_failed = true;
+        operation_state.current_task_id = String::new();
     }
 
     let mut map_result = pb::MapResult::new();
@@ -225,7 +240,7 @@ fn process_map_operation_error(
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
         error!("Could not send map operation failed: {}", err);
     }
-    log_map_operation_err(err, &resources.operation_state);
+    log_map_operation_err(err, &resources.operation_state, task_id);
 }
 
 fn process_map_result(
@@ -245,7 +260,7 @@ fn process_map_result(
             let finished = {
                 let mut operation_state = resources.operation_state.lock().unwrap();
 
-                if operation_state.map_operation_failed {
+                if operation_state.current_task_id != task_id {
                     // The map operation has failed, no need to continue.
                     return;
                 }
@@ -291,7 +306,6 @@ fn internal_perform_map(
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
         operation_state.waiting_map_operations = input_locations.len();
-        operation_state.map_operation_failed = false;
         operation_state.intermediate_map_results.clear();
 
         initial_cpu_time = operation_state.initial_cpu_time;
