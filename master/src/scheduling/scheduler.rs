@@ -4,6 +4,7 @@ use std::sync::{Mutex, Arc};
 
 use serde_json;
 
+use cerberus_proto::mapreduce as pb;
 use common::{Task, TaskStatus, Job};
 use errors::*;
 use scheduling::state::{ScheduledJob, State};
@@ -42,17 +43,17 @@ impl Scheduler {
 
         let mut state = self.state.lock().unwrap();
 
-        let job = state.get_job(job_id).chain_err(
-            || "Error scheduling reduce tasks",
-        )?;
-
         let reduce_tasks = {
+            let job = state.get_job(job_id).chain_err(
+                || "Error scheduling reduce tasks",
+            )?;
+
             let map_tasks = state.get_map_tasks(job_id).chain_err(|| {
                 format!("Could not get map tasks for job {}", job_id)
             })?;
 
             self.task_processor
-                .create_reduce_tasks(&job, map_tasks)
+                .create_reduce_tasks(job, map_tasks)
                 .chain_err(|| {
                     format!("Could not create reduce tasks for job {}", job_id)
                 })?
@@ -204,17 +205,45 @@ impl Scheduler {
         self.worker_manager.get_available_workers()
     }
 
-    pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<Job> {
-        let state = self.state.lock().unwrap();
-        state.get_job(mapreduce_id).chain_err(
-            || "Error getting map reduce status.",
-        )
+    fn get_status_for_job(&self, job: &Job) -> pb::MapReduceReport {
+        let mut report = pb::MapReduceReport::new();
+        report.mapreduce_id = job.id.clone();
+        report.status = job.status;
+        if job.status == pb::Status::FAILED {
+            report.failure_details = job.status_details.clone().unwrap_or_else(
+                || "Unknown.".to_owned(),
+            );
+        }
+        report.scheduled_timestamp = job.time_requested.timestamp();
+        report.output_directory = job.output_directory.clone();
+        if let Some(time) = job.time_started {
+            report.started_timestamp = time.timestamp();
+        }
+        if let Some(time) = job.time_completed {
+            report.done_timestamp = time.timestamp();
+        }
+
+        report
     }
 
-    /// `get_mapreduce_client_status` returns a vector of `Job`s for a given client.
-    pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<Job> {
+    pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<pb::MapReduceReport> {
         let state = self.state.lock().unwrap();
-        state.get_jobs(client_id)
+        let job = state.get_job(mapreduce_id).chain_err(
+            || "Error getting map reduce status.",
+        )?;
+        Ok(self.get_status_for_job(job))
+    }
+
+    /// `get_mapreduce_client_status` returns a vector of `MapReduceReport`s for a given client.
+    pub fn get_mapreduce_client_status(&self, client_id: &str) -> Vec<pb::MapReduceReport> {
+        let state = self.state.lock().unwrap();
+        let jobs = state.get_jobs(client_id);
+
+        let mut reports = Vec::new();
+        for job in jobs {
+            reports.push(self.get_status_for_job(job));
+        }
+        reports
     }
 
     pub fn get_most_recent_client_job_id(&self, client_id: &str) -> Result<String> {

@@ -72,41 +72,24 @@ impl grpc_pb::MapReduceService for ClientService {
         req: pb::MapReduceStatusRequest,
     ) -> SingleResponse<pb::MapReduceStatusResponse> {
         let mut response = pb::MapReduceStatusResponse::new();
-        let jobs: Vec<Job>;
+        let reports: Vec<pb::MapReduceReport>;
 
         if !req.client_id.is_empty() {
-            jobs = self.scheduler.get_mapreduce_client_status(&req.client_id);
+            reports = self.scheduler.get_mapreduce_client_status(&req.client_id);
         } else if !req.mapreduce_id.is_empty() {
             match self.scheduler.get_mapreduce_status(&req.mapreduce_id) {
                 Err(err) => {
                     output_error(&err.chain_err(|| "Error getting mapreduces status."));
                     return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
                 }
-                Ok(job) => jobs = vec![job],
+                Ok(report) => reports = vec![report],
             }
         } else {
             error!("Client requested job status without job id or client id.");
             return SingleResponse::err(Error::Other(MISSING_JOB_IDS));
         }
 
-        for job in jobs {
-            let mut report = pb::MapReduceReport::new();
-            report.mapreduce_id = job.id.clone();
-            report.status = job.status;
-            if job.status == pb::Status::FAILED {
-                report.failure_details = job.status_details.clone().unwrap_or_else(
-                    || "Unknown.".to_owned(),
-                );
-            }
-            report.scheduled_timestamp = job.time_requested.timestamp();
-            report.output_directory = job.output_directory.clone();
-            if let Some(time) = job.time_started {
-                report.started_timestamp = time.timestamp();
-            }
-            if let Some(time) = job.time_completed {
-                report.done_timestamp = time.timestamp();
-            }
-
+        for report in reports {
             response.reports.push(report);
         }
 
