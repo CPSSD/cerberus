@@ -10,7 +10,6 @@ CA4019 Project
 #### Development
 - Rust Nightly
 - Protobuf Compiler
-- net-tools (if running worker locally)
 
 #### Deployment
 - Docker
