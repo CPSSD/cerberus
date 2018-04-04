@@ -26,6 +26,32 @@ fn verify_valid_path(path_str: &str) -> Result<String> {
     }
 }
 
+fn get_priority(matches: &ArgMatches) -> Result<u32> {
+    let priority_str = matches.value_of("priority").unwrap_or(DEFAULT_PRIORITY);
+    let priority: u32 = match priority_str.parse() {
+        Ok(val) => val,
+        Err(err) => {
+            return Err(
+                format!(
+                    "Error occured while converting '{}' to a u32: {}",
+                    priority_str,
+                    err
+                ).into(),
+            );
+        }
+    };
+
+    if priority < 1 || priority > 10 {
+        return Err(
+            format!(
+                "Priority can only be between 1 and 10. {} is not in this range",
+                priority
+            ).into(),
+        );
+    }
+    Ok(priority)
+}
+
 pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let mut input = matches
         .value_of("input")
@@ -52,27 +78,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         || "Invalid binary path.",
     )?;
 
-    let priority_str = matches.value_of("priority").unwrap_or(DEFAULT_PRIORITY);
-    let priority: u32 = match priority_str.parse() {
-        Ok(val) => val,
-        Err(err) => {
-            return Err(
-                format!(
-                    "Error occured while converting '{}' to a u32: {}",
-                    priority_str,
-                    err
-                ).into(),
-            );
-        }
-    };
-    if priority < 1 || priority > 10 {
-        return Err(
-            format!(
-                "Priority can only be between 1 and 10. {} is not in this range",
-                priority
-            ).into(),
-        );
-    }
+    let priority = get_priority(matches)?;
 
     let mut req = pb::MapReduceRequest::new();
     req.set_binary_path(binary.to_owned());
