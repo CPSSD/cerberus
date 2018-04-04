@@ -108,9 +108,13 @@ fn run_reducer(
     Ok(reduce_results)
 }
 
-fn log_reduce_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+fn log_reduce_operation_err(
+    err: Error,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    task_id: &str,
+) {
     output_error(&err.chain_err(|| "Error running reduce operation."));
-    operation_handler::set_failed_status(operation_state_arc);
+    operation_handler::set_failed_status(operation_state_arc, task_id);
 }
 
 fn send_reduce_result(
@@ -192,15 +196,20 @@ pub fn perform_reduce(
         reduce_request.reducer_file_path
     );
 
-    if operation_handler::get_worker_status(&resources.operation_state) == pb::WorkerStatus::BUSY {
-        warn!("Reduce operation requested while worker is busy");
-        return Err("Worker is busy.".into());
+    {
+        let mut state = resources.operation_state.lock().unwrap();
+        if state.current_task_id != "" {
+            warn!("Reduce operation requested while worker is busy");
+            return Err("Worker is busy.".into());
+        }
+
+        state.current_task_id = reduce_request.task_id.clone();
+        state.operation_status = pb::OperationStatus::IN_PROGRESS;
     }
-    operation_handler::set_busy_status(&resources.operation_state);
 
     let result = internal_perform_reduce(reduce_request, resources, output_uuid);
     if let Err(err) = result {
-        log_reduce_operation_err(err, &resources.operation_state);
+        log_reduce_operation_err(err, &resources.operation_state, &reduce_request.task_id);
         return Err("Error starting reduce operation.".into());
     }
 
@@ -239,7 +248,7 @@ fn handle_reduce_error(err: Error, resources: &OperationResources, task_id: &str
         error!("Error sending reduce failed: {}", err);
     }
 
-    log_reduce_operation_err(err, &resources.operation_state);
+    log_reduce_operation_err(err, &resources.operation_state, task_id);
 }
 
 fn handle_reduce_success(resources: &OperationResources, initial_cpu_time: u64, task_id: &str) {
@@ -252,12 +261,12 @@ fn handle_reduce_success(resources: &OperationResources, initial_cpu_time: u64, 
 
     match result {
         Ok(_) => {
-            operation_handler::set_complete_status(&resources.operation_state);
+            operation_handler::set_complete_status(&resources.operation_state, task_id);
             info!("Reduce operation completed sucessfully.");
         }
         Err(err) => {
             error!("Error sending reduce result: {}", err);
-            operation_handler::set_failed_status(&resources.operation_state);
+            operation_handler::set_failed_status(&resources.operation_state, task_id);
         }
     }
 }
