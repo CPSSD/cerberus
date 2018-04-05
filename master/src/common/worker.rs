@@ -36,7 +36,6 @@ pub struct Worker {
     pub status_last_updated: DateTime<Utc>,
 
     pub current_task_id: String,
-    pub last_cancelled_task_id: Option<String>,
     pub worker_id: String,
 
     pub task_assignments_failed: u16,
@@ -61,7 +60,6 @@ impl Worker {
             status_last_updated: Utc::now(),
 
             current_task_id: String::new(),
-            last_cancelled_task_id: None,
             worker_id,
 
             task_assignments_failed: 0,

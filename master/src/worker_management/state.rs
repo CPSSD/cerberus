@@ -147,6 +147,17 @@ impl State {
         worker.operation_status = operation_status;
         worker.status_last_updated = Utc::now();
 
+        if worker_status == pb::WorkerStatus::AVAILABLE && !worker.current_task_id.is_empty() {
+            if let Some(assigned_task) = self.tasks.get_mut(&worker.current_task_id) {
+                self.priority_task_queue.push(PriorityTask::new(
+                    worker.current_task_id.clone(),
+                    REQUEUED_TASK_PRIORITY * assigned_task.job_priority,
+                ));
+                assigned_task.assigned_worker_id = String::new();
+            }
+            worker.current_task_id = String::new();
+        }
+
         Ok(())
     }
 
@@ -164,17 +175,6 @@ impl State {
 
             if scheduled_task.id != reduce_result.task_id {
                 return Err("Task id does not match expected task id.".into());
-            }
-
-            let worker = self.workers.get(&reduce_result.worker_id).chain_err(|| {
-                format!("Worker with ID {} not found.", reduce_result.worker_id)
-            })?;
-
-            if let Some(task_id) = worker.last_cancelled_task_id.clone() {
-                if task_id == reduce_result.task_id {
-                    scheduled_task.status = TaskStatus::Cancelled;
-                    return Ok(scheduled_task);
-                }
             }
 
             scheduled_task.status = TaskStatus::Complete;
@@ -207,13 +207,6 @@ impl State {
             let worker = self.workers.get_mut(&map_result.worker_id).chain_err(|| {
                 format!("Worker with ID {} not found.", map_result.worker_id)
             })?;
-
-            if let Some(task_id) = worker.last_cancelled_task_id.clone() {
-                if task_id == map_result.task_id {
-                    scheduled_task.status = TaskStatus::Cancelled;
-                    return Ok(scheduled_task);
-                }
-            }
 
             for (partition, output_file) in map_result.get_map_results() {
                 scheduled_task.map_output_files.insert(
@@ -529,7 +522,6 @@ impl State {
         })?;
 
         let previous_task_id = worker.current_task_id.clone();
-        worker.last_cancelled_task_id = Some(worker.current_task_id.clone());
         worker.current_task_id = String::new();
 
         self.tasks.remove(&previous_task_id);
