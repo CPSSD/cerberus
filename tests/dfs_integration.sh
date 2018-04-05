@@ -17,6 +17,7 @@ mkdir -p dfs-integration-test/worker3-state
 echo "Launching Master."
 ./master --dfs --fresh --state-location="$PWD"/dfs-integration-test/master-state \
     --storage-location="$PWD"/dfs-integration-test/master-state \
+    --dashboard-address="127.0.0.1:3002" \
     --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
@@ -67,6 +68,7 @@ sleep 1
 
 echo "Relaunching Master."
 ./master --dfs --state-location="$PWD"/dfs-integration-test/master-state \
+    --dashboard-address="127.0.0.1:3002" \
     --storage-location="$PWD"/dfs-integration-test/master-state \
     --port=10011 > dfs-integration-test/logs/master.log 2>&1 &
 master_pid=$!
