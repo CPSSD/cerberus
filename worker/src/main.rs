@@ -7,6 +7,7 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 extern crate futures;
+extern crate futures_cpupool;
 extern crate grpc;
 extern crate libc;
 #[macro_use]

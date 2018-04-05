@@ -8,7 +8,8 @@ use std::thread;
 use serde_json;
 
 use errors::*;
-use communication::{MasterInterface, WorkerInterface};
+use communication;
+use communication::MasterInterface;
 use super::io;
 use super::operation_handler;
 use super::operation_handler::OperationResources;
@@ -133,15 +134,14 @@ fn create_reduce_input(
 ) -> Result<Vec<ReduceInput>> {
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
-    for reduce_input_file in reduce_request.get_input_file_paths() {
-        // TODO: Run these operations in parallel as networks can be slow
-        let reduce_input = WorkerInterface::get_data(
-            reduce_input_file,
-            output_uuid,
-            resources,
-            &reduce_request.task_id,
-        ).chain_err(|| "Couldn't read reduce input file")?;
+    let reduce_inputs = communication::fetch_reduce_inputs(
+        reduce_request.get_input_file_paths().clone().to_vec(),
+        output_uuid.to_string(),
+        resources.clone(),
+        reduce_request.task_id.to_string(),
+    ).chain_err(|| "Error fetching reduce inputs")?;
 
+    for reduce_input in reduce_inputs {
         let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
             || "Error parsing reduce input",
         )?;
