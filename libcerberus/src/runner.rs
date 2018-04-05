@@ -14,11 +14,11 @@ use errors::*;
 use intermediate::IntermediateInputKV;
 use io::*;
 use mapper::Map;
-use partition::{Partition, PartitionInputPairs};
+use partition::{Partition, PartitionInputKV};
 use reducer::Reduce;
 use registry::UserImplRegistry;
-use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
-                IntermediateOutputObjectEmitter, VecEmitter};
+use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject, VecEmitter,
+                IntermediateOutputPair};
 use super::VERSION;
 
 /// `parse_command_line` uses `clap` to parse the command-line arguments passed to the payload.
@@ -115,12 +115,18 @@ where
 
     let mut output_object = IntermediateOutputObject::<M::Key, M::Value>::default();
 
-    partitioner
-        .partition(
-            PartitionInputPairs::new(pairs_vec),
-            IntermediateOutputObjectEmitter::new(&mut output_object),
-        )
-        .chain_err(|| "Error partitioning map output")?;
+    for pair in pairs_vec.drain(0..) {
+        let partition = partitioner
+            .partition(PartitionInputKV::new(&pair.0, &pair.1))
+            .chain_err(|| "Error partitioning map output")?;
+        let output_array = output_object.partitions.entry(partition).or_insert_with(
+            Default::default,
+        );
+        output_array.push(IntermediateOutputPair {
+            key: pair.0,
+            value: pair.1,
+        });
+    }
 
     write_intermediate_output(&mut sink, &output_object)
         .chain_err(|| "Error writing map output to stdout.")?;

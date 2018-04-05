@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use emitter::{EmitFinal, EmitPartitionedIntermediate};
+use emitter::EmitFinal;
 use errors::*;
 
 /// `IntermediateOutputPair` is a struct representing an intermediate key-value pair as outputted
@@ -64,48 +64,6 @@ where
 {
     fn emit(&mut self, value: V) -> Result<()> {
         self.sink.push(value);
-        Ok(())
-    }
-}
-
-/// A struct implementing `EmitPartitionedIntermediate`
-/// which emits to an `IntermediateOutputObject`.
-pub struct IntermediateOutputObjectEmitter<'a, K, V>
-where
-    K: Default + Serialize + 'a,
-    V: Default + Serialize + 'a,
-{
-    sink: &'a mut IntermediateOutputObject<K, V>,
-}
-
-impl<'a, K, V> IntermediateOutputObjectEmitter<'a, K, V>
-where
-    K: Default + Serialize,
-    V: Default + Serialize,
-{
-    /// Constructs a new `IntermediateOutputObjectEmitter` with a mutable reference to a given
-    /// `IntermediateOutputObject`.
-    ///
-    /// # Arguments
-    ///
-    /// * `sink` - A mutable reference to the `IntermediateOutputObject`
-    /// to receive the emitted values.
-    pub fn new(sink: &'a mut IntermediateOutputObject<K, V>) -> Self {
-        IntermediateOutputObjectEmitter { sink }
-    }
-}
-
-impl<'a, K, V> EmitPartitionedIntermediate<K, V> for IntermediateOutputObjectEmitter<'a, K, V>
-where
-    K: Default + Serialize,
-    V: Default + Serialize,
-{
-    fn emit(&mut self, partition: u64, key: K, value: V) -> Result<()> {
-        let output_array = self.sink.partitions.entry(partition).or_insert_with(Default::default);
-        output_array.push(IntermediateOutputPair {
-            key,
-            value,
-        });
         Ok(())
     }
 }
@@ -192,30 +150,6 @@ mod tests {
         let json_string = serde_json::to_string(&output).unwrap();
 
         assert_eq!(expected_json_string, json_string);
-    }
-
-    #[test]
-    fn intermediate_output_emitter_works() {
-        let mut output = IntermediateOutputObject::default();
-        let mut partitions = HashMap::new();
-        partitions.insert(
-            0,
-            vec![
-                IntermediateOutputPair {
-                    key: "foo",
-                    value: "bar",
-                },
-            ],
-        );
-
-        let expected_output = IntermediateOutputObject { partitions };
-
-        {
-            let mut emitter = IntermediateOutputObjectEmitter::new(&mut output);
-            emitter.emit(0, "foo", "bar").unwrap();
-        }
-
-        assert_eq!(expected_output, output);
     }
 
     #[test]
