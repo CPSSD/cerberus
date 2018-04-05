@@ -3,29 +3,30 @@ use std::hash::{Hash, Hasher};
 
 use serde::Serialize;
 
-use emitter::EmitPartitionedIntermediate;
 use errors::*;
 
-/// The `PartitionInputPairs` is a struct for passing input data to a `Partition`.
+/// The `PartitionInputKV` is a struct for passing input data to a `Partition`.
 ///
-/// `PartitionInputPairs` is a thin wrapper around a `Vec<(Key, Value)>`, used for creating a clearer API.
-/// It can be constructed normally or using `PartitionInputPairs::new()`.
-#[derive(Debug, Default, Deserialize, PartialEq)]
-pub struct PartitionInputPairs<K, V>
+/// `PartitionInputKV` is a thin wrapper around a `(Key, Value)`,
+/// used for creating a clearer API.
+/// It can be constructed normally or using `PartitionInputKV::new()`.
+#[derive(Debug, PartialEq)]
+pub struct PartitionInputKV<'a, K, V>
 where
-    K: Default + Serialize,
-    V: Default + Serialize,
+    K: Default + Serialize + 'a,
+    V: Default + Serialize + 'a,
 {
-    pub pairs: Vec<(K, V)>,
+    pub key: &'a K,
+    pub value: &'a V,
 }
 
-impl<K, V> PartitionInputPairs<K, V>
+impl<'a, K, V> PartitionInputKV<'a, K, V>
 where
-    K: Default + Serialize,
-    V: Default + Serialize,
+    K: Default + Serialize + 'a,
+    V: Default + Serialize + 'a,
 {
-    pub fn new(pairs: Vec<(K, V)>) -> Self {
-        PartitionInputPairs { pairs }
+    pub fn new(key: &'a K, value: &'a V) -> Self {
+        PartitionInputKV { key, value }
     }
 }
 
@@ -33,21 +34,17 @@ where
 ///
 /// # Arguments
 ///
-/// * `input` - A `Vec` containing the output pairs of a map operation.
-/// * `emitter` - A struct implementing the `EmitPartitionedIntermediate` trait, provided by the map runner.
+/// * `input` - A `ParitionInputKV` containing an output pair of a map operation.
 ///
 /// # Outputs
 ///
-/// An empty result used for returning an error. Outputs of the map operation are sent out through
-/// the `emitter`.
+/// A Result<u64>, representing the output partition for the given key and value.
 pub trait Partition<K, V>
 where
     K: Default + Serialize,
     V: Default + Serialize,
 {
-    fn partition<E>(&self, input: PartitionInputPairs<K, V>, emitter: E) -> Result<()>
-    where
-        E: EmitPartitionedIntermediate<K, V>;
+    fn partition(&self, input: PartitionInputKV<K, V>) -> Result<u64>;
 }
 
 /// `HashPartitioner` implements the `Partition` for any Key that can be hashed.
@@ -72,18 +69,10 @@ where
     K: Default + Serialize + Hash,
     V: Default + Serialize,
 {
-    fn partition<E>(&self, input: PartitionInputPairs<K, V>, mut emitter: E) -> Result<()>
-    where
-        E: EmitPartitionedIntermediate<K, V>,
-    {
-        for (key, value) in input.pairs {
-            let hash: u64 = self.calculate_hash(&key);
-            let partition_count: u64 = self.partition_count;
-            let partition = hash % partition_count;
-            emitter.emit(partition, key, value).chain_err(
-                || "Error partitioning map output.",
-            )?;
-        }
-        Ok(())
+    fn partition(&self, input: PartitionInputKV<K, V>) -> Result<u64> {
+        let hash: u64 = self.calculate_hash(input.key);
+        let partition_count: u64 = self.partition_count;
+        let partition = hash % partition_count;
+        Ok(partition)
     }
 }

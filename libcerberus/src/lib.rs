@@ -39,10 +39,10 @@ pub mod serialise;
 
 pub use combiner::Combine;
 pub use errors::*;
-pub use emitter::{EmitIntermediate, EmitPartitionedIntermediate, EmitFinal};
+pub use emitter::{EmitIntermediate, EmitFinal};
 pub use intermediate::IntermediateInputKV;
 pub use mapper::{Map, MapInputKV};
-pub use partition::{HashPartitioner, Partition, PartitionInputPairs};
+pub use partition::{HashPartitioner, Partition, PartitionInputKV};
 pub use reducer::Reduce;
 pub use registry::{UserImplRegistry, UserImplRegistryBuilder};
 pub use runner::*;

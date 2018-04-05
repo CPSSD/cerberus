@@ -63,21 +63,14 @@ impl Map for RatingByYearMapper {
 
 struct RatingByYearPartitioner;
 impl Partition<String, f64> for RatingByYearPartitioner {
-    fn partition<E>(&self, input: PartitionInputPairs<String, f64>, mut emitter: E) -> Result<()>
-    where
-        E: EmitPartitionedIntermediate<String, f64>,
-    {
-        for (key, value) in input.pairs {
-            let year_str = key[(key.len() - 5)..(key.len() - 1)].to_owned();
-            let partition: u64 = year_str.parse().chain_err(|| {
-                format!("Error getting year from movie title {}, {}", key, year_str)
-            })?;
+    fn partition(&self, input: PartitionInputKV<String, f64>) -> Result<u64> {
+        let key = input.key;
+        let year_str = key[(key.len() - 5)..(key.len() - 1)].to_owned();
+        let partition: u64 = year_str.parse().chain_err(|| {
+            format!("Error getting year from movie title {}, {}", key, year_str)
+        })?;
 
-            emitter.emit(partition, key, value).chain_err(
-                || "Error partitioning map output.",
-            )?;
-        }
-        Ok(())
+        Ok(partition)
     }
 }
 
