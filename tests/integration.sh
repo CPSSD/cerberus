@@ -11,7 +11,9 @@ mkdir -p integration-test/output
 
 # Launch the master.
 echo "Launching Master."
-./master --fresh --nodump --port=10008 > integration-test/logs/master.log 2>&1 &
+./master --fresh --nodump \
+    --dashboard-address="127.0.0.1:3004" \
+    --port=10008 > integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
 local_ip="127.0.0.1"
