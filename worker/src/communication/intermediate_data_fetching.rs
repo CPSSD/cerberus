@@ -6,13 +6,15 @@ use errors::*;
 use super::worker_interface::WorkerInterface;
 use operations::OperationResources;
 
+const INPUT_FETCHING_CPU_POOL_SIZE: usize = 20;
+
 pub fn fetch_reduce_inputs(
     input_files: Vec<String>,
     output_uuid: String,
     resources: OperationResources,
     task_id: String,
 ) -> Result<Vec<String>> {
-    let cpu_pool = CpuPool::new_num_cpus();
+    let cpu_pool = CpuPool::new(INPUT_FETCHING_CPU_POOL_SIZE);
     let mut input_futures = Vec::new();
 
     for reduce_input_file in input_files {
