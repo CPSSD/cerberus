@@ -1,4 +1,7 @@
 use std::cmp::{max, min};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -10,6 +13,8 @@ use distributed_filesystem::{LocalFileManager, FileSystemMasterInterface,
 use errors::*;
 
 const MAX_GET_DATA_RETRIES: usize = 3;
+const MEGA_BYTE: u64 = 1000 * 1000;
+const MAX_LOCAL_FILE_CHUNK: u64 = MEGA_BYTE * 32;
 
 pub struct DFSAbstractionLayer {
     local_file_manager: Arc<LocalFileManager>,
@@ -152,17 +157,44 @@ impl AbstractionLayer for DFSAbstractionLayer {
             return Ok(PathBuf::from(local_file_path));
         }
 
-        // TODO(conor): Improve this function to work for files that can not fit in memory.
+        let mut start_byte = 0;
         let file_length = self.get_file_length(path).chain_err(
             || "Error getting file length",
         )?;
-        let data = self.read_file_location(path, 0, file_length).chain_err(
-            || "Error getting local file",
-        )?;
 
         let local_file_path = self.local_file_manager
-            .write_local_file(&path.to_string_lossy(), &data)
-            .chain_err(|| "Error writing local file")?;
+            .get_new_local_file_path()
+            .chain_err(|| "Error getting local file path")?;
+
+        let mut options = OpenOptions::new();
+        options.read(true);
+        options.write(true);
+        options.truncate(true);
+        options.create(true);
+        options.mode(0o777);
+
+        let mut file = options.open(local_file_path.to_owned()).chain_err({
+            || format!("unable to create file {}", local_file_path)
+        })?;
+
+        while start_byte < file_length {
+            let end_byte = min(file_length, start_byte + MAX_LOCAL_FILE_CHUNK);
+            let data = self.read_file_location(path, start_byte, file_length)
+                .chain_err(|| "Error getting local file")?;
+
+            file.write_all(&data).chain_err(|| {
+                format!(
+                    "unable to write content to {}",
+                    local_file_path,
+                )
+            })?;
+            start_byte = end_byte;
+        }
+
+        self.local_file_manager.complete_local_file(
+            &path.to_string_lossy(),
+            &local_file_path,
+        );
 
         Ok(PathBuf::from(local_file_path))
     }

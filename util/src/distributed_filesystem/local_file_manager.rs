@@ -89,7 +89,7 @@ impl LocalFileManager {
         complete_file_map.get(file_path).map(|s| s.to_owned())
     }
 
-    pub fn write_local_file(&self, file_path: &str, data: &[u8]) -> Result<String> {
+    pub fn get_new_local_file_path(&self) -> Result<String> {
         let mut storage_path = PathBuf::new();
         storage_path.push(self.storage_directory.clone());
         storage_path.push(COMPLETE_SUB_DIR);
@@ -103,6 +103,19 @@ impl LocalFileManager {
         let file_name = Uuid::new_v4().to_string();
         storage_path.push(file_name);
 
+        Ok(storage_path.to_string_lossy().to_string())
+    }
+
+    pub fn complete_local_file(&self, file_path: &str, local_file_path: &str) {
+        let mut complete_file_map = self.complete_file_map.write().unwrap();
+        complete_file_map.insert(file_path.to_owned(), local_file_path.to_owned());
+    }
+
+    pub fn write_local_file(&self, file_path: &str, data: &[u8]) -> Result<String> {
+        let storage_path = self.get_new_local_file_path().chain_err(
+            || "Error writing local file",
+        )?;
+
         let mut options = OpenOptions::new();
         options.read(true);
         options.write(true);
@@ -115,13 +128,9 @@ impl LocalFileManager {
         )?;
         file.write_all(data).chain_err(|| "Unable to write data")?;
 
-        let mut complete_file_map = self.complete_file_map.write().unwrap();
-        complete_file_map.insert(
-            file_path.to_owned(),
-            storage_path.to_string_lossy().to_string(),
-        );
+        self.complete_local_file(file_path, &storage_path);
 
-        Ok(storage_path.to_string_lossy().to_string())
+        Ok(storage_path)
     }
 
     /// `read_file_chunk` reads a single file chunk known to exist requested by another worker.
