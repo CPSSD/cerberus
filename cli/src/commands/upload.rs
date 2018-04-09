@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::fs;
 use std::fs::{DirEntry, File};
 use std::io::prelude::Read;
@@ -9,6 +10,9 @@ use clap::ArgMatches;
 
 use errors::*;
 use util::distributed_filesystem::{NetworkFileSystemMasterInterface, FileSystemMasterInterface};
+
+const MEGA_BYTE: u64 = 1000 * 1000;
+const MAX_UPLOAD_SIZE: u64 = MEGA_BYTE * 32;
 
 fn get_local_files(path: &Path) -> Result<Vec<String>> {
     let mut files = Vec::new();
@@ -38,21 +42,33 @@ fn upload_local_file(
     remote_path: &str,
 ) -> Result<()> {
     println!("Uploading File {} to Cluster", local_path);
-    //TODO(conor): Improve this function to allow for files that can not be kept in memory.
-
     let file = File::open(local_path).chain_err(|| {
         format!("unable to open file {}", local_path)
     })?;
 
-    let mut buf_reader = BufReader::new(file);
-    let mut data = Vec::new();
-    buf_reader.read_to_end(&mut data).chain_err(|| {
-        format!("unable to read content of {}", local_path)
-    })?;
+    let mut start_byte = 0;
+    let metadata = fs::metadata(local_path).chain_err(
+        || "Error getting metadata",
+    )?;
+    let file_length = metadata.len();
+    let mut first = true; // Allow uploading empty files
 
-    master_interface
-        .upload_file_chunk(remote_path, 0, data)
-        .chain_err(|| "Error uploading file chunk.")?;
+    let mut buf_reader = BufReader::new(file);
+    while start_byte < file_length || first {
+        first = false;
+
+        let mut data = vec![0; min(MAX_UPLOAD_SIZE, file_length - start_byte) as usize];
+        let bytes_read = buf_reader.read(&mut data).chain_err(|| {
+            format!("unable to read content of {}", local_path)
+        })?;
+
+        master_interface
+            .upload_file_chunk(remote_path, start_byte, data)
+            .chain_err(|| "Error uploading file chunk.")?;
+
+        start_byte += bytes_read as u64;
+    }
+
 
     Ok(())
 }

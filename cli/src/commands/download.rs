@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -13,6 +14,9 @@ use util::distributed_filesystem::{NetworkFileSystemMasterInterface, DFSAbstract
                                    LocalFileManager};
 
 const DFS_FILE_DIRECTORY: &str = "/tmp/cerberus/dfs/";
+const MEGA_BYTE: u64 = 1000 * 1000;
+const MAX_DOWNLOAD_SIZE: u64 = MEGA_BYTE * 32;
+
 
 fn get_files_to_download(
     data_layer: &DFSAbstractionLayer,
@@ -45,15 +49,6 @@ fn download_file(
 ) -> Result<()> {
     println!("Downloading file {} to {}", remote_path, local_path);
 
-    let remote_path = Path::new(remote_path);
-    let file_length = data_layer.get_file_length(remote_path).chain_err(
-        || "Error getting file length",
-    )?;
-
-    let file_data = data_layer
-        .read_file_location(remote_path, 0 /* Start btye */, file_length)
-        .chain_err(|| "Error reading file")?;
-
     let mut local_directory = Path::new(local_path).to_path_buf();
     local_directory.pop();
     fs::create_dir_all(local_directory).chain_err(
@@ -64,12 +59,27 @@ fn download_file(
         format!("unable to create file {}", local_path)
     })?;
 
-    file.write_all(&file_data).chain_err(|| {
-        format!(
+    let remote_path = Path::new(remote_path);
+
+    let mut start_byte = 0;
+    let file_length = data_layer.get_file_length(remote_path).chain_err(
+        || "Error getting file length",
+    )?;
+
+    while start_byte < file_length {
+        let end_byte = min(file_length, start_byte + MAX_DOWNLOAD_SIZE);
+        let file_data = data_layer
+            .read_file_location(remote_path, start_byte, end_byte)
+            .chain_err(|| "Error reading file")?;
+
+        file.write_all(&file_data).chain_err(|| {
+            format!(
             "unable to write content to {}",
             local_path,
         )
-    })?;
+        })?;
+        start_byte = end_byte;
+    }
 
     Ok(())
 }
