@@ -127,6 +127,11 @@ impl State {
             scheduled_job.job.status != pb::Status::DONE
         {
             scheduled_job.job.status = pb::Status::CANCELLED;
+
+            // Cancel each of the tasks for this job.
+            for task in scheduled_job.tasks.values_mut() {
+                task.status = TaskStatus::Cancelled;
+            }
         }
         Ok(scheduled_job.job.status == pb::Status::CANCELLED)
     }
