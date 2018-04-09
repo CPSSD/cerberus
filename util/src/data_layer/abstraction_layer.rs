@@ -24,7 +24,7 @@ pub trait AbstractionLayer {
 
     fn create_dir_all(&self, path: &Path) -> Result<()>;
 
-    /// `get_data_closeness` returns how an integer indicating how easy it is for a given
+    /// `get_data_closeness` returns an integer indicating how easy it is for a given
     /// worker to request a given data chunk from the file system.
     /// If a file is on the local filesystem of the worker then the closeness score should be high,
     /// if chunks of the file need to be requested from other workers then the score should be low.
