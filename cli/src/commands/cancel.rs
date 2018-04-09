@@ -22,9 +22,13 @@ pub fn cancel(client: &grpc_pb::MapReduceServiceClient, args: Option<&ArgMatches
         .chain_err(|| "Failed to cancel MapReduce")?
         .1;
 
-    println!(
-        "Succesfully cancelled MapReduce with ID: {}",
-        resp.mapreduce_id
-    );
+    if resp.success {
+        println!(
+            "Succesfully cancelled MapReduce with ID: {}",
+            resp.mapreduce_id
+        );
+    } else {
+        println!("Unable to cancel MapReduce with ID: {}", resp.mapreduce_id);
+    }
     Ok(())
 }

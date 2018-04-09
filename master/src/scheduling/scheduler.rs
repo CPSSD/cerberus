@@ -169,12 +169,16 @@ impl Scheduler {
         )
     }
 
-    pub fn cancel_job(&self, job_id: &str) -> Result<()> {
-        {
+    pub fn cancel_job(&self, job_id: &str) -> Result<bool> {
+        let cancelled = {
             let mut state = self.state.lock().unwrap();
             state.cancel_job(job_id).chain_err(|| {
                 format!("Unable to cancel job with ID: {}", job_id)
-            })?;
+            })?
+        };
+        if !cancelled {
+            info!("Unable to cancel job with ID {}", job_id);
+            return Ok(false);
         }
 
         let workers = self.worker_manager
@@ -192,7 +196,7 @@ impl Scheduler {
             .chain_err(|| "Unable to cancel task on workers")?;
 
         info!("Succesfully cancelled job {}", job_id);
-        Ok(())
+        Ok(cancelled)
     }
 
     pub fn get_job_queue_size(&self) -> u32 {

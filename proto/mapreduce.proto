@@ -103,4 +103,5 @@ message MapReduceCancelRequest {
 message MapReduceCancelResponse {
     // ID of the canceled map reduce
     string mapreduce_id = 1;
+    bool success = 2;
 }
