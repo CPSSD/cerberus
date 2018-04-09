@@ -111,13 +111,14 @@ impl ApiHandler {
             || "Could not get job_id in request",
         )?;
 
-        self.scheduler_arc.cancel_job(&job_id).chain_err(|| {
+        let success = self.scheduler_arc.cancel_job(&job_id).chain_err(|| {
             format!("Failed to cancel job with id {}", job_id)
         })?;
 
-        Ok(Response::with(
-            (iron::status::Ok, format!("{{ job_id: {} }}", job_id)),
-        ))
+        Ok(Response::with((
+            iron::status::Ok,
+            format!("{{ job_id: {}, success: {} }}", job_id, success),
+        )))
     }
 
     fn schedule_job(&self, req: &mut Request) -> Result<Response> {

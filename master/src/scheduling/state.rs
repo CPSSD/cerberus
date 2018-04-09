@@ -117,16 +117,18 @@ impl State {
         Ok(())
     }
 
-    pub fn cancel_job(&mut self, job_id: &str) -> Result<()> {
+    pub fn cancel_job(&mut self, job_id: &str) -> Result<bool> {
         let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
             Some(job) => job,
             None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
         };
 
-        if scheduled_job.job.status != pb::Status::FAILED {
+        if scheduled_job.job.status != pb::Status::FAILED &&
+            scheduled_job.job.status != pb::Status::DONE
+        {
             scheduled_job.job.status = pb::Status::CANCELLED;
         }
-        Ok(())
+        Ok(scheduled_job.job.status == pb::Status::CANCELLED)
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<&Job> {

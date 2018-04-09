@@ -119,11 +119,14 @@ impl grpc_pb::MapReduceService for ClientService {
 
         info!("Attempting to cancel MapReduce: {}", job_id);
         let result = self.scheduler.cancel_job(job_id.as_ref());
-        if let Err(err) = result {
-            output_error(&err.chain_err(|| "Error cancelling MapReduce"));
-            return SingleResponse::err(Error::Other(JOB_CANCEL_ERROR));
-        }
-
+        let cancelled = match result {
+            Ok(success) => success,
+            Err(err) => {
+                output_error(&err.chain_err(|| "Error cancelling MapReduce"));
+                return SingleResponse::err(Error::Other(JOB_CANCEL_ERROR));
+            }
+        };
+        response.success = cancelled;
         SingleResponse::completed(response)
     }
 
