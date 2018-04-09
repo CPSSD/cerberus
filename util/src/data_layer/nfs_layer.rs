@@ -131,7 +131,13 @@ impl AbstractionLayer for NFSAbstractionLayer {
         fs::create_dir_all(&absolute_path.as_path()).chain_err(|| "Unable to create directories")
     }
 
-    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
+    fn get_data_closeness(
+        &self,
+        _path: &Path,
+        _chunk_start: u64,
+        _chunk_end: u64,
+        _worker_id: &str,
+    ) -> Result<u64> {
         // Each file is equally close on NFS
         Ok(1)
     }

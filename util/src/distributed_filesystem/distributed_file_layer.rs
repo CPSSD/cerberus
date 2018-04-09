@@ -258,7 +258,13 @@ impl AbstractionLayer for DFSAbstractionLayer {
         Ok(())
     }
 
-    fn get_file_closeness(&self, path: &Path, worker_id: &str) -> Result<u64> {
+    fn get_data_closeness(
+        &self,
+        path: &Path,
+        chunk_start: u64,
+        chunk_end: u64,
+        worker_id: &str,
+    ) -> Result<u64> {
         let file_chunks = self.master_interface
             .get_file_chunks(&path.to_string_lossy())
             .chain_err(|| "Could not get file locations")?;
@@ -267,7 +273,11 @@ impl AbstractionLayer for DFSAbstractionLayer {
 
         for chunk in file_chunks {
             if chunk.workers.contains(&worker_id.to_string()) {
-                score += 1;
+                if (chunk.start_byte >= chunk_start && chunk.start_byte <= chunk_end) ||
+                    (chunk.end_byte >= chunk_start && chunk.end_byte <= chunk_end)
+                {
+                    score += 1;
+                }
             }
         }
 

@@ -401,19 +401,19 @@ impl State {
     }
 
     fn get_data_score(&self, map_request: &pb::PerformMapRequest, worker_id: &str) -> Result<u64> {
-        let mut input_paths: Vec<String> = Vec::new();
-        for input_location in map_request.get_input().get_input_locations() {
-            input_paths.push(input_location.get_input_path().to_string());
-        }
-
         let mut score: u64 = 0;
-        for input_path in input_paths {
+        for input_location in map_request.get_input().get_input_locations() {
             score += self.data_layer
-                .get_file_closeness(Path::new(&input_path), worker_id)
+                .get_data_closeness(
+                    Path::new(&input_location.input_path),
+                    input_location.start_byte,
+                    input_location.end_byte,
+                    worker_id,
+                )
                 .chain_err(|| {
                     format!(
                         "Could not get closeness for file {} and worker {}",
-                        input_path,
+                        input_location.input_path,
                         worker_id
                     )
                 })?;

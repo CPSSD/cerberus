@@ -312,7 +312,13 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
     }
 
     // For S3 all files can be taken to be equally close to each worker.
-    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
+    fn get_data_closeness(
+        &self,
+        _path: &Path,
+        _chunk_start: u64,
+        _chunk_end: u64,
+        _worker_id: &str,
+    ) -> Result<u64> {
         Ok(1)
     }
 }
