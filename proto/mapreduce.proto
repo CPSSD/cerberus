@@ -38,6 +38,9 @@ message MapReduceRequest {
 
     // Priority of the MapReduce
     uint32 priority = 5;
+
+    // Size in megabytes of Map tasks
+    uint32 map_size = 6;
 }
 
 // Response from the master about the map reduce.

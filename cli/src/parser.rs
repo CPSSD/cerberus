@@ -49,6 +49,14 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                         .takes_value(true)
                         .required(false),
                 )
+                .arg(
+                    Arg::with_name("map_size")
+                    .long("map_size")
+                    .short("m")
+                    .help("Set the size of Map tasks in megabytes")
+                    .takes_value(true)
+                    .required(false),
+                )
         )
         .subcommand(
             SubCommand::with_name("cancel")

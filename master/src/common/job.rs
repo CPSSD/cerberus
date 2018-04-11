@@ -11,6 +11,8 @@ use util::data_layer::AbstractionLayer;
 use util::state::StateHandling;
 use cerberus_proto::mapreduce as pb;
 
+const MEGA_BYTE: u64 = 1000 * 1000;
+
 /// `JobOptions` stores arguments used to construct a `Job`.
 #[derive(Default)]
 pub struct JobOptions {
@@ -26,6 +28,8 @@ pub struct JobOptions {
     pub validate_paths: bool,
     /// Priority that should be applied to all tasks for the job.
     pub priority: u32,
+    /// Size of a Map task in megabytes.
+    pub map_size: u32,
 }
 
 impl From<pb::MapReduceRequest> for JobOptions {
@@ -41,6 +45,7 @@ impl From<pb::MapReduceRequest> for JobOptions {
             },
             validate_paths: true,
             priority: other.priority,
+            map_size: other.map_size,
         }
     }
 }
@@ -71,6 +76,9 @@ pub struct Job {
 
     /// Total CPU time used by the job.
     pub cpu_time: u64,
+
+    /// Size of a Map task in bytes
+    pub map_input_size: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -125,6 +133,8 @@ impl Job {
             time_completed: None,
 
             cpu_time: 0,
+
+            map_input_size: (options.map_size as u64) * MEGA_BYTE,
         })
     }
 
@@ -239,6 +249,9 @@ impl StateHandling<Error> for Job {
             priority: serde_json::from_value(data["priority"].clone()).chain_err(
                 || "Unable to convert priority",
             )?,
+            map_size: serde_json::from_value(data["map_size"].clone()).chain_err(
+                || "Unable to convert map_size",
+            )?,
         };
 
         let mut job = Job::new_no_validate(options).chain_err(
@@ -267,6 +280,7 @@ impl StateHandling<Error> for Job {
             "output_directory": self.output_directory,
 
             "priority": self.priority,
+            "map_size": self.map_input_size / MEGA_BYTE,
 
             "status": self.get_serializable_status(),
             "status_details": self.status_details,
@@ -372,6 +386,7 @@ mod tests {
             output_directory: Some("/tmp/output/".to_owned()),
             validate_paths: false,
             priority: 1,
+            map_size: 64,
         }).unwrap();
 
         assert_eq!("/tmp/input/output/", job1.output_directory);
