@@ -18,6 +18,7 @@ use util::output_error;
 
 // Default priority applied to scheduled jobs.
 const DEFAULT_PRIORITY: u32 = 3;
+const DEFAULT_MAP_SIZE: u32 = 64;
 
 #[derive(Clone)]
 struct ApiHandler {
@@ -121,6 +122,49 @@ impl ApiHandler {
         )))
     }
 
+    fn get_output_path(&self, req: &mut Request) -> Option<String> {
+        let output_path = self.get_parameter(req, "output_path").unwrap_or_else(
+            |_| "".to_string(),
+        );
+        if output_path.is_empty() {
+            None
+        } else {
+            Some(output_path)
+        }
+    }
+
+    fn get_priority(&self, req: &mut Request) -> Result<u32> {
+        let priority = self.get_parameter(req, "priority").unwrap_or_else(
+            |_| "".to_string(),
+        );
+        if priority.is_empty() {
+            Ok(DEFAULT_PRIORITY)
+        } else {
+            priority.parse::<u32>().chain_err(
+                || "Invalid priority when scheduling job",
+            )
+        }
+    }
+
+    fn get_map_size(&self, req: &mut Request) -> Result<u32> {
+        let map_size = self.get_parameter(req, "map_size").unwrap_or_else(
+            |_| "".to_string(),
+        );
+        let map_size = {
+            if map_size.is_empty() {
+                DEFAULT_MAP_SIZE
+            } else {
+                map_size.parse::<u32>().chain_err(
+                    || "Invalid map size when scheduling job",
+                )?
+            }
+        };
+        if map_size < 1 {
+            return Err("Map size must be greater than or equal to 1".into());
+        }
+        Ok(map_size)
+    }
+
     fn schedule_job(&self, req: &mut Request) -> Result<Response> {
         let binary_path = self.get_parameter(req, "binary_path").chain_err(
             || "Failed to get binary_path",
@@ -128,40 +172,23 @@ impl ApiHandler {
         let input_path = self.get_parameter(req, "input_path").chain_err(
             || "Failed to get input_path",
         )?;
-        let output_path = self.get_parameter(req, "output_path").unwrap_or_else(
-            |_| "".to_string(),
-        );
-        let priority = self.get_parameter(req, "priority").unwrap_or_else(
-            |_| "".to_string(),
-        );
-
-        let output_path = {
-            if output_path.is_empty() {
-                None
-            } else {
-                Some(output_path)
-            }
-        };
-
-        let priority = {
-            if priority.is_empty() {
-                DEFAULT_PRIORITY
-            } else {
-                priority.parse::<u32>().chain_err(
-                    || "Invalid priority when scheduling job",
-                )?
-            }
-        };
+        let priority = self.get_priority(req).chain_err(
+            || "Failed to get priority",
+        )?;
+        let map_size = self.get_map_size(req).chain_err(
+            || "Failed to get map size",
+        )?;
 
         let job_options = JobOptions {
             client_id: req.remote_addr.to_string(),
 
             binary_path,
             input_directory: input_path,
-            output_directory: output_path,
+            output_directory: self.get_output_path(req),
             validate_paths: true,
 
             priority,
+            map_size,
         };
 
         let job = Job::new(job_options, &self.data_abstraction_layer_arc)

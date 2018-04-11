@@ -8,8 +8,6 @@ use common::{Job, Task};
 use util::data_layer::AbstractionLayer;
 use errors::*;
 
-const MEGA_BYTE: u64 = 1000 * 1000;
-const MAP_INPUT_SIZE: u64 = MEGA_BYTE * 64;
 const CLOSEST_ENDLINE_STEP: u64 = 1000;
 const NEWLINE: u8 = 0x0A;
 
@@ -71,7 +69,11 @@ impl TaskProcessorImpl {
 
     /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     /// If a file can fit into one map task, it will not be split.
-    fn read_input_file(&self, input_file_path: &PathBuf) -> Result<Vec<pb::InputLocation>> {
+    fn read_input_file(
+        &self,
+        input_file_path: &PathBuf,
+        map_input_size: u64,
+    ) -> Result<Vec<pb::InputLocation>> {
         let input_path_str = input_file_path.to_str().ok_or("Invalid input file path.")?;
 
         let mut input_locations = Vec::new();
@@ -81,9 +83,9 @@ impl TaskProcessorImpl {
             .get_file_length(input_file_path)
             .chain_err(|| "Error reading input file")?;
 
-        while end_byte - start_byte > MAP_INPUT_SIZE {
+        while end_byte - start_byte > map_input_size {
             let new_start_byte =
-                self.get_closest_endline(input_file_path, start_byte, start_byte + MAP_INPUT_SIZE)
+                self.get_closest_endline(input_file_path, start_byte, start_byte + map_input_size)
                     .chain_err(|| "Error reading input file")?;
             let mut input_location = pb::InputLocation::new();
             input_location.set_input_path(input_path_str.to_owned());
@@ -106,11 +108,15 @@ impl TaskProcessorImpl {
     }
 
     /// `get_map_task_infos` reads a directory and creates a set of `MapTaskFileInformations`
-    fn get_map_task_infos(&self, input_directory: &Path) -> Result<Vec<MapTaskInformation>> {
+    fn get_map_task_infos(
+        &self,
+        input_directory: &Path,
+        map_input_size: u64,
+    ) -> Result<Vec<MapTaskInformation>> {
         let mut map_task_infos = Vec::new();
 
         let mut map_task_info = MapTaskInformation {
-            bytes_remaining: MAP_INPUT_SIZE,
+            bytes_remaining: map_input_size,
 
             input_locations: Vec::new(),
         };
@@ -128,7 +134,7 @@ impl TaskProcessorImpl {
                 .is_file(path.as_path())
                 .chain_err(|| "Failed to check if path is a file")?
             {
-                let input_locations = self.read_input_file(&path).chain_err(
+                let input_locations = self.read_input_file(&path, map_input_size).chain_err(
                     || "Error reading input file.",
                 )?;
 
@@ -138,7 +144,7 @@ impl TaskProcessorImpl {
                         map_task_infos.push(map_task_info);
 
                         map_task_info = MapTaskInformation {
-                            bytes_remaining: MAP_INPUT_SIZE,
+                            bytes_remaining: map_input_size,
                             input_locations: Vec::new(),
                         };
                     }
@@ -149,7 +155,7 @@ impl TaskProcessorImpl {
             }
         }
 
-        if map_task_info.bytes_remaining != MAP_INPUT_SIZE {
+        if map_task_info.bytes_remaining != map_input_size {
             map_task_infos.push(map_task_info);
         }
 
@@ -159,8 +165,9 @@ impl TaskProcessorImpl {
 
 impl TaskProcessor for TaskProcessorImpl {
     fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
-        let map_task_infos = self.get_map_task_infos(Path::new(&job.input_directory))
-            .chain_err(|| "Error creating map tasks")?;
+        let map_task_infos =
+            self.get_map_task_infos(Path::new(&job.input_directory), job.map_input_size)
+                .chain_err(|| "Error creating map tasks")?;
 
         // TODO(conor): Consider adding together any map tasks that can be combined here.
 
@@ -247,6 +254,7 @@ mod tests {
                 client_id: "test-client".to_owned(),
                 binary_path: "/tmp/bin".to_owned(),
                 input_directory: test_path.to_str().unwrap().to_owned(),
+                map_size: 64,
                 ..Default::default()
             },
             &data_abstraction_layer,
@@ -306,6 +314,7 @@ mod tests {
                 client_id: "test-client".to_owned(),
                 binary_path: "/tmp/bin".to_owned(),
                 input_directory: "/tmp/inputdir".to_owned(),
+                map_size: 64,
                 ..Default::default()
             },
             &data_abstraction_layer,

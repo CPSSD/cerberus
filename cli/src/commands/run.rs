@@ -11,6 +11,7 @@ use errors::*;
 
 // Default priority applied to jobs.
 const DEFAULT_PRIORITY: &str = "3";
+const DEFAULT_MAP_SIZE: &str = "64";
 
 fn verify_valid_path(path_str: &str) -> Result<String> {
     let path = Path::new(path_str);
@@ -52,6 +53,28 @@ fn get_priority(matches: &ArgMatches) -> Result<u32> {
     Ok(priority)
 }
 
+fn get_map_size(matches: &ArgMatches) -> Result<u32> {
+    let map_size_str = matches.value_of("map_size").unwrap_or(DEFAULT_MAP_SIZE);
+    let map_size: u32 = match map_size_str.parse() {
+        Ok(val) => val,
+        Err(err) => {
+            return Err(
+                format!(
+                    "Error occured while converting '{}' to a u32: {}",
+                    map_size_str,
+                    err
+                ).into(),
+            );
+        }
+    };
+    if map_size < 1 {
+        return Err(
+            "Map Size must be greater than or equal to 1 megabyte".into(),
+        );
+    }
+    Ok(map_size)
+}
+
 pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Result<()> {
     let mut input = matches
         .value_of("input")
@@ -74,6 +97,8 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         .chain_err(|| "Binary cannot be empty")?
         .to_owned();
 
+    let map_size: u32 = get_map_size(matches).chain_err(|| "Unable to get map size")?;
+
     binary = verify_valid_path(&binary).chain_err(
         || "Invalid binary path.",
     )?;
@@ -86,6 +111,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
     req.set_client_id(get_client_id()?);
     req.set_output_directory(output.to_owned());
     req.set_priority(priority);
+    req.set_map_size(map_size);
 
     let res = client
         .perform_map_reduce(RequestOptions::new(), req)

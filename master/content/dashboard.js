@@ -151,6 +151,7 @@ function processScheduleMapReduceForm(e) {
   var inputPath = encodeURIComponent($("#input").val());
   var outputPath = encodeURIComponent($("#output").val());
   var priority = encodeURIComponent($("#priority").val());
+  var map_size = encodeURIComponent($("#map_size").val());
 
   var submitButton = $("#submit-job");
   submitButton.attr("disabled", true);
@@ -179,7 +180,9 @@ function processScheduleMapReduceForm(e) {
     "binary_path=" + binaryPath +
     "&input_path=" + inputPath +
     "&output_path=" + outputPath +
-    "&priority=" + priority;
+    "&priority=" + priority +
+    "&map_size=" + map_size;
+
 
   $.ajax({
     url: requestUrl,
