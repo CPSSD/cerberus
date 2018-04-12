@@ -257,7 +257,7 @@ mod tests {
         let (_, mut item, _) = response.wait().unwrap();
         let status = item.reports.pop().unwrap().status;
 
-        assert_eq!(MapReduceStatus::IN_QUEUE, status)
+        assert_eq!(MapReduceStatus::SPLITTING_INPUT, status)
     }
 
     #[test]

@@ -14,6 +14,7 @@ fn print_table(rep: &pb::MapReduceReport) {
 
     let status: String = match rep.get_status() {
         pb::Status::UNKNOWN => "UNKNOWN".to_owned(),
+        pb::Status::SPLITTING_INPUT => "SPLITTING_INPUT".to_owned(),
         pb::Status::DONE => {
             let time_taken = rep.get_done_timestamp() - rep.get_started_timestamp();
             format!("DONE ({}s)", time_taken)

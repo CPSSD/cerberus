@@ -66,11 +66,12 @@ message MapReduceStatusResponse {
 
 enum Status {
     UNKNOWN = 0;
-    DONE = 1;
-    IN_PROGRESS = 2;
-    IN_QUEUE = 3;
-    FAILED = 4;
-    CANCELLED = 5;
+    SPLITTING_INPUT = 1;
+    IN_QUEUE = 2;
+    IN_PROGRESS = 3;
+    DONE = 4;
+    FAILED = 5;
+    CANCELLED = 6;
 };
 
 message MapReduceReport {

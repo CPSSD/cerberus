@@ -96,6 +96,35 @@ impl State {
         Ok(())
     }
 
+    pub fn input_splitting_complete(
+        &mut self,
+        job_id: &str,
+        map_tasks: HashMap<String, Task>,
+    ) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
+        };
+
+        if scheduled_job.job.status != pb::Status::CANCELLED {
+            scheduled_job.job.status = pb::Status::IN_QUEUE;
+            scheduled_job.job.map_tasks_total = map_tasks.len() as u32;
+            scheduled_job.tasks = map_tasks;
+        }
+        Ok(())
+    }
+
+    // Returns a vector of jobs in the SPLITTING_INPUT phase.
+    pub fn get_splitting_jobs(&self) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            if scheduled_job.job.status == pb::Status::SPLITTING_INPUT {
+                jobs.push(scheduled_job.job.clone());
+            }
+        }
+        jobs
+    }
+
     pub fn update_job_started(&mut self, job_id: &str, time_started: DateTime<Utc>) -> Result<()> {
         let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
             Some(scheduled_job) => scheduled_job,
@@ -298,8 +327,9 @@ impl State {
     pub fn get_job_queue_size(&self) -> u32 {
         let mut job_count = 0;
         for scheduled_job in self.scheduled_jobs.values() {
-            if scheduled_job.job.status == pb::Status::IN_PROGRESS ||
-                scheduled_job.job.status == pb::Status::IN_QUEUE
+            let status = scheduled_job.job.status;
+            if status == pb::Status::IN_PROGRESS || status == pb::Status::IN_QUEUE ||
+                status == pb::Status::SPLITTING_INPUT
             {
                 job_count += 1;
             }

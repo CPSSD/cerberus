@@ -85,11 +85,12 @@ pub struct Job {
 #[allow(non_camel_case_types)]
 /// `SerializableJobStatus` is the Serializable counterpart to `mapreduce_proto::Status`.
 pub enum SerializableJobStatus {
-    DONE,
-    IN_PROGRESS,
-    IN_QUEUE,
-    FAILED,
     UNKNOWN,
+    SPLITTING_INPUT,
+    IN_QUEUE,
+    IN_PROGRESS,
+    DONE,
+    FAILED,
     CANCELLED,
 }
 
@@ -119,7 +120,7 @@ impl Job {
 
             priority: options.priority,
 
-            status: pb::Status::IN_QUEUE,
+            status: pb::Status::SPLITTING_INPUT,
             status_details: None,
 
             map_tasks_completed: 0,
@@ -214,6 +215,7 @@ impl Job {
     fn status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
         match *state {
             SerializableJobStatus::DONE => pb::Status::DONE,
+            SerializableJobStatus::SPLITTING_INPUT => pb::Status::SPLITTING_INPUT,
             SerializableJobStatus::IN_PROGRESS => pb::Status::IN_PROGRESS,
             SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
             SerializableJobStatus::FAILED => pb::Status::FAILED,
@@ -225,6 +227,7 @@ impl Job {
     pub fn get_serializable_status(&self) -> SerializableJobStatus {
         match self.status {
             pb::Status::DONE => SerializableJobStatus::DONE,
+            pb::Status::SPLITTING_INPUT => SerializableJobStatus::SPLITTING_INPUT,
             pb::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
             pb::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
             pb::Status::FAILED => SerializableJobStatus::FAILED,
@@ -366,8 +369,8 @@ mod tests {
     #[test]
     fn test_defaults() {
         let job = Job::new_no_validate(get_test_job_options()).unwrap();
-        // Assert that the default status for a map reduce job is Queued.
-        assert_eq!(pb::Status::IN_QUEUE, job.status);
+        // Assert that the default status for a map reduce job is splitting input.
+        assert_eq!(pb::Status::SPLITTING_INPUT, job.status);
         // Assert that completed tasks starts at 0.
         assert_eq!(0, job.map_tasks_completed);
         assert_eq!(0, job.reduce_tasks_completed);
