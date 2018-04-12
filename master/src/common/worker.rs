@@ -35,6 +35,7 @@ pub struct Worker {
     pub operation_status: pb::OperationStatus,
     pub status_last_updated: DateTime<Utc>,
 
+    pub task_last_updated: DateTime<Utc>,
     pub current_task_id: String,
     pub worker_id: String,
 
@@ -59,6 +60,7 @@ impl Worker {
             operation_status: pb::OperationStatus::UNKNOWN,
             status_last_updated: Utc::now(),
 
+            task_last_updated: Utc::now(),
             current_task_id: String::new(),
             worker_id,
 
