@@ -135,10 +135,10 @@ fn create_reduce_input(
     let mut reduce_map: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
     let reduce_inputs = communication::fetch_reduce_inputs(
-        reduce_request.get_input_file_paths().clone().to_vec(),
-        output_uuid.to_string(),
-        resources.clone(),
-        reduce_request.task_id.to_string(),
+        reduce_request.get_input_file_paths().to_vec(),
+        output_uuid,
+        resources,
+        &reduce_request.task_id,
     ).chain_err(|| "Error fetching reduce inputs")?;
 
     for reduce_input in reduce_inputs {

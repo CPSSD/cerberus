@@ -134,7 +134,7 @@ impl Job {
 
             cpu_time: 0,
 
-            map_input_size: (options.map_size as u64) * MEGA_BYTE,
+            map_input_size: u64::from(options.map_size) * MEGA_BYTE,
         })
     }
 
