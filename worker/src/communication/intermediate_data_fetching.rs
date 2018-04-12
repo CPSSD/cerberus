@@ -10,17 +10,17 @@ const INPUT_FETCHING_CPU_POOL_SIZE: usize = 20;
 
 pub fn fetch_reduce_inputs(
     input_files: Vec<String>,
-    output_uuid: String,
-    resources: OperationResources,
-    task_id: String,
+    output_uuid: &str,
+    resources: &OperationResources,
+    task_id: &str,
 ) -> Result<Vec<String>> {
     let cpu_pool = CpuPool::new(INPUT_FETCHING_CPU_POOL_SIZE);
     let mut input_futures = Vec::new();
 
     for reduce_input_file in input_files {
-        let output_uuid = output_uuid.clone();
-        let resources = resources.clone();
-        let task_id = task_id.clone();
+        let output_uuid = output_uuid.to_string();
+        let resources = resources.to_owned();
+        let task_id = task_id.to_string();
 
         let input_future = cpu_pool.spawn_fn(move || {
             let reduce_input_result =
