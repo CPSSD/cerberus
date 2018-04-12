@@ -130,6 +130,11 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             || "Unable to get abstracted path",
         )?;
 
+
+        // This range includes the start/end byte. Since we don't want to include the end byte
+        // we subtract 1 here.
+        let range: String = format!("bytes={}-{}", start_byte, end_byte - 1);
+
         let request = rusoto_s3::GetObjectRequest {
             bucket: self.bucket.clone(),
             if_match: None,
@@ -138,7 +143,7 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             if_unmodified_since: None,
             key: abstracted_path,
             part_number: None,
-            range: None,
+            range: Some(range),
             request_payer: None,
             response_cache_control: None,
             response_content_disposition: None,
@@ -161,18 +166,11 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             None => return Err("Object has no body".into()),
         };
 
-        // TODO(rhino): Make this more efficient
         let result: Vec<u8> = streaming_body.concat2().wait().chain_err(
             || "Unable to get body of file",
         )?;
 
-        let mut bytes: Vec<u8> = vec![];
-        let start = start_byte as usize;
-        let end = end_byte as usize;
-
-        bytes.extend_from_slice(&result[start..end]);
-
-        Ok(bytes)
+        Ok(result)
     }
 
     fn write_file(&self, path: &Path, data: &[u8]) -> Result<()> {
