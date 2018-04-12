@@ -10,9 +10,6 @@ pub struct OperationState {
     // Initial CPU time of the current operation. This is used to calculate the total cpu time used
     // for an operation.
     pub initial_cpu_time: u64,
-
-    pub waiting_map_operations: usize,
-    pub intermediate_map_results: Vec<String>,
 }
 
 impl OperationState {
@@ -22,9 +19,6 @@ impl OperationState {
             operation_status: pb::OperationStatus::UNKNOWN,
 
             initial_cpu_time: 0,
-
-            waiting_map_operations: 0,
-            intermediate_map_results: Vec::new(),
         }
     }
 
