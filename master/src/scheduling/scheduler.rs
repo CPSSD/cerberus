@@ -141,32 +141,56 @@ impl Scheduler {
         thread::spawn(move || { worker_manager.run_task(task); });
     }
 
+    /// Splits the input for a job and schedules the map tasks in the background.
+    pub fn split_input(&self, job: Job) {
+        let state = Arc::clone(&self.state);
+        let worker_manager = Arc::clone(&self.worker_manager);
+        let task_processor = Arc::clone(&self.task_processor);
+
+        thread::spawn(move || {
+            info!("Splitting input for job with ID {}.", job.id);
+
+            let map_tasks_vec = match task_processor.create_map_tasks(&job) {
+                Ok(tasks) => tasks,
+                Err(err) => {
+                    output_error(&err.chain_err(|| "Error creating map tasks for job."));
+                    return;
+                }
+            };
+
+            let mut map_tasks: HashMap<String, Task> = HashMap::new();
+            for task in map_tasks_vec {
+                map_tasks.insert(task.id.to_owned(), task.clone());
+                let worker_manager = Arc::clone(&worker_manager);
+                thread::spawn(move || { worker_manager.run_task(task); });
+            }
+
+            info!("Starting job with ID {}.", job.id);
+
+            let mut state = state.lock().unwrap();
+            let result = state.input_splitting_complete(&job.id, map_tasks);
+            if let Err(err) = result {
+                output_error(&err.chain_err(|| "Error creating map tasks for job."));
+            }
+        });
+    }
+
     /// Schedule a [`Job`](common::Job) to be executed.
-    /// This function creates the map tasks before returning.
-    pub fn schedule_job(&self, mut job: Job) -> Result<()> {
-        let map_tasks_vec = self.task_processor.create_map_tasks(&job).chain_err(
-            || "Error creating map tasks for job.",
-        )?;
-
-        job.map_tasks_total = map_tasks_vec.len() as u32;
-
-        let mut map_tasks: HashMap<String, Task> = HashMap::new();
-        for task in map_tasks_vec {
-            self.schedule_task(task.clone());
-            map_tasks.insert(task.id.to_owned(), task);
-        }
-
-        info!("Starting job with ID {}.", job.id);
-
+    pub fn schedule_job(&self, job: Job) -> Result<()> {
         let scheduled_job = ScheduledJob {
-            job,
-            tasks: map_tasks,
+            job: job.clone(),
+            tasks: Default::default(),
         };
 
-        let mut state = self.state.lock().unwrap();
-        state.add_job(scheduled_job).chain_err(
-            || "Error adding scheduled job to state store",
-        )
+        {
+            let mut state = self.state.lock().unwrap();
+            state.add_job(scheduled_job).chain_err(
+                || "Error adding scheduled job to state store",
+            )?;
+        }
+
+        self.split_input(job);
+        Ok(())
     }
 
     pub fn cancel_job(&self, job_id: &str) -> Result<bool> {
@@ -311,6 +335,11 @@ impl SimpleStateHandling<Error> for Scheduler {
             if !self.worker_manager.has_task(&task.id) {
                 self.schedule_task(task.clone());
             }
+        }
+
+        let splitting_jobs = state.get_splitting_jobs();
+        for job in splitting_jobs {
+            self.split_input(job);
         }
 
         Ok(())
