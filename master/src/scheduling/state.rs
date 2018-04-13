@@ -174,6 +174,17 @@ impl State {
         jobs
     }
 
+    pub fn get_in_progress_jobs_mut(&mut self) -> Vec<&mut ScheduledJob> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values_mut() {
+            if scheduled_job.job.status == pb::Status::IN_PROGRESS {
+                jobs.push(scheduled_job);
+            }
+        }
+
+        jobs
+    }
+
     pub fn get_jobs(&self, client_id: &str) -> Vec<&Job> {
         let mut jobs = Vec::new();
         for scheduled_job in self.scheduled_jobs.values() {
@@ -266,11 +277,14 @@ impl State {
 
     // Adds the information for a completed task and updates the job.
     pub fn add_completed_task(&mut self, task: Task) -> Result<()> {
-        self.update_job_started(
-            &task.job_id,
-            task.time_started
-                .chain_err(|| "Time started is expected to exist.")?,
-        ).chain_err(|| "Error adding completed task.")?;
+        let time_started = task.time_started
+            .chain_err(|| "Time started is expected to exist.")?;
+
+        let task_running_seconds = task.get_seconds_running()
+            .chain_err(|| "Error getting seconds since task started running")?;
+
+        self.update_job_started(&task.job_id, time_started)
+            .chain_err(|| "Error adding completed task.")?;
 
         let scheduled_job = match self.scheduled_jobs.get_mut(&task.job_id) {
             Some(scheduled_job) => scheduled_job,
@@ -288,6 +302,7 @@ impl State {
                 TaskType::Map => {
                     if !task.has_completed_before {
                         scheduled_job.job.map_tasks_completed += 1;
+                        scheduled_job.job.map_tasks_seconds_taken += task_running_seconds;
                     }
                 }
                 TaskType::Reduce => {
@@ -297,6 +312,7 @@ impl State {
                     {
                         scheduled_job.job.status = pb::Status::DONE;
                         scheduled_job.job.time_completed = Some(Utc::now());
+                        scheduled_job.job.reduce_tasks_seconds_taken += task_running_seconds;
                     }
                 }
             }

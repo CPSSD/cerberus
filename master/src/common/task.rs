@@ -64,6 +64,9 @@ pub struct Task {
 
     pub time_started: Option<DateTime<Utc>>,
     pub time_completed: Option<DateTime<Utc>>,
+
+    // Used by the scheduler to manage which tasks have been requeued
+    pub requeued: bool,
 }
 
 impl Task {
@@ -106,6 +109,8 @@ impl Task {
 
             time_started: None,
             time_completed: None,
+
+            requeued: false,
         }
     }
 
@@ -118,6 +123,7 @@ impl Task {
         self.time_started = None;
         self.time_completed = None;
         self.has_completed_before = true;
+        self.requeued = false;
     }
 
     fn new_map_task_from_json(data: serde_json::Value) -> Result<Self> {
@@ -198,6 +204,8 @@ impl Task {
 
             time_started: None,
             time_completed: None,
+
+            requeued: false,
         }
     }
 
@@ -231,6 +239,22 @@ impl Task {
             .chain_err(|| "Unable to load Task from state")?;
 
         Ok(task)
+    }
+
+    pub fn get_seconds_running(&self) -> Result<u32> {
+        let time_started = self.time_started
+            .chain_err(|| "Time started is expected to exist.")?;
+
+        let time_now = Utc::now();
+
+        let seconds_running: u32 = (time_now.timestamp() - time_started.timestamp()) as u32;
+
+        // Round up to at least one second
+        if seconds_running == 0 {
+            Ok(1)
+        } else {
+            Ok(seconds_running)
+        }
     }
 }
 
@@ -300,6 +324,7 @@ impl StateHandling<Error> for Task {
             "time_started": time_started,
             "time_completed": time_completed,
             "job_priority": self.job_priority,
+            "requeued": self.requeued,
         }))
     }
 
@@ -353,6 +378,9 @@ impl StateHandling<Error> for Task {
                 Utc,
             )),
         };
+
+        self.requeued = serde_json::from_value(data["requeued"].clone())
+            .chain_err(|| "Unable to convert requeued")?;
 
         Ok(())
     }

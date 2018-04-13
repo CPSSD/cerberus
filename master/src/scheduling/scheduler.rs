@@ -1,17 +1,21 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{thread, time};
 
 use serde_json;
 
 use cerberus_proto::mapreduce as pb;
-use common::{Job, Task, TaskStatus};
+use common::{Job, Task, TaskStatus, TaskType};
 use errors::*;
 use scheduling::state::{ScheduledJob, State};
 use scheduling::task_processor::TaskProcessor;
 use util::output_error;
 use util::state::{SimpleStateHandling, StateHandling};
 use worker_management::WorkerManager;
+
+const SCHEDULER_LOOP_SLEEP_MS: u64 = 2000;
+const SLOW_TASK_COMPLETION_MINIMUM_PERCENTAGE: u32 = 60;
+const SLOW_TASK_COMPLETION_MULTIPLIER: u32 = 3;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
 ///
@@ -311,6 +315,79 @@ impl Scheduler {
 
         Ok(json!(results_vec))
     }
+
+    fn get_slow_tasks(
+        &self,
+        scheduled_job: &mut ScheduledJob,
+        task_type: TaskType,
+    ) -> Result<Vec<String>> {
+        let job = &mut scheduled_job.job;
+
+        let average_completion_time = {
+            match task_type {
+                TaskType::Map => job.map_tasks_seconds_taken / job.map_tasks_completed,
+                TaskType::Reduce => job.reduce_tasks_seconds_taken / job.reduce_tasks_completed,
+            }
+        };
+
+        let mut slow_tasks = Vec::new();
+
+        for task in scheduled_job.tasks.values_mut() {
+            if task.task_type == task_type {
+                if task.status == TaskStatus::InProgress && !task.requeued {
+                    let seconds_running = task.get_seconds_running()
+                        .chain_err(|| "Error getting seconds since task started running")?;
+
+                    if seconds_running > (average_completion_time * SLOW_TASK_COMPLETION_MULTIPLIER)
+                    {
+                        slow_tasks.push(task.id.clone());
+                        task.requeued = true;
+                    }
+                }
+            }
+        }
+
+        Ok(slow_tasks)
+    }
+
+    // Returns a vector of task_ids for tasks that have been running for more than
+    // SLOW_TASK_COMPLETION_MULTIPLIER times the average time for tasks of that job.
+    pub fn get_slow_running_tasks(&self) -> Result<Vec<String>> {
+        let mut state = self.state.lock().unwrap();
+        let mut scheduled_jobs = state.get_in_progress_jobs_mut();
+
+        let mut slow_tasks = Vec::new();
+
+        for mut job in scheduled_jobs.iter_mut() {
+            if job.job.map_tasks_completed != job.job.map_tasks_total {
+                let completed_percentage =
+                    (job.job.map_tasks_completed * 100) / job.job.map_tasks_total;
+
+                if completed_percentage > SLOW_TASK_COMPLETION_MINIMUM_PERCENTAGE {
+                    let slow_map_tasks = self.get_slow_tasks(&mut job, TaskType::Map).chain_err(
+                        || format!("Error getting slow map tasks for job {}", job.job.id),
+                    )?;
+                    slow_tasks.extend(slow_map_tasks);
+                }
+            } else if job.job.reduce_tasks_total != 0
+                && job.job.reduce_tasks_completed != job.job.reduce_tasks_total
+            {
+                let completed_percentage =
+                    (job.job.reduce_tasks_completed * 100) / job.job.reduce_tasks_total;
+
+                if completed_percentage > SLOW_TASK_COMPLETION_MINIMUM_PERCENTAGE {
+                    let slow_reduce_tasks = self.get_slow_tasks(&mut job, TaskType::Reduce)
+                        .chain_err(|| {
+                            format!("Error getting slow map tasks for job {}", job.job.id)
+                        })?;
+
+                    slow_tasks.extend(slow_reduce_tasks);
+                }
+            }
+        }
+
+        Ok(slow_tasks)
+    }
 }
 
 impl SimpleStateHandling<Error> for Scheduler {
@@ -341,7 +418,7 @@ impl SimpleStateHandling<Error> for Scheduler {
     }
 }
 
-pub fn run_task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
+fn task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
     let receiver = worker_manager.get_update_receiver();
     thread::spawn(move || loop {
         let receiver = receiver.lock().unwrap();
@@ -353,6 +430,28 @@ pub fn run_task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<Work
                     output_error(&e);
                 }
             }
+        }
+    });
+}
+
+pub fn run_scheduler_loop(scheduler: Arc<Scheduler>, worker_manager: Arc<WorkerManager>) {
+    // First start the task_update_loop
+    task_update_loop(Arc::clone(&scheduler), &worker_manager);
+
+    thread::spawn(move || loop {
+        thread::sleep(time::Duration::from_millis(SCHEDULER_LOOP_SLEEP_MS));
+
+        let slow_tasks_result = scheduler.get_slow_running_tasks();
+        match slow_tasks_result {
+            Ok(slow_tasks) => {
+                for task_id in slow_tasks.iter() {
+                    let requeue_result = worker_manager.requeue_slow_task(task_id);
+                    if let Err(err) = requeue_result {
+                        output_error(&err.chain_err(|| "Error requeuing slow task"));
+                    }
+                }
+            }
+            Err(err) => output_error(&err.chain_err(|| "Error getting slow running tasks")),
         }
     });
 }

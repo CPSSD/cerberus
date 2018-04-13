@@ -66,9 +66,11 @@ pub struct Job {
 
     pub map_tasks_completed: u32,
     pub map_tasks_total: u32,
+    pub map_tasks_seconds_taken: u32,
 
     pub reduce_tasks_completed: u32,
     pub reduce_tasks_total: u32,
+    pub reduce_tasks_seconds_taken: u32,
 
     pub time_requested: DateTime<Utc>,
     pub time_started: Option<DateTime<Utc>>,
@@ -125,9 +127,11 @@ impl Job {
 
             map_tasks_completed: 0,
             map_tasks_total: 0,
+            map_tasks_seconds_taken: 0,
 
             reduce_tasks_completed: 0,
             reduce_tasks_total: 0,
+            reduce_tasks_seconds_taken: 0,
 
             time_requested: Utc::now(),
             time_started: None,
@@ -281,9 +285,11 @@ impl StateHandling<Error> for Job {
 
             "map_tasks_completed": self.map_tasks_completed,
             "map_tasks_total": self.map_tasks_total,
+            "map_tasks_seconds_taken": self.map_tasks_seconds_taken,
 
             "reduce_tasks_completed": self.reduce_tasks_completed,
             "reduce_tasks_total": self.reduce_tasks_total,
+            "reduce_tasks_seconds_taken": self.reduce_tasks_seconds_taken,
 
             "time_requested": self.time_requested.timestamp(),
             "time_started": time_started,
@@ -304,12 +310,18 @@ impl StateHandling<Error> for Job {
             .chain_err(|| "Unable to convert map_tasks_complete")?;
         self.map_tasks_total = serde_json::from_value(data["map_tasks_total"].clone())
             .chain_err(|| "Unable to convert map_tasks_total")?;
+        self.map_tasks_seconds_taken =
+            serde_json::from_value(data["map_tasks_seconds_taken"].clone())
+                .chain_err(|| "Unable to convert map_tasks_seconds_taken")?;
 
         self.reduce_tasks_completed = serde_json::from_value(
             data["reduce_tasks_completed"].clone(),
         ).chain_err(|| "Unable to convert reduce_tasks_complete")?;
         self.reduce_tasks_total = serde_json::from_value(data["reduce_tasks_total"].clone())
             .chain_err(|| "Unable to convert reduce_tasks_total")?;
+        self.reduce_tasks_seconds_taken =
+            serde_json::from_value(data["reduce_tasks_seconds_taken"].clone())
+                .chain_err(|| "Unable to convert reduce_tasks_seconds_taken")?;
 
         let time_requested: i64 = serde_json::from_value(data["time_requested"].clone())
             .chain_err(|| "Unable to convert time_requested")?;

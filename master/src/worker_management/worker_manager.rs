@@ -377,6 +377,11 @@ impl WorkerManager {
         state.get_workers_running_job(job_id)
     }
 
+    pub fn requeue_slow_task(&self, task_id: &str) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.requeue_slow_task(task_id)
+    }
+
     pub fn get_workers_info(&self) -> Result<serde_json::Value> {
         let state = self.state.lock().unwrap();
 
