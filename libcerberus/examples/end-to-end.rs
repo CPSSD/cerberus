@@ -21,9 +21,10 @@ impl Map for TestMapper {
 
 struct TestReducer;
 impl Reduce<String, String> for TestReducer {
+    type Output = String;
     fn reduce<E>(&self, input: IntermediateInputKV<String, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<String>,
+        E: EmitFinal<Self::Output>,
     {
         emitter.emit(input.values.iter().fold(String::new(), |acc, x| acc + x))?;
         Ok(())

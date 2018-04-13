@@ -23,9 +23,10 @@ where
     K: Default + Serialize + DeserializeOwned,
     V: Default + Serialize + DeserializeOwned,
 {
+    type Output: Default + Serialize + DeserializeOwned;
     fn reduce<E>(&self, input: IntermediateInputKV<K, V>, emitter: E) -> Result<()>
     where
-        E: EmitFinal<V>;
+        E: EmitFinal<Self::Output>;
 }
 
 #[cfg(test)]
@@ -35,13 +36,14 @@ mod tests {
 
     struct TestReducer;
     impl Reduce<String, String> for TestReducer {
+        type Output = String;
         fn reduce<E>(
             &self,
             input: IntermediateInputKV<String, String>,
             mut emitter: E,
         ) -> Result<()>
         where
-            E: EmitFinal<String>,
+            E: EmitFinal<Self::Output>,
         {
             emitter.emit(input.values.iter().fold(String::new(), |acc, x| acc + x))?;
             Ok(())

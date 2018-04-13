@@ -123,9 +123,10 @@ impl Combine<String, String> for RatingByGenreCombiner {
 
 struct RatingByGenreReducer;
 impl Reduce<String, String> for RatingByGenreReducer {
+    type Output = String;
     fn reduce<E>(&self, input: IntermediateInputKV<String, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<String>,
+        E: EmitFinal<Self::Output>,
     {
         let combine_result = do_genre_combine(input)?;
 
