@@ -95,9 +95,9 @@ impl<'a, V: Default + Serialize> EmitFinal<V> for FinalOutputObjectEmitter<'a, V
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use serde_json;
     use std::collections::HashSet;
-    use super::*;
 
     // Test that the JSON serialisation of IntermediateOutputObject matches the libcerberus JSON
     // API.
@@ -119,12 +119,10 @@ mod tests {
         );
         partitions.insert(
             1,
-            vec![
-                IntermediateOutputPair {
-                    key: "foo_intermediate2",
-                    value: "bar",
-                },
-            ],
+            vec![IntermediateOutputPair {
+                key: "foo_intermediate2",
+                value: "bar",
+            }],
         );
 
         let output = IntermediateOutputObject { partitions };
@@ -144,7 +142,9 @@ mod tests {
     // Test that the JSON serialisation of FinalOutputObject matches the libcerberus JSON API.
     #[test]
     fn final_output_object_json_format() {
-        let output = FinalOutputObject { values: vec!["barbaz", "bazbar"] };
+        let output = FinalOutputObject {
+            values: vec!["barbaz", "bazbar"],
+        };
         let expected_json_string = r#"{"values":["barbaz","bazbar"]}"#;
 
         let json_string = serde_json::to_string(&output).unwrap();
@@ -155,7 +155,9 @@ mod tests {
     #[test]
     fn final_output_emitter_works() {
         let mut output = FinalOutputObject::default();
-        let expected_output = FinalOutputObject { values: vec!["foo", "bar"] };
+        let expected_output = FinalOutputObject {
+            values: vec!["foo", "bar"],
+        };
 
         {
             let mut emitter = FinalOutputObjectEmitter::new(&mut output);

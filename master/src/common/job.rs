@@ -1,15 +1,15 @@
 use errors::*;
-use std::sync::Arc;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 
 use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
+use cerberus_proto::mapreduce as pb;
 use util::data_layer::AbstractionLayer;
 use util::state::StateHandling;
-use cerberus_proto::mapreduce as pb;
 
 const MEGA_BYTE: u64 = 1000 * 1000;
 
@@ -144,14 +144,11 @@ impl Job {
         data_abstraction_layer: &Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<Self> {
         let validate_paths = options.validate_paths;
-        let job = Job::new_no_validate(options).chain_err(
-            || "Unable to create job",
-        )?;
+        let job = Job::new_no_validate(options).chain_err(|| "Unable to create job")?;
 
         if validate_paths {
-            job.validate_input(data_abstraction_layer).chain_err(
-                || "Error validating input",
-            )?;
+            job.validate_input(data_abstraction_layer)
+                .chain_err(|| "Error validating input")?;
         }
         Ok(job)
     }
@@ -162,19 +159,17 @@ impl Job {
     ) -> Result<()> {
         // Validate the existence of the input directory and the binary file.
         let input_path = Path::new(&self.input_directory);
-        let is_dir = data_abstraction_layer.is_dir(input_path).chain_err(
-            || "Error checking if path is a directory",
-        )?;
+        let is_dir = data_abstraction_layer
+            .is_dir(input_path)
+            .chain_err(|| "Error checking if path is a directory")?;
         if !is_dir {
-            return Err(
-                format!("Input directory does not exist: {:?}", input_path).into(),
-            );
+            return Err(format!("Input directory does not exist: {:?}", input_path).into());
         }
 
         let binary_path = Path::new(&self.binary_path);
-        let is_file = data_abstraction_layer.is_file(binary_path).chain_err(
-            || "Error checking if path is a file",
-        )?;
+        let is_file = data_abstraction_layer
+            .is_file(binary_path)
+            .chain_err(|| "Error checking if path is a file")?;
         if !is_file {
             return Err(format!("Binary does not exist: {:?}", binary_path).into());
         }
@@ -198,12 +193,11 @@ impl Job {
             .stderr(Stdio::piped())
             .spawn()
             .chain_err(|| "Unable to run sanity-check on binary")?;
-        let output = child.wait_with_output().chain_err(
-            || "Error waiting for output from binary",
-        )?;
-        let output_str = String::from_utf8(output.stdout).chain_err(
-            || "Unable to read output from binary",
-        )?;
+        let output = child
+            .wait_with_output()
+            .chain_err(|| "Error waiting for output from binary")?;
+        let output_str =
+            String::from_utf8(output.stdout).chain_err(|| "Unable to read output from binary")?;
 
         if output_str.contains("sanity located") {
             Ok(())
@@ -249,17 +243,14 @@ impl StateHandling<Error> for Job {
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
             validate_paths: false,
-            priority: serde_json::from_value(data["priority"].clone()).chain_err(
-                || "Unable to convert priority",
-            )?,
-            map_size: serde_json::from_value(data["map_size"].clone()).chain_err(
-                || "Unable to convert map_size",
-            )?,
+            priority: serde_json::from_value(data["priority"].clone())
+                .chain_err(|| "Unable to convert priority")?,
+            map_size: serde_json::from_value(data["map_size"].clone())
+                .chain_err(|| "Unable to convert map_size")?,
         };
 
-        let mut job = Job::new_no_validate(options).chain_err(
-            || "Unable to create map reduce job",
-        )?;
+        let mut job =
+            Job::new_no_validate(options).chain_err(|| "Unable to create map reduce job")?;
 
         job.load_state(data).chain_err(|| "Unable to load state")?;
 
@@ -301,14 +292,10 @@ impl StateHandling<Error> for Job {
     }
 
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
-        self.id = serde_json::from_value(data["id"].clone()).chain_err(
-            || "Unable to convert id",
-        )?;
+        self.id = serde_json::from_value(data["id"].clone()).chain_err(|| "Unable to convert id")?;
 
-        let status: SerializableJobStatus =
-            serde_json::from_value(data["status"].clone()).chain_err(
-                || "Unable to convert mapreduce status",
-            )?;
+        let status: SerializableJobStatus = serde_json::from_value(data["status"].clone())
+            .chain_err(|| "Unable to convert mapreduce status")?;
         self.status = self.status_from_state(&status);
         self.status_details = serde_json::from_value(data["status_details"].clone())
             .chain_err(|| "Unable to convert status_details.")?;

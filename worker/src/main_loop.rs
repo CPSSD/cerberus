@@ -1,5 +1,5 @@
-use std::{thread, time};
 use std::net::SocketAddr;
+use std::{thread, time};
 
 use errors::*;
 use initialization::{register_worker, WorkerResources};
@@ -45,9 +45,10 @@ pub fn run_main_loop(mut resources: WorkerResources, local_addr: SocketAddr) -> 
         if resources.state_handler.get_should_dump_state() {
             iterations_since_state_dump += 1;
             if iterations_since_state_dump * MAIN_LOOP_SLEEP_MS >= DUMP_LOOP_MS {
-                resources.state_handler.dump_state().chain_err(
-                    || "Unable to dump state",
-                )?;
+                resources
+                    .state_handler
+                    .dump_state()
+                    .chain_err(|| "Unable to dump state")?;
                 iterations_since_state_dump = 0
             }
         }

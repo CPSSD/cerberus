@@ -7,15 +7,15 @@ use std::thread;
 
 use serde_json;
 
-use errors::*;
-use communication;
-use communication::MasterInterface;
 use super::io;
 use super::operation_handler;
 use super::operation_handler::OperationResources;
 use super::state::OperationState;
-use util::output_error;
+use communication;
+use communication::MasterInterface;
+use errors::*;
 use util::data_layer::AbstractionLayer;
+use util::output_error;
 
 use cerberus_proto::worker as pb;
 
@@ -62,27 +62,22 @@ fn run_reducer(
         return Err("Error accessing stdin of payload binary.".into());
     }
 
-    let output = child.wait_with_output().chain_err(
-        || "Error waiting for payload result.",
-    )?;
+    let output = child
+        .wait_with_output()
+        .chain_err(|| "Error waiting for payload result.")?;
 
-    let output_str = String::from_utf8(output.stdout).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let output_str =
+        String::from_utf8(output.stdout).chain_err(|| "Error accessing payload output.")?;
 
-    let stderr_str = String::from_utf8(output.stderr).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let stderr_str =
+        String::from_utf8(output.stderr).chain_err(|| "Error accessing payload output.")?;
 
     if !stderr_str.is_empty() {
-        return Err(
-            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
-        );
+        return Err(format!("MapReduce binary failed with stderr:\n {}", stderr_str).into());
     }
 
-    let reduce_output: serde_json::Value = serde_json::from_str(&output_str).chain_err(
-        || "Error parsing reduce results.",
-    )?;
+    let reduce_output: serde_json::Value =
+        serde_json::from_str(&output_str).chain_err(|| "Error parsing reduce results.")?;
 
     let mut reduce_results = Vec::new();
     if let serde_json::Value::Array(ref reduce_outputs) = reduce_output {
@@ -142,13 +137,12 @@ fn create_reduce_input(
     ).chain_err(|| "Error fetching reduce inputs")?;
 
     for reduce_input in reduce_inputs {
-        let parsed_value: serde_json::Value = serde_json::from_str(&reduce_input).chain_err(
-            || "Error parsing reduce input",
-        )?;
+        let parsed_value: serde_json::Value =
+            serde_json::from_str(&reduce_input).chain_err(|| "Error parsing reduce input")?;
 
-        let parsed_object = parsed_value.as_object().chain_err(
-            || "Error parsing reduce input",
-        )?;
+        let parsed_object = parsed_value
+            .as_object()
+            .chain_err(|| "Error parsing reduce input")?;
 
         for (key, values) in parsed_object.iter() {
             let key = key.to_string();
@@ -165,9 +159,8 @@ fn create_reduce_input(
 
     let mut reduce_operations: Vec<ReduceInput> = Vec::new();
     for (intermediate_key, reduce_array) in reduce_map {
-        let key_value: serde_json::Value = serde_json::from_str(&intermediate_key).chain_err(
-            || "Error parsing intermediate_key",
-        )?;
+        let key_value: serde_json::Value =
+            serde_json::from_str(&intermediate_key).chain_err(|| "Error parsing intermediate_key")?;
 
         let reduce_operation = ReduceInput {
             key: key_value,
@@ -279,9 +272,8 @@ fn write_reduce_output(
         .create_dir_all(Path::new(&reduce_options.output_directory))
         .chain_err(|| "Failed to create output directory")?;
 
-    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results).chain_err(
-        || "Error prettifying reduce results",
-    )?;
+    let reduce_results_pretty: String = serde_json::to_string_pretty(&reduce_results)
+        .chain_err(|| "Error prettifying reduce results")?;
 
     let mut file_path = PathBuf::new();
     file_path.push(reduce_options.output_directory.clone());
@@ -311,8 +303,7 @@ fn run_reduce(
         if operation_handler::check_task_cancelled(
             &resources.operation_state,
             &reduce_options.task_id,
-        )
-        {
+        ) {
             return;
         }
 

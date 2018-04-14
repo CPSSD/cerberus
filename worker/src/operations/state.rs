@@ -1,4 +1,3 @@
-
 use cerberus_proto::worker as pb;
 
 /// `OperationState` is a data only struct for holding the current state for the `OperationHandler`

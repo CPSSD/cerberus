@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
-use protobuf::repeated::RepeatedField;
 use chrono::prelude::*;
+use protobuf::repeated::RepeatedField;
 use serde_json;
 use uuid::Uuid;
 
@@ -124,9 +124,8 @@ impl Task {
         let request_data = data["request"].clone();
 
         // Create a basic Map task.
-        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
-            || "Unable to convert job_id",
-        )?;
+        let id: String = serde_json::from_value(data["job_id"].clone())
+            .chain_err(|| "Unable to convert job_id")?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
         let input_locations: Vec<InputLocation> = serde_json::from_value(
@@ -151,9 +150,8 @@ impl Task {
         let mut task = Task::new_map_task(id, binary_path, input_locations_pb, job_priority);
 
         // Update the state.
-        task.load_state(data).chain_err(
-            || "Unable to load Task from state",
-        )?;
+        task.load_state(data)
+            .chain_err(|| "Unable to load Task from state")?;
 
         Ok(task)
     }
@@ -211,9 +209,8 @@ impl Task {
         let input_files: Vec<String> = serde_json::from_value(request_data["input_files"].clone())
             .chain_err(|| "Unable to convert input_files")?;
 
-        let id: String = serde_json::from_value(data["job_id"].clone()).chain_err(
-            || "Unable to convert job_id",
-        )?;
+        let id: String = serde_json::from_value(data["job_id"].clone())
+            .chain_err(|| "Unable to convert job_id")?;
         let binary_path: String = serde_json::from_value(request_data["binary_path"].clone())
             .chain_err(|| "Unable to convert binary_path")?;
         let output_dir: String = serde_json::from_value(request_data["output_directory"].clone())
@@ -230,9 +227,8 @@ impl Task {
             job_priority,
         );
 
-        task.load_state(data).chain_err(
-            || "Unable to load Task from state",
-        )?;
+        task.load_state(data)
+            .chain_err(|| "Unable to load Task from state")?;
 
         Ok(task)
     }
@@ -251,43 +247,35 @@ impl StateHandling<Error> for Task {
 
     fn dump_state(&self) -> Result<serde_json::Value> {
         let request = match self.task_type {
-            TaskType::Map => {
-                match self.map_request {
-                    Some(ref req) => {
-                        let input_locations: Vec<InputLocation> = req.get_input()
-                            .get_input_locations()
-                            .into_iter()
-                            .map(|loc| {
-                                InputLocation {
-                                    input_path: loc.input_path.clone(),
-                                    start_byte: loc.start_byte,
-                                    end_byte: loc.end_byte,
-                                }
-                            })
-                            .collect();
+            TaskType::Map => match self.map_request {
+                Some(ref req) => {
+                    let input_locations: Vec<InputLocation> = req.get_input()
+                        .get_input_locations()
+                        .into_iter()
+                        .map(|loc| InputLocation {
+                            input_path: loc.input_path.clone(),
+                            start_byte: loc.start_byte,
+                            end_byte: loc.end_byte,
+                        })
+                        .collect();
 
-                        json!({
+                    json!({
                             "input_locations": input_locations,
                             "binary_path":req.mapper_file_path,
                         })
-                    }
-                    None => return Err("Unable to serialize map_request".into()),
                 }
-            }
+                None => return Err("Unable to serialize map_request".into()),
+            },
 
-            TaskType::Reduce => {
-                match self.reduce_request {
-                    Some(ref req) => {
-                        json!({
+            TaskType::Reduce => match self.reduce_request {
+                Some(ref req) => json!({
                             "input_partition": req.partition,
                             "input_files": req.input_file_paths.clone().into_vec(),
                             "binary_path": req.reducer_file_path,
                             "output_directory": req.output_directory,
-                        })
-                    }
-                    None => return Err("Unable to serialize reduce_request".into()),
-                }
-            }
+                        }),
+                None => return Err("Unable to serialize reduce_request".into()),
+            },
         };
 
         let time_started = match self.time_started {
@@ -316,22 +304,20 @@ impl StateHandling<Error> for Task {
     }
 
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
-        self.id = serde_json::from_value(data["id"].clone()).chain_err(
-            || "Unable to convert id",
-        )?;
+        self.id = serde_json::from_value(data["id"].clone()).chain_err(|| "Unable to convert id")?;
 
         match self.task_type {
             TaskType::Map => {
-                let mut map_request = self.map_request.clone().chain_err(
-                    || "Map Request should exist",
-                )?;
+                let mut map_request = self.map_request
+                    .clone()
+                    .chain_err(|| "Map Request should exist")?;
                 map_request.task_id = self.id.clone();
                 self.map_request = Some(map_request);
             }
             TaskType::Reduce => {
-                let mut reduce_request = self.reduce_request.clone().chain_err(
-                    || "Reduce Request should exist",
-                )?;
+                let mut reduce_request = self.reduce_request
+                    .clone()
+                    .chain_err(|| "Reduce Request should exist")?;
                 reduce_request.task_id = self.id.clone();
                 self.reduce_request = Some(reduce_request);
             }
@@ -341,9 +327,8 @@ impl StateHandling<Error> for Task {
             .chain_err(|| "Unable to convert map_output_files")?;
         self.assigned_worker_id = serde_json::from_value(data["assigned_worker_id"].clone())
             .chain_err(|| "Unable to convert assigned_worker_id")?;
-        self.status = serde_json::from_value(data["status"].clone()).chain_err(
-            || "Unable to convert status",
-        )?;
+        self.status = serde_json::from_value(data["status"].clone())
+            .chain_err(|| "Unable to convert status")?;
         self.failure_count = serde_json::from_value(data["failure_count"].clone())
             .chain_err(|| "Unable to convert failure_count")?;
         self.failure_details = serde_json::from_value(data["failure_details"].clone())
@@ -445,8 +430,10 @@ mod tests {
         let map_request = map_task.map_request.unwrap();
 
         assert_eq!("/tmp/bin", map_request.get_mapper_file_path());
-        assert_eq!("/tmp/input/file1", map_request.get_input().get_input_locations()[0]
-            .input_path);
+        assert_eq!(
+            "/tmp/input/file1",
+            map_request.get_input().get_input_locations()[0].input_path
+        );
         assert!(map_task.reduce_request.is_none());
     }
 
@@ -479,16 +466,14 @@ mod tests {
 
         let mut map_task = Task::new_map_task("map-1", "/tmp/bin", vec![input_location], 1);
 
-        map_task.map_output_files.insert(
-            0,
-            "output_file_1".to_owned(),
-        );
+        map_task
+            .map_output_files
+            .insert(0, "output_file_1".to_owned());
         assert_eq!("output_file_1", &map_task.map_output_files[&0]);
 
-        map_task.map_output_files.insert(
-            1,
-            "output_file_2".to_owned(),
-        );
+        map_task
+            .map_output_files
+            .insert(1, "output_file_2".to_owned());
         assert_eq!("output_file_1", &map_task.map_output_files[&0]);
         assert_eq!("output_file_2", &map_task.map_output_files[&1]);
     }

@@ -53,9 +53,9 @@ impl Map for RatingByYearMapper {
             let movie_title = info[0][1..(info[0].len() - 1)].trim().to_owned();
             let rating: f64 = info[2].parse().chain_err(|| "Error parsing movie rating")?;
 
-            emitter.emit(movie_title, rating).chain_err(
-                || "Error emitting map key-value pair.",
-            )?;
+            emitter
+                .emit(movie_title, rating)
+                .chain_err(|| "Error emitting map key-value pair.")?;
         }
         Ok(())
     }
@@ -66,9 +66,9 @@ impl Partition<String, f64> for RatingByYearPartitioner {
     fn partition(&self, input: PartitionInputKV<String, f64>) -> Result<u64> {
         let key = input.key;
         let year_str = key[(key.len() - 5)..(key.len() - 1)].to_owned();
-        let partition: u64 = year_str.parse().chain_err(|| {
-            format!("Error getting year from movie title {}, {}", key, year_str)
-        })?;
+        let partition: u64 = year_str
+            .parse()
+            .chain_err(|| format!("Error getting year from movie title {}, {}", key, year_str))?;
 
         Ok(partition)
     }
@@ -89,9 +89,7 @@ impl Reduce<String, f64> for RatingByYearReducer {
 }
 
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    env_logger::init().chain_err(|| "Failed to initialise logging.")?;
 
     let rby_mapper = RatingByYearMapper;
     let rby_reducer = RatingByYearReducer;

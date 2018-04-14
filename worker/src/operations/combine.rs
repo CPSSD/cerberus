@@ -4,8 +4,8 @@ use std::process::{Command, Stdio};
 
 use serde_json;
 
-use errors::*;
 use super::operation_handler::{OperationResources, PartitionMap};
+use errors::*;
 
 #[derive(Serialize)]
 struct CombineInput {
@@ -33,9 +33,8 @@ fn do_combine_operation(
     resources: &OperationResources,
     combine_input: &[CombineInput],
 ) -> Result<serde_json::Value> {
-    let combine_input_str = serde_json::to_string(&combine_input).chain_err(
-        || "Error seralizing combine operation input.",
-    )?;
+    let combine_input_str = serde_json::to_string(&combine_input)
+        .chain_err(|| "Error seralizing combine operation input.")?;
 
     let absolute_binary_path = resources
         .data_abstraction_layer
@@ -50,34 +49,29 @@ fn do_combine_operation(
         .chain_err(|| "Failed to start combine operation process.")?;
 
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(combine_input_str.as_bytes()).chain_err(
-            || "Error writing to payload stdin.",
-        )?;
+        stdin
+            .write_all(combine_input_str.as_bytes())
+            .chain_err(|| "Error writing to payload stdin.")?;
     } else {
         return Err("Error accessing stdin of payload binary.".into());
     }
 
-    let output = child.wait_with_output().chain_err(
-        || "Error waiting for payload result.",
-    )?;
+    let output = child
+        .wait_with_output()
+        .chain_err(|| "Error waiting for payload result.")?;
 
-    let output_str = String::from_utf8(output.stdout).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let output_str =
+        String::from_utf8(output.stdout).chain_err(|| "Error accessing payload output.")?;
 
-    let stderr_str = String::from_utf8(output.stderr).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let stderr_str =
+        String::from_utf8(output.stderr).chain_err(|| "Error accessing payload output.")?;
 
     if !stderr_str.is_empty() {
-        return Err(
-            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
-        );
+        return Err(format!("MapReduce binary failed with stderr:\n {}", stderr_str).into());
     }
 
-    let combine_results: serde_json::Value = serde_json::from_str(&output_str).chain_err(
-        || "Error parsing combine results.",
-    )?;
+    let combine_results: serde_json::Value =
+        serde_json::from_str(&output_str).chain_err(|| "Error parsing combine results.")?;
 
     Ok(combine_results)
 }
@@ -105,16 +99,15 @@ fn run_combine(resources: &OperationResources, partition_map: &mut PartitionMap)
             continue;
         }
 
-        let results = do_combine_operation(resources, &combine_inputs).chain_err(
-            || "Failed to run combine operation.",
-        )?;
+        let results = do_combine_operation(resources, &combine_inputs)
+            .chain_err(|| "Failed to run combine operation.")?;
 
         // Use results of combine operations.
         if let serde_json::Value::Array(results) = results {
             for (i, result) in results.iter().enumerate() {
-                let values = kv_map.get_mut(&combine_keys[i]).chain_err(
-                    || "Error running combine",
-                )?;
+                let values = kv_map
+                    .get_mut(&combine_keys[i])
+                    .chain_err(|| "Error running combine")?;
 
                 values.clear();
 
@@ -139,9 +132,8 @@ pub fn optional_run_combine(
     resources: &OperationResources,
     partition_map: &mut PartitionMap,
 ) -> Result<()> {
-    let has_combine = check_has_combine(resources).chain_err(
-        || "Error running has-combine command.",
-    )?;
+    let has_combine =
+        check_has_combine(resources).chain_err(|| "Error running has-combine command.")?;
 
     if has_combine {
         return run_combine(resources, partition_map);

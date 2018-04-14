@@ -57,9 +57,9 @@ impl Map for RatingByGenreMapper {
 
             let movie_genres = movie_genre_str.split('|');
             let rating: f64 = info[2].parse().chain_err(|| "Error parsing movie rating")?;
-            let rating_count: u64 = info[3].parse().chain_err(
-                || "Error parsing movie rating count",
-            )?;
+            let rating_count: u64 = info[3]
+                .parse()
+                .chain_err(|| "Error parsing movie rating count")?;
 
             if rating_count > MIN_RATING_COUNT {
                 let rating_pair = format!("\"{}\",{}", movie_title, rating);
@@ -111,12 +111,11 @@ impl Combine<String, String> for RatingByGenreCombiner {
 
         let rating_pair = format!(
             "\"{}\",{}",
-            combine_result.best_title,
-            combine_result.best_rating
+            combine_result.best_title, combine_result.best_rating
         );
-        emitter.emit(rating_pair).chain_err(
-            || "Error emitting value",
-        )?;
+        emitter
+            .emit(rating_pair)
+            .chain_err(|| "Error emitting value")?;
 
         Ok(())
     }
@@ -130,9 +129,9 @@ impl Reduce<String, String> for RatingByGenreReducer {
     {
         let combine_result = do_genre_combine(input)?;
 
-        emitter.emit(combine_result.best_title).chain_err(
-            || "Error emitting value",
-        )?;
+        emitter
+            .emit(combine_result.best_title)
+            .chain_err(|| "Error emitting value")?;
         emitter
             .emit(combine_result.best_rating.to_string())
             .chain_err(|| "Error emitting value")?;
@@ -142,9 +141,7 @@ impl Reduce<String, String> for RatingByGenreReducer {
 }
 
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    env_logger::init().chain_err(|| "Failed to initialise logging.")?;
 
     let rbg_mapper = RatingByGenreMapper;
     let rbg_reducer = RatingByGenreReducer;

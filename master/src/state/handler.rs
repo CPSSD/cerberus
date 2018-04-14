@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::fs::File;
 use std::fs;
+use std::fs::File;
 use std::io::{Read, Write};
+use std::sync::Arc;
 
 use serde_json;
 use serde_json::Value as json;
@@ -29,9 +29,7 @@ impl StateHandler {
         dir: &str,
     ) -> Result<Self> {
         if should_dump_state {
-            fs::create_dir_all(dir).chain_err(|| {
-                format!("Unable to create dir: {}", dir)
-            })?;
+            fs::create_dir_all(dir).chain_err(|| format!("Unable to create dir: {}", dir))?;
         }
 
         Ok(StateHandler {
@@ -46,22 +44,20 @@ impl StateHandler {
 
     pub fn dump_state(&self) -> Result<()> {
         // Get Scheduler state as JSON.
-        let scheduler_json = self.scheduler.dump_state().chain_err(
-            || "Unable to dump Scheduler state",
-        )?;
+        let scheduler_json = self.scheduler
+            .dump_state()
+            .chain_err(|| "Unable to dump Scheduler state")?;
 
         // Get WorkerManager state as JSON.
-        let worker_manager_json = self.worker_manager.dump_state().chain_err(
-            || "Unable to dump WorkerManager state",
-        )?;
+        let worker_manager_json = self.worker_manager
+            .dump_state()
+            .chain_err(|| "Unable to dump WorkerManager state")?;
 
         // Get the filesystem manager state as JSON.
         let filesystem_manager_json = match self.filesystem_manager {
-            Some(ref filesystem_manager) => {
-                filesystem_manager.dump_state().chain_err(
-                    || "Unable to dump FileSystemManager state",
-                )?
-            }
+            Some(ref filesystem_manager) => filesystem_manager
+                .dump_state()
+                .chain_err(|| "Unable to dump FileSystemManager state")?,
             None => json!(null),
         };
 
@@ -74,9 +70,8 @@ impl StateHandler {
         // Write the state to file.
         let mut file = File::create(format!("{}/temp.dump", self.dump_dir))
             .chain_err(|| "Unable to create file")?;
-        file.write_all(json.to_string().as_bytes()).chain_err(
-            || "Unable to write data",
-        )?;
+        file.write_all(json.to_string().as_bytes())
+            .chain_err(|| "Unable to write data")?;
 
         fs::rename(
             format!("{}/temp.dump", self.dump_dir),
@@ -91,13 +86,11 @@ impl StateHandler {
         let mut file = File::open(format!("{}/master.dump", self.dump_dir))
             .chain_err(|| "Unable to open file")?;
         let mut data = String::new();
-        file.read_to_string(&mut data).chain_err(
-            || "Unable to read from state file",
-        )?;
+        file.read_to_string(&mut data)
+            .chain_err(|| "Unable to read from state file")?;
 
-        let json: serde_json::Value = serde_json::from_str(&data).chain_err(
-            || "Unable to parse string as JSON",
-        )?;
+        let json: serde_json::Value =
+            serde_json::from_str(&data).chain_err(|| "Unable to parse string as JSON")?;
 
         // Worker manager state needs to be reset first so that the scheduler knows what tasks it
         // doesn't need to reschedule.
@@ -117,9 +110,9 @@ impl StateHandler {
             return Err("Unable to retrieve Scheduler state from JSON".into());
         }
 
-        self.scheduler.load_state(scheduler_json).chain_err(
-            || "Error reloading scheduler state",
-        )?;
+        self.scheduler
+            .load_state(scheduler_json)
+            .chain_err(|| "Error reloading scheduler state")?;
 
         // Reset file system manager state from json.
         let filesystem_manager_json = json["filesystem_manager"].clone();

@@ -2,10 +2,10 @@ use chrono::Local;
 use clap::ArgMatches;
 use grpc::RequestOptions;
 
-use common::get_client_id;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService;
+use common::get_client_id;
 use errors::*;
 
 fn print_table(rep: &pb::MapReduceReport) {
@@ -19,12 +19,10 @@ fn print_table(rep: &pb::MapReduceReport) {
             let time_taken = rep.get_done_timestamp() - rep.get_started_timestamp();
             format!("DONE ({}s)", time_taken)
         }
-        pb::Status::IN_PROGRESS => {
-            format!(
-                "IN_PROGRESS ({})",
-                get_time_offset(rep.get_started_timestamp())
-            )
-        }
+        pb::Status::IN_PROGRESS => format!(
+            "IN_PROGRESS ({})",
+            get_time_offset(rep.get_started_timestamp())
+        ),
         pb::Status::IN_QUEUE => format!("IN_QUEUE ({})", rep.get_queue_length()),
         pb::Status::FAILED => format!("FAILED\n{}", rep.get_failure_details()).to_owned(),
         pb::Status::CANCELLED => "CANCELLED".to_owned(),

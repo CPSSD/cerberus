@@ -1,9 +1,9 @@
 use bson;
 use errors::*;
-use mapper::MapInputKV;
 use intermediate::IntermediateInputKV;
-use serde::Serialize;
+use mapper::MapInputKV;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json;
 use serialise::{FinalOutputObject, IntermediateOutputObject};
 use std::io::{Read, Write};
@@ -13,9 +13,8 @@ use std::io::{Read, Write};
 /// It attempts to parse the string from the input source as BSON and returns an `errors::Error` if
 /// the attempt fails.
 pub fn read_map_input<R: Read>(source: &mut R) -> Result<MapInputKV> {
-    let bson_document = bson::decode_document(source).chain_err(
-        || "Error parsing input BSON from source.",
-    )?;
+    let bson_document =
+        bson::decode_document(source).chain_err(|| "Error parsing input BSON from source.")?;
 
     let map_input = bson::from_bson(bson::Bson::Document(bson_document))
         .chain_err(|| "Error parsing input BSON as MapInputKV.")?;
@@ -34,22 +33,20 @@ where
     V: Default + Serialize + DeserializeOwned,
 {
     let mut input_string = String::new();
-    let bytes_read = source.read_to_string(&mut input_string).chain_err(
-        || "Error reading from source.",
-    )?;
+    let bytes_read = source
+        .read_to_string(&mut input_string)
+        .chain_err(|| "Error reading from source.")?;
     if bytes_read == 0 {
         warn!("bytes_read is 0");
     }
-    let value: serde_json::Value = serde_json::from_str(input_string.as_str()).chain_err(
-        || "Error parsing input JSON to Value.",
-    )?;
+    let value: serde_json::Value = serde_json::from_str(input_string.as_str())
+        .chain_err(|| "Error parsing input JSON to Value.")?;
 
     let mut result = Vec::new();
     if let serde_json::Value::Array(pairs) = value {
         for kv_pair in pairs {
-            let kv_pair = serde_json::from_value(kv_pair).chain_err(
-                || "Error parsing value to IntermediateInputKV<K, V>",
-            )?;
+            let kv_pair = serde_json::from_value(kv_pair)
+                .chain_err(|| "Error parsing value to IntermediateInputKV<K, V>")?;
             result.push(kv_pair);
         }
     } else {
@@ -65,9 +62,7 @@ where
     W: Write,
     V: Default + Serialize,
 {
-    serde_json::to_writer(sink, &output).chain_err(
-        || "Error writing to sink.",
-    )?;
+    serde_json::to_writer(sink, &output).chain_err(|| "Error writing to sink.")?;
     Ok(())
 }
 
@@ -81,9 +76,7 @@ where
     K: Default + Serialize,
     V: Default + Serialize,
 {
-    serde_json::to_writer(sink, &output).chain_err(
-        || "Error writing to sink.",
-    )?;
+    serde_json::to_writer(sink, &output).chain_err(|| "Error writing to sink.")?;
     Ok(())
 }
 
@@ -93,19 +86,16 @@ where
     W: Write,
     V: Default + Serialize,
 {
-
-    serde_json::to_writer(sink, &output).chain_err(
-        || "Error writing to sink.",
-    )?;
+    serde_json::to_writer(sink, &output).chain_err(|| "Error writing to sink.")?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use serialise::IntermediateOutputPair;
     use std::collections::HashMap;
     use std::io::Cursor;
-    use super::*;
 
     #[test]
     fn read_valid_map_input_kv() {
@@ -160,8 +150,8 @@ mod tests {
         let test_string = "";
         let mut cursor = Cursor::new(test_string);
 
-        let _: IntermediateInputKV<String, String> = read_intermediate_input(&mut cursor).unwrap()
-            [0];
+        let _: IntermediateInputKV<String, String> =
+            read_intermediate_input(&mut cursor).unwrap()[0];
     }
 
     #[test]
@@ -198,7 +188,9 @@ mod tests {
 
     #[test]
     fn write_final_output_object() {
-        let test_object = vec![FinalOutputObject { values: vec!["barbaz", "bazbar"] }];
+        let test_object = vec![FinalOutputObject {
+            values: vec!["barbaz", "bazbar"],
+        }];
         let expected_json_string = r#"[{"values":["barbaz","bazbar"]}]"#;
         let output_vector: Vec<u8> = Vec::new();
         let mut cursor = Cursor::new(output_vector);

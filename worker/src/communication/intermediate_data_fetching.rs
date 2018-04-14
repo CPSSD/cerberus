@@ -1,9 +1,9 @@
-use futures::Future;
 use futures::future;
+use futures::Future;
 use futures_cpupool::CpuPool;
 
-use errors::*;
 use super::worker_interface::WorkerInterface;
+use errors::*;
 use operations::OperationResources;
 
 const INPUT_FETCHING_CPU_POOL_SIZE: usize = 20;
@@ -31,14 +31,13 @@ pub fn fetch_reduce_inputs(
                 Ok(input) => future::ok(input),
                 Err(err) => future::err(err),
             }
-
         });
 
         input_futures.push(input_future);
     }
 
     let results_future = future::join_all(input_futures);
-    results_future.wait().chain_err(
-        || "Error running fetch reduce input futures",
-    )
+    results_future
+        .wait()
+        .chain_err(|| "Error running fetch reduce input futures")
 }

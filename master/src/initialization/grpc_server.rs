@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use clap::ArgMatches;
 
 use errors::*;
 use scheduling::Scheduler;
-use server::{Server, ClientService, FileSystemService, WorkerService};
+use server::{ClientService, FileSystemService, Server, WorkerService};
 use util::data_layer::AbstractionLayer;
 use util::distributed_filesystem::FileSystemManager;
 use worker_management::WorkerManager;

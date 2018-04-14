@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use chrono::prelude::*;
-use uuid::Uuid;
 use serde_json;
+use uuid::Uuid;
 
 use cerberus_proto::worker as pb;
 use errors::*;
@@ -52,9 +52,8 @@ impl Worker {
         }
 
         Ok(Worker {
-            address: SocketAddr::from_str(&address).chain_err(
-                || "Invalid address when creating worker",
-            )?,
+            address: SocketAddr::from_str(&address)
+                .chain_err(|| "Invalid address when creating worker")?,
 
             status: pb::WorkerStatus::AVAILABLE,
             operation_status: pb::OperationStatus::UNKNOWN,
@@ -106,9 +105,8 @@ impl Worker {
 impl StateHandling<Error> for Worker {
     fn new_from_json(data: serde_json::Value) -> Result<Self> {
         // Convert address from a serde_json::Value to a String.
-        let address: String = serde_json::from_value(data["address"].clone()).chain_err(
-            || "Unable to create String from serde_json::Value",
-        )?;
+        let address: String = serde_json::from_value(data["address"].clone())
+            .chain_err(|| "Unable to create String from serde_json::Value")?;
 
         // Create the worker with the above address.
         let worker_result = Worker::new(address, String::new());
@@ -118,9 +116,9 @@ impl StateHandling<Error> for Worker {
         };
 
         // Update worker state to match the given state.
-        worker.load_state(data).chain_err(
-            || "Unable to recreate worker from previous state",
-        )?;
+        worker
+            .load_state(data)
+            .chain_err(|| "Unable to recreate worker from previous state")?;
 
         Ok(worker)
     }
@@ -154,14 +152,13 @@ impl StateHandling<Error> for Worker {
         self.worker_id = serde_json::from_value(data["worker_id"].clone())
             .chain_err(|| "Unable to convert worker_id")?;
 
-        self.task_assignments_failed = serde_json::from_value(
-            data["task_assignments_failed"].clone(),
-        ).chain_err(|| "Unable to convert task_assignments_failed")?;
+        self.task_assignments_failed =
+            serde_json::from_value(data["task_assignments_failed"].clone())
+                .chain_err(|| "Unable to convert task_assignments_failed")?;
 
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

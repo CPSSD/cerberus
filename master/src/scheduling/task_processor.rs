@@ -1,12 +1,12 @@
-use std::collections::HashMap;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cerberus_proto::worker as pb;
 use common::{Job, Task};
-use util::data_layer::AbstractionLayer;
 use errors::*;
+use util::data_layer::AbstractionLayer;
 
 const CLOSEST_ENDLINE_STEP: u64 = 1000;
 const NEWLINE: u8 = 0x0A;
@@ -34,7 +34,9 @@ pub struct TaskProcessorImpl {
 
 impl TaskProcessorImpl {
     pub fn new(data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>) -> Self {
-        TaskProcessorImpl { data_abstraction_layer }
+        TaskProcessorImpl {
+            data_abstraction_layer,
+        }
     }
 
     /// `get_closest_endline` files the endline closest to the end of a given range for input file
@@ -134,9 +136,8 @@ impl TaskProcessorImpl {
                 .is_file(path.as_path())
                 .chain_err(|| "Failed to check if path is a file")?
             {
-                let input_locations = self.read_input_file(&path, map_input_size).chain_err(
-                    || "Error reading input file.",
-                )?;
+                let input_locations = self.read_input_file(&path, map_input_size)
+                    .chain_err(|| "Error reading input file.")?;
 
                 for input_location in input_locations {
                     let bytes_to_read = input_location.end_byte - input_location.start_byte;
@@ -219,12 +220,12 @@ impl TaskProcessor for TaskProcessorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
-    use std::io::{Read, Write};
+    use common::{JobOptions, TaskType};
     use std::collections::HashSet;
     use std::fs;
     use std::fs::File;
-    use common::{JobOptions, TaskType};
+    use std::io::{Read, Write};
+    use std::path::Path;
     use util::data_layer::NullAbstractionLayer;
 
     #[test]
@@ -289,12 +290,8 @@ mod tests {
 
         // Either input file order is fine.
         let mut good_inputs = HashSet::new();
-        good_inputs.insert(
-            "this is the first test file\nthis is the second test file".to_owned(),
-        );
-        good_inputs.insert(
-            "this is the second test file\nthis is the first test file".to_owned(),
-        );
+        good_inputs.insert("this is the first test file\nthis is the second test file".to_owned());
+        good_inputs.insert("this is the second test file\nthis is the first test file".to_owned());
 
         println!("{}", map_input.clone());
 
@@ -327,20 +324,17 @@ mod tests {
 
         let mut map_task1 =
             Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()], 1);
-        map_task1.map_output_files.insert(
-            0,
-            "/tmp/output/1".to_owned(),
-        );
-        map_task1.map_output_files.insert(
-            1,
-            "/tmp/output/2".to_owned(),
-        );
+        map_task1
+            .map_output_files
+            .insert(0, "/tmp/output/1".to_owned());
+        map_task1
+            .map_output_files
+            .insert(1, "/tmp/output/2".to_owned());
 
         let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location], 1);
-        map_task2.map_output_files.insert(
-            0,
-            "/tmp/output/3".to_owned(),
-        );
+        map_task2
+            .map_output_files
+            .insert(0, "/tmp/output/3".to_owned());
 
         let map_tasks: Vec<&Task> = vec![&map_task1, &map_task2];
         let mut reduce_tasks: Vec<Task> =

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::BinaryHeap;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -114,9 +114,7 @@ impl State {
 
         // Sort workers by most recent health checks, to avoid repeatedly trying to assign work to a
         // worker which is not responding.
-        workers.sort_by(|a, b| {
-            a.status_last_updated.cmp(&b.status_last_updated).reverse()
-        });
+        workers.sort_by(|a, b| a.status_last_updated.cmp(&b.status_last_updated).reverse());
 
         workers
             .into_iter()
@@ -126,12 +124,10 @@ impl State {
 
     pub fn add_worker(&mut self, worker: Worker) -> Result<()> {
         if self.workers.contains_key(&worker.worker_id) {
-            return Err(
-                format!(
-                    "Worker with ID {} is already registered.",
-                    &worker.worker_id
-                ).into(),
-            );
+            return Err(format!(
+                "Worker with ID {} is already registered.",
+                &worker.worker_id
+            ).into());
         }
         self.workers.insert(worker.worker_id.clone(), worker);
         Ok(())
@@ -143,9 +139,9 @@ impl State {
         worker_status: pb::WorkerStatus,
         operation_status: pb::OperationStatus,
     ) -> Result<()> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         worker.status = worker_status;
         worker.operation_status = operation_status;
@@ -156,11 +152,11 @@ impl State {
         // reassign the worker.
         // If the worker has recently been assigned a task, it may not be reporting the most up to
         // date status.
-        let time_since_task_assigned = Utc::now().timestamp() -
-            worker.task_last_updated.timestamp();
-        if time_since_task_assigned > TIME_REASSIGN_REPORTING_AVAILABLE_S &&
-            worker_status == pb::WorkerStatus::AVAILABLE &&
-            !worker.current_task_id.is_empty()
+        let time_since_task_assigned =
+            Utc::now().timestamp() - worker.task_last_updated.timestamp();
+        if time_since_task_assigned > TIME_REASSIGN_REPORTING_AVAILABLE_S
+            && worker_status == pb::WorkerStatus::AVAILABLE
+            && !worker.current_task_id.is_empty()
         {
             if let Some(assigned_task) = self.tasks.get_mut(&worker.current_task_id) {
                 self.priority_task_queue.push(PriorityTask::new(
@@ -218,28 +214,21 @@ impl State {
                 return Err("Task id does not match expected task id.".into());
             }
 
-            let worker = self.workers.get_mut(&map_result.worker_id).chain_err(|| {
-                format!("Worker with ID {} not found.", map_result.worker_id)
-            })?;
+            let worker = self.workers
+                .get_mut(&map_result.worker_id)
+                .chain_err(|| format!("Worker with ID {} not found.", map_result.worker_id))?;
 
             for (partition, output_file) in map_result.get_map_results() {
-                scheduled_task.map_output_files.insert(
-                    *partition,
-                    format!(
-                        "{}{}",
-                        worker.address,
-                        output_file
-                    ),
-                );
+                scheduled_task
+                    .map_output_files
+                    .insert(*partition, format!("{}{}", worker.address, output_file));
             }
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = map_result.get_cpu_time();
 
-            self.completed_tasks.insert(
-                scheduled_task.id.clone(),
-                scheduled_task.clone(),
-            );
+            self.completed_tasks
+                .insert(scheduled_task.id.clone(), scheduled_task.clone());
 
             return Ok(scheduled_task);
         }
@@ -257,17 +246,16 @@ impl State {
         task_id: &str,
         failure_details: &str,
     ) -> Result<(Task)> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         worker.current_task_id = String::new();
 
         let mut assigned_task = self.tasks.remove(task_id).chain_err(|| {
             format!(
                 "Task with ID {} not found, Worker ID: {}.",
-                task_id,
-                worker_id
+                task_id, worker_id
             )
         })?;
 
@@ -312,9 +300,9 @@ impl State {
         worker_id: &str,
         result: pb::ResultStatus,
     ) -> Result<()> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         worker.status = pb::WorkerStatus::AVAILABLE;
         if result == pb::ResultStatus::SUCCESS {
@@ -329,9 +317,9 @@ impl State {
     }
 
     pub fn set_worker_operation_cancelled(&mut self, worker_id: &str) -> Result<()> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         worker.status = pb::WorkerStatus::AVAILABLE;
         worker.operation_status = pb::OperationStatus::CANCELLED;
@@ -343,12 +331,11 @@ impl State {
 
     pub fn remove_worker(&mut self, worker_id: &str) -> Result<()> {
         if let Some(worker) = self.workers.remove(worker_id) {
-
             // If this worker is a assigned a task, requeue the task.
             if !worker.current_task_id.is_empty() {
-                let assigned_task = self.tasks.get(&worker.current_task_id).chain_err(
-                    || "Unable to get worker task",
-                )?;
+                let assigned_task = self.tasks
+                    .get(&worker.current_task_id)
+                    .chain_err(|| "Unable to get worker task")?;
                 self.priority_task_queue.push(PriorityTask::new(
                     worker.current_task_id,
                     REQUEUED_TASK_PRIORITY * assigned_task.job_priority,
@@ -371,13 +358,13 @@ impl State {
 
     // Unassign a task assigned to a worker and put the task back in the queue.
     pub fn unassign_worker(&mut self, worker_id: &str) -> Result<()> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
-        let assigned_task = self.tasks.get(&worker.current_task_id).chain_err(
-            || "Unable to get worker task",
-        )?;
+        let assigned_task = self.tasks
+            .get(&worker.current_task_id)
+            .chain_err(|| "Unable to get worker task")?;
         if !worker.current_task_id.is_empty() {
             self.priority_task_queue.push(PriorityTask::new(
                 worker.current_task_id.clone(),
@@ -406,9 +393,9 @@ impl State {
             }
         };
 
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
         worker.task_last_updated = Utc::now();
         worker.current_task_id = task_id.to_owned();
 
@@ -428,8 +415,7 @@ impl State {
                 .chain_err(|| {
                     format!(
                         "Could not get closeness for file {} and worker {}",
-                        input_location.input_path,
-                        worker_id
+                        input_location.input_path, worker_id
                     )
                 })?;
         }
@@ -444,15 +430,12 @@ impl State {
         };
 
         let data_score = match task.map_request {
-            Some(ref map_request) => {
-                self.get_data_score(map_request, worker_id).chain_err(|| {
-                    format!(
-                        "Could not get data closeness score for task_id {} and worker_id {}",
-                        task.id,
-                        worker_id
-                    )
-                })?
-            }
+            Some(ref map_request) => self.get_data_score(map_request, worker_id).chain_err(|| {
+                format!(
+                    "Could not get data closeness score for task_id {} and worker_id {}",
+                    task.id, worker_id
+                )
+            })?,
             None => 0,
         };
 
@@ -481,9 +464,8 @@ impl State {
                 }
             }
 
-            let data_score = self.get_data_score_if_map(&task.id, worker_id).chain_err(
-                || "Unable to get data score",
-            )?;
+            let data_score = self.get_data_score_if_map(&task.id, worker_id)
+                .chain_err(|| "Unable to get data score")?;
 
             if data_score > best_data_score || best_task.is_none() {
                 best_data_score = data_score;
@@ -508,16 +490,14 @@ impl State {
     // Tries to assign a worker the next task in the queue.
     // Returns the task if one exists.
     pub fn try_assign_worker_task(&mut self, worker_id: &str) -> Result<(Option<Task>)> {
-        let task_option = self.get_best_task_for_worker(worker_id).chain_err(
-            || "Could not get task for worker",
-        )?;
+        let task_option = self.get_best_task_for_worker(worker_id)
+            .chain_err(|| "Could not get task for worker")?;
 
         let scheduled_task_id: String = match task_option {
             Some(priority_task) => {
                 info!(
                     "Popped off task {} with priority {}",
-                    priority_task.id,
-                    priority_task.priority
+                    priority_task.id, priority_task.priority
                 );
                 priority_task.id
             }
@@ -532,9 +512,9 @@ impl State {
 
     // Clears the workers current_task_id and returns the previous value.
     pub fn cancel_task_for_worker(&mut self, worker_id: &str) -> Result<String> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         let previous_task_id = worker.current_task_id.clone();
         worker.current_task_id = String::new();
@@ -554,9 +534,9 @@ impl State {
 
     pub fn increment_failed_task_assignments(&mut self, worker_id: &str) -> Result<()> {
         let should_remove_worker = {
-            let worker = self.workers.get_mut(worker_id).chain_err(|| {
-                format!("Worker with ID {} not found.", worker_id)
-            })?;
+            let worker = self.workers
+                .get_mut(worker_id)
+                .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
             worker.task_assignments_failed += 1;
             worker.task_assignments_failed == MAX_TASK_ASSIGNMENT_FAILURE
@@ -575,9 +555,9 @@ impl State {
     }
 
     pub fn reset_failed_task_assignments(&mut self, worker_id: &str) -> Result<()> {
-        let worker = self.workers.get_mut(worker_id).chain_err(|| {
-            format!("Worker with ID {} not found.", worker_id)
-        })?;
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
         worker.task_assignments_failed = 0;
 
         Ok(())
@@ -590,40 +570,34 @@ impl State {
             .clone();
 
         let queued_tasks = self.get_in_progress_tasks_for_job(&map_task.job_id)
-            .chain_err(|| {
-                format!("Unable to get queued tasks for job {}", map_task.job_id)
-            })?;
+            .chain_err(|| format!("Unable to get queued tasks for job {}", map_task.job_id))?;
 
         let mut remove_tasks: Vec<String> = Vec::new();
         for queued_task_id in queued_tasks.clone() {
-            let queued_task = self.tasks.get(&queued_task_id).chain_err(|| {
-                format!("Unable to get task {} from task queue", queued_task_id)
-            })?;
+            let queued_task = self.tasks
+                .get(&queued_task_id)
+                .chain_err(|| format!("Unable to get task {} from task queue", queued_task_id))?;
 
             if queued_task.task_type != TaskType::Reduce {
                 continue;
             }
 
-            let from_map_task =
-                self.reduce_from_map_task(&map_task, queued_task)
-                    .chain_err(|| "Unable to determine if reduce stems from map task")?;
+            let from_map_task = self.reduce_from_map_task(&map_task, queued_task)
+                .chain_err(|| "Unable to determine if reduce stems from map task")?;
 
             if from_map_task {
                 remove_tasks.push(queued_task.id.clone());
             }
         }
 
-        self.remove_tasks_from_queue(&remove_tasks).chain_err(
-            || "Unable to remove tasks from queue",
-        )?;
+        self.remove_tasks_from_queue(&remove_tasks)
+            .chain_err(|| "Unable to remove tasks from queue")?;
 
         // Reschedule the map task
         let mut new_map_task = map_task.clone();
         new_map_task.reset_map_task();
-        self.tasks.insert(
-            new_map_task.id.clone(),
-            new_map_task.clone(),
-        );
+        self.tasks
+            .insert(new_map_task.id.clone(), new_map_task.clone());
         self.priority_task_queue.push(PriorityTask::new(
             task_id.to_owned(),
             new_map_task.job_priority * FAILED_TASK_PRIORITY,
@@ -642,7 +616,6 @@ impl State {
                     reschedule_task = task.id.clone();
                     break;
                 }
-
             }
         }
 
@@ -670,12 +643,10 @@ impl State {
     pub fn reduce_from_map_task(&self, map_task: &Task, reduce_task: &Task) -> Result<bool> {
         match reduce_task.reduce_request {
             Some(ref req) => Ok(map_task.map_output_files.contains_key(&req.partition)),
-            None => Err(
-                format!(
-                    "Unabale to get reduce request for task with ID {}",
-                    map_task.id
-                ).into(),
-            ),
+            None => Err(format!(
+                "Unabale to get reduce request for task with ID {}",
+                map_task.id
+            ).into()),
         }
     }
 
@@ -705,9 +676,9 @@ impl StateHandling<Error> for State {
     fn dump_state(&self) -> Result<serde_json::Value> {
         let mut workers_json: Vec<serde_json::Value> = Vec::new();
         for worker in self.workers.values() {
-            workers_json.push(worker.dump_state().chain_err(
-                || "Error dumping worker state.",
-            )?);
+            workers_json.push(worker
+                .dump_state()
+                .chain_err(|| "Error dumping worker state.")?);
         }
 
         let mut tasks_json: Vec<serde_json::Value> = Vec::new();
@@ -725,9 +696,8 @@ impl StateHandling<Error> for State {
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
         if let serde_json::Value::Array(ref workers_array) = data["workers"] {
             for worker in workers_array {
-                let worker = Worker::new_from_json(worker.clone()).chain_err(
-                    || "Unable to create ScheduledJob from json.",
-                )?;
+                let worker = Worker::new_from_json(worker.clone())
+                    .chain_err(|| "Unable to create ScheduledJob from json.")?;
                 self.workers.insert(worker.worker_id.to_owned(), worker);
             }
         } else {
@@ -739,9 +709,8 @@ impl StateHandling<Error> for State {
 
         if let serde_json::Value::Array(ref tasks_array) = data["tasks"] {
             for task in tasks_array {
-                let task = Task::new_from_json(task.clone()).chain_err(
-                    || "Unable to create Task from json.",
-                )?;
+                let task = Task::new_from_json(task.clone())
+                    .chain_err(|| "Unable to create Task from json.")?;
                 debug!("Loaded task from state:\n {:?}", task);
                 self.tasks.insert(task.id.to_owned(), task);
             }

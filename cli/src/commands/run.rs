@@ -32,23 +32,18 @@ fn get_priority(matches: &ArgMatches) -> Result<u32> {
     let priority: u32 = match priority_str.parse() {
         Ok(val) => val,
         Err(err) => {
-            return Err(
-                format!(
-                    "Error occured while converting '{}' to a u32: {}",
-                    priority_str,
-                    err
-                ).into(),
-            );
+            return Err(format!(
+                "Error occured while converting '{}' to a u32: {}",
+                priority_str, err
+            ).into());
         }
     };
 
     if priority < 1 || priority > 10 {
-        return Err(
-            format!(
-                "Priority can only be between 1 and 10. {} is not in this range",
-                priority
-            ).into(),
-        );
+        return Err(format!(
+            "Priority can only be between 1 and 10. {} is not in this range",
+            priority
+        ).into());
     }
     Ok(priority)
 }
@@ -58,19 +53,14 @@ fn get_map_size(matches: &ArgMatches) -> Result<u32> {
     let map_size: u32 = match map_size_str.parse() {
         Ok(val) => val,
         Err(err) => {
-            return Err(
-                format!(
-                    "Error occured while converting '{}' to a u32: {}",
-                    map_size_str,
-                    err
-                ).into(),
-            );
+            return Err(format!(
+                "Error occured while converting '{}' to a u32: {}",
+                map_size_str, err
+            ).into());
         }
     };
     if map_size < 1 {
-        return Err(
-            "Map Size must be greater than or equal to 1 megabyte".into(),
-        );
+        return Err("Map Size must be greater than or equal to 1 megabyte".into());
     }
     Ok(map_size)
 }
@@ -81,15 +71,11 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
         .chain_err(|| "Input directory cannot be empty")?
         .to_owned();
 
-    input = verify_valid_path(&input).chain_err(
-        || "Invalid input path.",
-    )?;
+    input = verify_valid_path(&input).chain_err(|| "Invalid input path.")?;
 
     let output = matches.value_of("output").unwrap_or("");
     if !output.is_empty() {
-        verify_valid_path(output).chain_err(
-            || "Invalid output path",
-        )?;
+        verify_valid_path(output).chain_err(|| "Invalid output path")?;
     }
 
     let mut binary = matches
@@ -99,9 +85,7 @@ pub fn run(client: &grpc_pb::MapReduceServiceClient, matches: &ArgMatches) -> Re
 
     let map_size: u32 = get_map_size(matches).chain_err(|| "Unable to get map size")?;
 
-    binary = verify_valid_path(&binary).chain_err(
-        || "Invalid binary path.",
-    )?;
+    binary = verify_valid_path(&binary).chain_err(|| "Invalid binary path.")?;
 
     let priority = get_priority(matches)?;
 

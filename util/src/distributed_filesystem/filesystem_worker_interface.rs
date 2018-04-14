@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -33,9 +32,8 @@ impl FileSystemWorkerInterface {
             }
         }
 
-        let worker_socket_addr = SocketAddr::from_str(worker_addr).chain_err(
-            || "Invalid worker address",
-        )?;
+        let worker_socket_addr =
+            SocketAddr::from_str(worker_addr).chain_err(|| "Invalid worker address")?;
 
         let client = grpc_pb::FileSystemWorkerServiceClient::new_plain(
             &worker_socket_addr.ip().to_string(),
@@ -56,9 +54,8 @@ impl FileSystemWorkerInterface {
         start_byte: u64,
         data: Vec<u8>,
     ) -> Result<()> {
-        self.create_client_if_required(worker_addr).chain_err(
-            || "Error creating client",
-        )?;
+        self.create_client_if_required(worker_addr)
+            .chain_err(|| "Error creating client")?;
 
         let mut request = pb::StoreFileRequest::new();
         request.set_file_path(file_path.to_owned());
@@ -86,9 +83,8 @@ impl FileSystemWorkerInterface {
         start_byte: u64,
         end_byte: u64,
     ) -> Result<Vec<u8>> {
-        self.create_client_if_required(worker_addr).chain_err(
-            || "Error creating client",
-        )?;
+        self.create_client_if_required(worker_addr)
+            .chain_err(|| "Error creating client")?;
 
         let mut request = pb::ReadFileRequest::new();
         request.set_file_path(file_path.to_owned());

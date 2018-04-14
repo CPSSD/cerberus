@@ -5,7 +5,7 @@ use clap::ArgMatches;
 
 use errors::*;
 use operations::OperationHandler;
-use server::{Server, ScheduleOperationService, IntermediateDataService, FileSystemService};
+use server::{FileSystemService, IntermediateDataService, ScheduleOperationService, Server};
 use util::distributed_filesystem::LocalFileManager;
 
 // Setting the port to 0 means a random available port will be selected

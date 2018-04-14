@@ -28,8 +28,8 @@ mod errors {
 
 pub mod combiner;
 pub mod emitter;
-pub mod io;
 pub mod intermediate;
+pub mod io;
 pub mod mapper;
 pub mod partition;
 pub mod reducer;
@@ -38,8 +38,8 @@ pub mod runner;
 pub mod serialise;
 
 pub use combiner::Combine;
+pub use emitter::{EmitFinal, EmitIntermediate};
 pub use errors::*;
-pub use emitter::{EmitIntermediate, EmitFinal};
 pub use intermediate::IntermediateInputKV;
 pub use mapper::{Map, MapInputKV};
 pub use partition::{HashPartitioner, Partition, PartitionInputKV};

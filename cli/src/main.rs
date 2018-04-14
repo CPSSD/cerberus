@@ -6,8 +6,8 @@ extern crate error_chain;
 extern crate grpc;
 #[macro_use]
 extern crate prettytable;
-extern crate uuid;
 extern crate util;
+extern crate uuid;
 
 extern crate cerberus_proto;
 
