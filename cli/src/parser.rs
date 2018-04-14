@@ -1,4 +1,4 @@
-use clap::{App, SubCommand, Arg, ArgMatches};
+use clap::{App, Arg, ArgMatches, SubCommand};
 
 pub fn parse_command_line<'a>() -> ArgMatches<'a> {
     App::new("cli")

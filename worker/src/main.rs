@@ -61,9 +61,8 @@ fn run() -> Result<()> {
 
     let matches = parser::parse_command_line();
 
-    let mut resources = WorkerResources::new(&matches).chain_err(
-        || "Error initializing worker resources",
-    )?;
+    let mut resources =
+        WorkerResources::new(&matches).chain_err(|| "Error initializing worker resources")?;
 
     let local_ip_addr = matches.value_of("ip").unwrap_or(DEFAULT_WORKER_IP);
     let local_addr = SocketAddr::from_str(&format!(

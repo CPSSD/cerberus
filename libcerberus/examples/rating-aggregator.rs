@@ -45,24 +45,24 @@ impl Map for RatingAggregatorMapper {
                 let movie_title = format!("T:{}", info[1]);
                 let movie_genre = format!("G:{}", info[2]);
 
-                emitter.emit(movie_id, movie_title).chain_err(
-                    || "Error emitting map key-value pair.",
-                )?;
-                emitter.emit(movie_id, movie_genre).chain_err(
-                    || "Error emitting map key-value pair.",
-                )?;
+                emitter
+                    .emit(movie_id, movie_title)
+                    .chain_err(|| "Error emitting map key-value pair.")?;
+                emitter
+                    .emit(movie_id, movie_genre)
+                    .chain_err(|| "Error emitting map key-value pair.")?;
             } else {
                 // Rating info
                 let movie_id: u32 = info[1].parse().chain_err(|| "Error parsing movie id")?;
                 let rating: f64 = info[2].parse().chain_err(|| "Error parsing movie rating")?;
 
-                emitter.emit(movie_id, rating.to_string()).chain_err(
-                    || "Error emitting map key-value pair.",
-                )?;
+                emitter
+                    .emit(movie_id, rating.to_string())
+                    .chain_err(|| "Error emitting map key-value pair.")?;
 
-                emitter.emit(movie_id, "C:1".to_string()).chain_err(
-                    || "Error emitting map key-value pair.",
-                )?;
+                emitter
+                    .emit(movie_id, "C:1".to_string())
+                    .chain_err(|| "Error emitting map key-value pair.")?;
             }
         }
         Ok(())
@@ -119,22 +119,21 @@ impl Combine<u32, String> for RatingAggregatorCombiner {
     {
         let combine_result = do_rating_combine(input)?;
         if !combine_result.title.is_empty() {
-            emitter.emit(combine_result.title).chain_err(
-                || "Error emitting value.",
-            )?;
-
+            emitter
+                .emit(combine_result.title)
+                .chain_err(|| "Error emitting value.")?;
         }
 
         if !combine_result.genres.is_empty() {
-            emitter.emit(combine_result.genres).chain_err(
-                || "Error emitting value.",
-            )?;
+            emitter
+                .emit(combine_result.genres)
+                .chain_err(|| "Error emitting value.")?;
         }
 
         if combine_result.rating_count > 0 {
-            emitter.emit(combine_result.rating.to_string()).chain_err(
-                || "Error emitting value.",
-            )?;
+            emitter
+                .emit(combine_result.rating.to_string())
+                .chain_err(|| "Error emitting value.")?;
 
             emitter
                 .emit(format!("C:{}", combine_result.rating_count.to_string()))
@@ -166,20 +165,17 @@ impl Reduce<u32, String> for RatingAggregatorReducer {
                 combine_result.rating_count
             );
 
-            emitter.emit(output_str).chain_err(
-                || "Error emitting value.",
-            )?;
+            emitter
+                .emit(output_str)
+                .chain_err(|| "Error emitting value.")?;
         }
 
         Ok(())
     }
 }
 
-
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    env_logger::init().chain_err(|| "Failed to initialise logging.")?;
 
     let ra_mapper = RatingAggregatorMapper;
     let ra_reducer = RatingAggregatorReducer;

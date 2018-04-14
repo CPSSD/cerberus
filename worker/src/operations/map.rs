@@ -7,20 +7,20 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use bson;
-use futures::Future;
 use futures::future;
-use futures_cpupool::{CpuPool, CpuFuture};
+use futures::Future;
+use futures_cpupool::{CpuFuture, CpuPool};
 use serde_json;
 use uuid::Uuid;
 
-use errors::*;
-use cerberus_proto::worker as pb;
-use communication::MasterInterface;
 use super::combine;
 use super::io;
 use super::operation_handler;
 use super::operation_handler::{OperationResources, PartitionMap};
 use super::state::OperationState;
+use cerberus_proto::worker as pb;
+use communication::MasterInterface;
+use errors::*;
 use util::output_error;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
@@ -52,9 +52,8 @@ fn send_map_result(
 }
 
 fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) -> Result<()> {
-    let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
-        || "Error parsing map response.",
-    )?;
+    let parse_value: serde_json::Value =
+        serde_json::from_str(map_result_string).chain_err(|| "Error parsing map response.")?;
 
     let partition_map_object = match parse_value["partitions"].as_object() {
         None => return Err("Error parsing partition map.".into()),
@@ -62,9 +61,10 @@ fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) 
     };
 
     for (partition_str, pairs) in partition_map_object.iter() {
-        let partition: u64 = partition_str.to_owned().parse().chain_err(
-            || "Error parsing map response.",
-        )?;
+        let partition: u64 = partition_str
+            .to_owned()
+            .parse()
+            .chain_err(|| "Error parsing map response.")?;
         let partition_hashmap = partition_map.entry(partition).or_insert_with(HashMap::new);
         if let serde_json::Value::Array(ref pairs) = *pairs {
             for pair in pairs {
@@ -84,29 +84,25 @@ fn map_operation_thread_impl(map_input_value: &bson::Document, mut child: Child)
         .chain_err(|| "Could not encode map_input as BSON.")?;
 
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(&input_buf[..]).chain_err(
-            || "Error writing to payload stdin.",
-        )?;
+        stdin
+            .write_all(&input_buf[..])
+            .chain_err(|| "Error writing to payload stdin.")?;
     } else {
         return Err("Error accessing stdin of payload binary.".into());
     }
 
-    let output = child.wait_with_output().chain_err(
-        || "Error waiting for payload result.",
-    )?;
+    let output = child
+        .wait_with_output()
+        .chain_err(|| "Error waiting for payload result.")?;
 
-    let output_str = String::from_utf8(output.stdout).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let output_str =
+        String::from_utf8(output.stdout).chain_err(|| "Error accessing payload output.")?;
 
-    let stderr_str = String::from_utf8(output.stderr).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let stderr_str =
+        String::from_utf8(output.stderr).chain_err(|| "Error accessing payload output.")?;
 
     if !stderr_str.is_empty() {
-        return Err(
-            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
-        );
+        return Err(format!("MapReduce binary failed with stderr:\n {}", stderr_str).into());
     }
 
     Ok(output_str)
@@ -237,9 +233,7 @@ fn run_map_input(
 
     info!(
         "Running map task for {} ({} - > {})",
-        input_location.input_path,
-        input_location.start_byte,
-        input_location.end_byte
+        input_location.input_path, input_location.start_byte, input_location.end_byte
     );
 
     let map_input_value = io::read_location(&resources.data_abstraction_layer, input_location)
@@ -263,9 +257,8 @@ fn run_map_input(
         value: map_input_value,
     };
 
-    let serialized_map_input = bson::to_bson(&map_input).chain_err(
-        || "Could not serialize map input to bson.",
-    )?;
+    let serialized_map_input =
+        bson::to_bson(&map_input).chain_err(|| "Could not serialize map input to bson.")?;
 
     let map_input_document;
     if let bson::Bson::Document(document) = serialized_map_input {
@@ -328,9 +321,7 @@ fn internal_perform_map(
     output_path.push(output_dir_uuid);
     output_path.push("map");
 
-    fs::create_dir_all(&output_path).chain_err(
-        || "Failed to create output directory",
-    )?;
+    fs::create_dir_all(&output_path).chain_err(|| "Failed to create output directory")?;
 
     let input_locations = map_options.get_input().get_input_locations();
     let initial_cpu_time;
@@ -362,7 +353,6 @@ fn internal_perform_map(
                     future::err::<String, String>("Running map input failed".into())
                 }
             }
-
         });
 
         map_result_futures.push(map_result_future);

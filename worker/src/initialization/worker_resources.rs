@@ -1,13 +1,12 @@
-
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use clap::ArgMatches;
 
+use communication::MasterInterface;
 use errors::*;
 use initialization::{get_data_abstraction_layer, initialize_grpc_server, initialize_state_handler};
-use communication::MasterInterface;
 use operations::OperationHandler;
 use server::Server;
 use state::StateHandler;
@@ -27,14 +26,11 @@ impl WorkerResources {
             matches.value_of("master").unwrap_or(DEFAULT_MASTER_ADDR),
         ).chain_err(|| "Error parsing master address")?;
 
-        let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(
-            || "Error creating master interface.",
-        )?);
+        let master_interface = Arc::new(MasterInterface::new(master_addr).chain_err(|| "Error creating master interface.")?);
 
         let (data_abstraction_layer, local_file_manager) =
-            get_data_abstraction_layer(master_addr, matches).chain_err(
-                || "Error creating data abstraction layer.",
-            )?;
+            get_data_abstraction_layer(master_addr, matches)
+                .chain_err(|| "Error creating data abstraction layer.")?;
 
         let operation_handler = Arc::new(OperationHandler::new(
             Arc::clone(&master_interface),

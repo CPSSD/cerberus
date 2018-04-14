@@ -1,5 +1,5 @@
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use combiner::Combine;
 use emitter::EmitFinal;
@@ -42,12 +42,9 @@ where
 impl<'a, M, R, P, C> Default for UserImplRegistryBuilder<'a, M, R, P, C>
 where
     M: Map + 'a,
-    R: Reduce<M::Key, M::Value>
-        + 'a,
-    P: Partition<M::Key, M::Value>
-        + 'a,
-    C: Combine<M::Key, M::Value>
-        + 'a,
+    R: Reduce<M::Key, M::Value> + 'a,
+    P: Partition<M::Key, M::Value> + 'a,
+    C: Combine<M::Key, M::Value> + 'a,
 {
     fn default() -> UserImplRegistryBuilder<'a, M, R, P, C> {
         UserImplRegistryBuilder {
@@ -94,15 +91,12 @@ where
     }
 
     pub fn build(&self) -> Result<UserImplRegistry<'a, M, R, P, C>> {
-        let mapper = self.mapper.chain_err(
-            || "Error building UserImplRegistry: No Mapper provided",
-        )?;
-        let reducer = self.reducer.chain_err(
-            || "Error building UserImplRegistry: No Reducer provided",
-        )?;
-        let partitioner = self.partitioner.chain_err(
-            || "Error building UserImplRegistry: No Partitioner provided",
-        )?;
+        let mapper = self.mapper
+            .chain_err(|| "Error building UserImplRegistry: No Mapper provided")?;
+        let reducer = self.reducer
+            .chain_err(|| "Error building UserImplRegistry: No Reducer provided")?;
+        let partitioner = self.partitioner
+            .chain_err(|| "Error building UserImplRegistry: No Partitioner provided")?;
 
         Ok(UserImplRegistry {
             mapper,
@@ -134,11 +128,7 @@ impl<'a, M, R, P> UserImplRegistryBuilder<'a, M, R, P, NullCombiner>
 where
     M: Map + 'a,
     R: Reduce<M::Key, M::Value> + 'a,
-    P: Partition<
-        M::Key,
-        M::Value,
-    >
-        + 'a,
+    P: Partition<M::Key, M::Value> + 'a,
 {
     pub fn new_no_combiner() -> UserImplRegistryBuilder<'a, M, R, P, NullCombiner> {
         Default::default()

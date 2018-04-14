@@ -60,9 +60,7 @@ fn run() -> Result<()> {
     init_logger().chain_err(|| "Failed to initialise logging.")?;
 
     let matches = parser::parse_command_line();
-    let resources = MasterResources::new(&matches).chain_err(
-        || "Error initilizing master",
-    )?;
+    let resources = MasterResources::new(&matches).chain_err(|| "Error initilizing master")?;
 
     // Startup worker management loops
     run_task_assigment_loop(Arc::clone(&resources.worker_manager));

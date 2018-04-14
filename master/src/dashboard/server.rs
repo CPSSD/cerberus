@@ -12,9 +12,9 @@ use urlencoded::UrlEncodedQuery;
 use common::{Job, JobOptions};
 use errors::*;
 use scheduling::Scheduler;
-use worker_management::WorkerManager;
 use util::data_layer::AbstractionLayer;
 use util::output_error;
+use worker_management::WorkerManager;
 
 // Default priority applied to scheduled jobs.
 const DEFAULT_PRIORITY: u32 = 3;
@@ -48,9 +48,8 @@ impl ApiHandler {
     fn get_parameter(&self, req: &mut Request, param_name: &str) -> Result<String> {
         match req.get_ref::<UrlEncodedQuery>() {
             Ok(hashmap) => {
-                let param = self.get_query_param(param_name, hashmap).chain_err(|| {
-                    format!("Failed to get param with name {} ", param_name)
-                })?;
+                let param = self.get_query_param(param_name, hashmap)
+                    .chain_err(|| format!("Failed to get param with name {} ", param_name))?;
 
                 Ok(param)
             }
@@ -61,16 +60,12 @@ impl ApiHandler {
     fn get_router_url_component(&self, req: &Request, component_name: &str) -> Result<String> {
         let value: String = {
             match req.extensions.get::<Router>() {
-                Some(router_extension) => {
-                    match router_extension.find(component_name) {
-                        Some(value) => value.to_string(),
-                        None => {
-                            return Err(
-                                format!("No router value with name {}", component_name).into(),
-                            );
-                        }
+                Some(router_extension) => match router_extension.find(component_name) {
+                    Some(value) => value.to_string(),
+                    None => {
+                        return Err(format!("No router value with name {}", component_name).into());
                     }
-                }
+                },
                 None => {
                     return Err("Failed to get Router for request".into());
                 }
@@ -82,39 +77,38 @@ impl ApiHandler {
 
     /// Returns information about the `Tasks` which are currently in progress.
     fn tasks(&self, _req: &mut Request) -> Result<Response> {
-        let tasks_info = self.worker_manager_arc.get_tasks_info().chain_err(
-            || "Failed to get tasks info",
-        )?;
+        let tasks_info = self.worker_manager_arc
+            .get_tasks_info()
+            .chain_err(|| "Failed to get tasks info")?;
 
         Ok(Response::with((iron::status::Ok, tasks_info.to_string())))
     }
 
     /// Returns information about the `Workers` currently registered with the cluster.
     fn workers(&self, _req: &mut Request) -> Result<Response> {
-        let workers_info = self.worker_manager_arc.get_workers_info().chain_err(
-            || "Failed to get workers info",
-        )?;
+        let workers_info = self.worker_manager_arc
+            .get_workers_info()
+            .chain_err(|| "Failed to get workers info")?;
 
         Ok(Response::with((iron::status::Ok, workers_info.to_string())))
     }
 
     /// Returns information about the `Jobs` currently running on the cluster.
     fn jobs(&self, _req: &mut Request) -> Result<Response> {
-        let jobs_info = self.scheduler_arc.get_jobs_info().chain_err(
-            || "Failed to get jobs info",
-        )?;
+        let jobs_info = self.scheduler_arc
+            .get_jobs_info()
+            .chain_err(|| "Failed to get jobs info")?;
 
         Ok(Response::with((iron::status::Ok, jobs_info.to_string())))
     }
 
     fn cancel_job(&self, req: &mut Request) -> Result<Response> {
-        let job_id = self.get_parameter(req, "job_id").chain_err(
-            || "Could not get job_id in request",
-        )?;
+        let job_id = self.get_parameter(req, "job_id")
+            .chain_err(|| "Could not get job_id in request")?;
 
-        let success = self.scheduler_arc.cancel_job(&job_id).chain_err(|| {
-            format!("Failed to cancel job with id {}", job_id)
-        })?;
+        let success = self.scheduler_arc
+            .cancel_job(&job_id)
+            .chain_err(|| format!("Failed to cancel job with id {}", job_id))?;
 
         Ok(Response::with((
             iron::status::Ok,
@@ -123,9 +117,8 @@ impl ApiHandler {
     }
 
     fn get_output_path(&self, req: &mut Request) -> Option<String> {
-        let output_path = self.get_parameter(req, "output_path").unwrap_or_else(
-            |_| "".to_string(),
-        );
+        let output_path = self.get_parameter(req, "output_path")
+            .unwrap_or_else(|_| "".to_string());
         if output_path.is_empty() {
             None
         } else {
@@ -134,29 +127,27 @@ impl ApiHandler {
     }
 
     fn get_priority(&self, req: &mut Request) -> Result<u32> {
-        let priority = self.get_parameter(req, "priority").unwrap_or_else(
-            |_| "".to_string(),
-        );
+        let priority = self.get_parameter(req, "priority")
+            .unwrap_or_else(|_| "".to_string());
         if priority.is_empty() {
             Ok(DEFAULT_PRIORITY)
         } else {
-            priority.parse::<u32>().chain_err(
-                || "Invalid priority when scheduling job",
-            )
+            priority
+                .parse::<u32>()
+                .chain_err(|| "Invalid priority when scheduling job")
         }
     }
 
     fn get_map_size(&self, req: &mut Request) -> Result<u32> {
-        let map_size = self.get_parameter(req, "map_size").unwrap_or_else(
-            |_| "".to_string(),
-        );
+        let map_size = self.get_parameter(req, "map_size")
+            .unwrap_or_else(|_| "".to_string());
         let map_size = {
             if map_size.is_empty() {
                 DEFAULT_MAP_SIZE
             } else {
-                map_size.parse::<u32>().chain_err(
-                    || "Invalid map size when scheduling job",
-                )?
+                map_size
+                    .parse::<u32>()
+                    .chain_err(|| "Invalid map size when scheduling job")?
             }
         };
         if map_size < 1 {
@@ -166,18 +157,14 @@ impl ApiHandler {
     }
 
     fn schedule_job(&self, req: &mut Request) -> Result<Response> {
-        let binary_path = self.get_parameter(req, "binary_path").chain_err(
-            || "Failed to get binary_path",
-        )?;
-        let input_path = self.get_parameter(req, "input_path").chain_err(
-            || "Failed to get input_path",
-        )?;
-        let priority = self.get_priority(req).chain_err(
-            || "Failed to get priority",
-        )?;
-        let map_size = self.get_map_size(req).chain_err(
-            || "Failed to get map size",
-        )?;
+        let binary_path = self.get_parameter(req, "binary_path")
+            .chain_err(|| "Failed to get binary_path")?;
+        let input_path = self.get_parameter(req, "input_path")
+            .chain_err(|| "Failed to get input_path")?;
+        let priority = self.get_priority(req)
+            .chain_err(|| "Failed to get priority")?;
+        let map_size = self.get_map_size(req)
+            .chain_err(|| "Failed to get map size")?;
 
         let job_options = JobOptions {
             client_id: req.remote_addr.to_string(),
@@ -194,9 +181,9 @@ impl ApiHandler {
         let job = Job::new(job_options, &self.data_abstraction_layer_arc)
             .chain_err(|| "Error creating new job")?;
 
-        self.scheduler_arc.schedule_job(job).chain_err(
-            || "Error scheduling job",
-        )?;
+        self.scheduler_arc
+            .schedule_job(job)
+            .chain_err(|| "Error scheduling job")?;
 
         Ok(Response::with((iron::status::Ok, "{{ success: true }}")))
     }
@@ -236,7 +223,6 @@ impl iron::Handler for ApiHandler {
                 Err(IronError::new(chained_err, iron::status::BadRequest))
             }
         }
-
     }
 }
 
@@ -269,9 +255,9 @@ impl DashboardServer {
             .mount("/", Static::new(Path::new("content/")));
 
         Ok(DashboardServer {
-            iron_server: Iron::new(mount).http(serving_addr).chain_err(
-                || "Failed to start cluster dashboard server.",
-            )?,
+            iron_server: Iron::new(mount)
+                .http(serving_addr)
+                .chain_err(|| "Failed to start cluster dashboard server.")?,
         })
     }
 }

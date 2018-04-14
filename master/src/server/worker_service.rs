@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use grpc::{RequestOptions, SingleResponse, Error};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use common::Worker;
-use worker_management::WorkerManager;
 use util;
+use worker_management::WorkerManager;
 
 pub struct WorkerService {
     worker_manager: Arc<WorkerManager>,

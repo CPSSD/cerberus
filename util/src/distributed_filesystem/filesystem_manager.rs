@@ -1,17 +1,17 @@
-use std::collections::HashMap;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, RwLock};
 use std::thread;
 
 use protobuf::repeated::RepeatedField;
 use rand::random;
 
 use cerberus_proto::filesystem as pb;
-use errors::*;
 use distributed_filesystem::{FileChunk, FileSystemWorkerInterface};
+use errors::*;
 use logging::output_error;
 use serde_json;
 use state::SimpleStateHandling;
@@ -98,12 +98,12 @@ impl FileSystemManager {
     fn update_file_info(&self, file_path: &str, file_chunk: FileChunk) {
         let mut file_info_map = self.file_info_map.write().unwrap();
 
-        let file_info = file_info_map.entry(file_path.to_owned()).or_insert(
-            FileInfo {
+        let file_info = file_info_map
+            .entry(file_path.to_owned())
+            .or_insert(FileInfo {
                 length: 0,
                 chunks: Vec::new(),
-            },
-        );
+            });
 
         file_info.length = max(file_info.length, file_chunk.end_byte);
         file_info.chunks.push(file_chunk);
@@ -161,8 +161,8 @@ impl FileSystemManager {
         let distribution_level = self.get_distribution_level(active_workers.len());
         let mut distribution_count = 0;
         let mut distribution_failures = 0;
-        while distribution_count < distribution_level &&
-            distribution_failures < MAX_DISTRIBUTION_FAILURES
+        while distribution_count < distribution_level
+            && distribution_failures < MAX_DISTRIBUTION_FAILURES
         {
             let worker = self.get_random_worker(&active_workers);
             let worker_addr = active_workers
@@ -186,9 +186,9 @@ impl FileSystemManager {
                     used_workers.push(worker);
                 }
                 Err(err) => {
-                    output_error(&err.chain_err(
-                        || format!("Error storing file on worker {}", worker),
-                    ));
+                    output_error(&err.chain_err(|| {
+                        format!("Error storing file on worker {}", worker)
+                    }));
                     distribution_failures += 1;
                     if distribution_count + active_workers.len() > distribution_level {
                         active_workers.remove(&worker);
@@ -251,8 +251,8 @@ impl FileSystemManager {
                 } else {
                     for chunk in &file_info.chunks {
                         // Check if chunk is in the range.
-                        if (start_byte >= chunk.start_byte && start_byte < chunk.end_byte) ||
-                            (chunk.start_byte >= start_byte && chunk.start_byte < end_byte)
+                        if (start_byte >= chunk.start_byte && start_byte < chunk.end_byte)
+                            || (chunk.start_byte >= start_byte && chunk.start_byte < end_byte)
                         {
                             let pb_chunk = self.convert_file_chunk(chunk, &active_workers);
                             response.chunks.push(pb_chunk);
@@ -300,7 +300,6 @@ impl FileSystemManager {
                 response.set_children(RepeatedField::from_vec(dir_info.children.clone()));
                 return response;
             }
-
         }
 
         let mut response = pb::FileInfoResponse::new();
@@ -311,9 +310,9 @@ impl FileSystemManager {
     pub fn process_worker_info_update(&self, worker_info_update: &WorkerInfoUpdate) -> Result<()> {
         let mut worker_map = self.active_workers.write().unwrap();
         if worker_info_update.update_type == WorkerInfoUpdateType::Available {
-            let address = worker_info_update.address.chain_err(
-                || "No address when adding available worker",
-            )?;
+            let address = worker_info_update
+                .address
+                .chain_err(|| "No address when adding available worker")?;
 
             worker_map.insert(worker_info_update.worker_id.clone(), address);
         } else {

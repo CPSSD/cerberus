@@ -1,15 +1,15 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 
 use clap::ArgMatches;
 
 use errors::*;
-use util::data_layer::{AbstractionLayer, AmazonS3AbstractionLayer, NullAbstractionLayer,
-                       NFSAbstractionLayer};
-use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
-                                   LocalFileSystemMasterInterface, FileSystemManager,
-                                   run_worker_info_upate_loop, WorkerInfoUpdate};
+use util::data_layer::{AbstractionLayer, AmazonS3AbstractionLayer, NFSAbstractionLayer,
+                       NullAbstractionLayer};
+use util::distributed_filesystem::{run_worker_info_upate_loop, DFSAbstractionLayer,
+                                   FileSystemManager, LocalFileManager,
+                                   LocalFileSystemMasterInterface, WorkerInfoUpdate};
 
 const DEFAULT_DFS_DIRECTORY: &str = "/tmp/cerberus/dfs/";
 const DEFAULT_S3_DIRECTORY: &str = "/tmp/cerberus/s3/";
@@ -25,9 +25,9 @@ fn initialize_dfs(
     let local_file_manager_arc = Arc::new(LocalFileManager::new(storage_dir));
     let file_manager_arc = Arc::new(FileSystemManager::new());
 
-    let master_interface = Box::new(LocalFileSystemMasterInterface::new(
-        Arc::clone(&file_manager_arc),
-    ));
+    let master_interface = Box::new(LocalFileSystemMasterInterface::new(Arc::clone(
+        &file_manager_arc,
+    )));
 
     let dfs_abstraction_layer = Arc::new(DFSAbstractionLayer::new(
         Arc::clone(&local_file_manager_arc),
@@ -66,9 +66,8 @@ pub fn get_data_abstraction_layer(
         data_abstraction_layer = abstraction_layer;
         filesystem_manager = Some(file_manager_arc);
     } else if let Some(bucket) = matches.value_of("s3") {
-        data_abstraction_layer = initialize_s3(&storage_location, bucket).chain_err(
-            || "Error initializing S3 abstraction layer",
-        )?;
+        data_abstraction_layer = initialize_s3(&storage_location, bucket)
+            .chain_err(|| "Error initializing S3 abstraction layer")?;
     } else {
         data_abstraction_layer = Arc::new(NullAbstractionLayer::new());
     }

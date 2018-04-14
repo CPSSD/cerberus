@@ -2,9 +2,9 @@ use grpc::{Error, RequestOptions, SingleResponse};
 
 use operations::io;
 
-use util;
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
+use util;
 
 const DATA_NOT_AVAILABLE: &str = "Data not available";
 

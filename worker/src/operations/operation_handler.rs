@@ -8,13 +8,13 @@ use procinfo::pid::stat_self;
 use serde_json;
 use uuid::Uuid;
 
-use cerberus_proto::worker as pb;
-use errors::*;
-use communication::MasterInterface;
-use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;
 use super::state::OperationState;
+use cerberus_proto::worker as pb;
+use communication::MasterInterface;
+use errors::*;
+use util::data_layer::AbstractionLayer;
 
 pub type PartitionMap = HashMap<u64, HashMap<String, Vec<serde_json::Value>>>;
 
@@ -164,9 +164,7 @@ impl OperationHandler {
         let worker_status = self.get_worker_status();
         let operation_status = self.get_worker_operation_status();
 
-        self.master_interface.update_worker_status(
-            worker_status,
-            operation_status,
-        )
+        self.master_interface
+            .update_worker_status(worker_status, operation_status)
     }
 }

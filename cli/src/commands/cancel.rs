@@ -1,10 +1,10 @@
 use clap::ArgMatches;
 use grpc::RequestOptions;
 
-use common::get_client_id;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService;
+use common::get_client_id;
 use errors::*;
 
 pub fn cancel(client: &grpc_pb::MapReduceServiceClient, args: Option<&ArgMatches>) -> Result<()> {

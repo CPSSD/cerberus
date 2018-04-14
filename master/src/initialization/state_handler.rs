@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 use clap::ArgMatches;
 
@@ -21,9 +21,9 @@ pub fn initialize_state_handler(
 
     let fresh = matches.is_present("fresh");
 
-    let dump_dir = matches.value_of("state-location").unwrap_or(
-        DEFAULT_DUMP_DIR,
-    );
+    let dump_dir = matches
+        .value_of("state-location")
+        .unwrap_or(DEFAULT_DUMP_DIR);
 
     let state_handler = StateHandler::new(
         Arc::clone(scheduler),
@@ -36,9 +36,9 @@ pub fn initialize_state_handler(
     // If our state dump file exists and we aren't running a fresh copy of master we
     // should load from state.
     if !fresh && Path::new(&format!("{}/master.dump", dump_dir)).exists() {
-        state_handler.load_state().chain_err(
-            || "Unable to load state from file",
-        )?;
+        state_handler
+            .load_state()
+            .chain_err(|| "Unable to load state from file")?;
     }
 
     Ok(state_handler)

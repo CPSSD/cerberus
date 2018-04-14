@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::path::Path;
+use std::str::FromStr;
 
 use grpc::RequestOptions;
 use std::error::Error;
@@ -8,10 +8,10 @@ use std::error::Error;
 use errors::*;
 use operations::io;
 
-use operations::OperationResources;
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
-use cerberus_proto::worker_grpc::IntermediateDataService; // For pub functions only
+use cerberus_proto::worker_grpc::IntermediateDataService;
+use operations::OperationResources; // For pub functions only
 
 const INTERMEDIATE_DATA_RETRIES: u8 = 3;
 
@@ -28,9 +28,8 @@ impl WorkerInterface {
     ) -> Result<String> {
         let path_str = path.as_ref().to_string_lossy();
         let split_path: Vec<&str> = path_str.splitn(2, '/').collect();
-        let worker_addr = SocketAddr::from_str(split_path[0]).chain_err(
-            || "Unable to parse worker address",
-        )?;
+        let worker_addr =
+            SocketAddr::from_str(split_path[0]).chain_err(|| "Unable to parse worker address")?;
         let file = format!("/{}", split_path[1]);
         info!("getting {} from {}", &file, worker_addr);
 
@@ -45,9 +44,8 @@ impl WorkerInterface {
         let res = WorkerInterface::request_data(worker_addr, req, resources, task_id)
             .chain_err(|| format!("Failed to get {} from {}", file, worker_addr))?;
 
-        String::from_utf8(res.get_data().to_vec()).chain_err(
-            || "Unable to convert returned data to string",
-        )
+        String::from_utf8(res.get_data().to_vec())
+            .chain_err(|| "Unable to convert returned data to string")
     }
 
     pub fn request_data(
@@ -61,15 +59,12 @@ impl WorkerInterface {
             &worker_addr.ip().to_string(),
             worker_addr.port(),
             Default::default(),
-        ).chain_err(|| {
-            format!("Error building client for worker {}", worker_addr)
-        })?;
+        ).chain_err(|| format!("Error building client for worker {}", worker_addr))?;
 
         for i in 0..INTERMEDIATE_DATA_RETRIES {
             let response = client
                 .get_intermediate_data(RequestOptions::new(), req.clone())
                 .wait();
-
 
             if let Ok(res) = response {
                 return Ok(res.1);
@@ -86,7 +81,6 @@ impl WorkerInterface {
                     );
                 }
             };
-
         }
 
         // At this point we have failed to contact the worker multiple times and should report this
@@ -101,11 +95,9 @@ impl WorkerInterface {
             )
             .chain_err(|| "Unable to report worker")?;
 
-        Err(
-            format!(
-                "Unable to get intermediate data after {} attempts",
-                INTERMEDIATE_DATA_RETRIES
-            ).into(),
-        )
+        Err(format!(
+            "Unable to get intermediate data after {} attempts",
+            INTERMEDIATE_DATA_RETRIES
+        ).into())
     }
 }

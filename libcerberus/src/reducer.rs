@@ -1,5 +1,5 @@
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use emitter::EmitFinal;
 use errors::*;
@@ -43,10 +43,7 @@ mod tests {
         where
             E: EmitFinal<String>,
         {
-            emitter.emit(input.values.iter().fold(
-                String::new(),
-                |acc, x| acc + x,
-            ))?;
+            emitter.emit(input.values.iter().fold(String::new(), |acc, x| acc + x))?;
             Ok(())
         }
     }

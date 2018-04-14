@@ -1,16 +1,16 @@
-use std::thread;
 use std::collections::HashMap;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use serde_json;
 
 use cerberus_proto::mapreduce as pb;
-use common::{Task, TaskStatus, Job};
+use common::{Job, Task, TaskStatus};
 use errors::*;
 use scheduling::state::{ScheduledJob, State};
 use scheduling::task_processor::TaskProcessor;
-use util::state::{StateHandling, SimpleStateHandling};
 use util::output_error;
+use util::state::{SimpleStateHandling, StateHandling};
 use worker_management::WorkerManager;
 
 /// The `Scheduler` is responsible for the managing of `Job`s and `Task`s.
@@ -44,25 +44,23 @@ impl Scheduler {
         let mut state = self.state.lock().unwrap();
 
         let reduce_tasks = {
-            let job = state.get_job(job_id).chain_err(
-                || "Error scheduling reduce tasks",
-            )?;
+            let job = state
+                .get_job(job_id)
+                .chain_err(|| "Error scheduling reduce tasks")?;
 
-            let map_tasks = state.get_map_tasks(job_id).chain_err(|| {
-                format!("Could not get map tasks for job {}", job_id)
-            })?;
+            let map_tasks = state
+                .get_map_tasks(job_id)
+                .chain_err(|| format!("Could not get map tasks for job {}", job_id))?;
 
             self.task_processor
                 .create_reduce_tasks(job, map_tasks)
-                .chain_err(|| {
-                    format!("Could not create reduce tasks for job {}", job_id)
-                })?
+                .chain_err(|| format!("Could not create reduce tasks for job {}", job_id))?
         };
 
         if reduce_tasks.is_empty() {
-            state.set_job_completed(job_id).chain_err(|| {
-                format!("Could not set job with id {} completed", job_id)
-            })?;
+            state
+                .set_job_completed(job_id)
+                .chain_err(|| format!("Could not set job with id {} completed", job_id))?;
         } else {
             state
                 .add_tasks_for_job(job_id, reduce_tasks.clone())
@@ -79,34 +77,30 @@ impl Scheduler {
     fn process_completed_task(&self, task: &Task) -> Result<()> {
         info!(
             "Processing completed task {} with status {:?}",
-            task.id,
-            task.status
+            task.id, task.status
         );
 
         let reduce_tasks_required = {
             let mut state = self.state.lock().unwrap();
 
-            state.add_completed_task(task.clone()).chain_err(
-                || "Error processing completed task result",
-            )?;
+            state
+                .add_completed_task(task.clone())
+                .chain_err(|| "Error processing completed task result")?;
 
-            state.reduce_tasks_required(&task.job_id).chain_err(
-                || "Error processing completed task result",
-            )?
-
+            state
+                .reduce_tasks_required(&task.job_id)
+                .chain_err(|| "Error processing completed task result")?
         };
 
         if task.status != TaskStatus::Complete {
-            self.cancel_job(&task.job_id).chain_err(|| {
-                format!("Unable to cancel job with ID {}", &task.job_id)
-            })?;
+            self.cancel_job(&task.job_id)
+                .chain_err(|| format!("Unable to cancel job with ID {}", &task.job_id))?;
             return Ok(());
         }
 
         if reduce_tasks_required {
-            self.schedule_reduce_tasks(&task.job_id).chain_err(|| {
-                format!("Could not schedule reduce tasks for job {}", task.job_id)
-            })?;
+            self.schedule_reduce_tasks(&task.job_id)
+                .chain_err(|| format!("Could not schedule reduce tasks for job {}", task.job_id))?;
         }
         Ok(())
     }
@@ -116,15 +110,14 @@ impl Scheduler {
         state
             .update_job_started(
                 &task.job_id,
-                task.time_started.chain_err(
-                    || "Time started expected to exist.",
-                )?,
+                task.time_started
+                    .chain_err(|| "Time started expected to exist.")?,
             )
             .chain_err(|| "Error updating job start time.")?;
 
-        state.update_task(task.to_owned()).chain_err(
-            || "Error updating task info.",
-        )
+        state
+            .update_task(task.to_owned())
+            .chain_err(|| "Error updating task info.")
     }
 
     pub fn process_updated_task(&self, task: &Task) -> Result<()> {
@@ -138,7 +131,9 @@ impl Scheduler {
     /// Schedule a [`Task`](common::Task) to be executed.
     fn schedule_task(&self, task: Task) {
         let worker_manager = Arc::clone(&self.worker_manager);
-        thread::spawn(move || { worker_manager.run_task(task); });
+        thread::spawn(move || {
+            worker_manager.run_task(task);
+        });
     }
 
     /// Splits the input for a job and schedules the map tasks in the background.
@@ -162,7 +157,9 @@ impl Scheduler {
             for task in map_tasks_vec {
                 map_tasks.insert(task.id.to_owned(), task.clone());
                 let worker_manager = Arc::clone(&worker_manager);
-                thread::spawn(move || { worker_manager.run_task(task); });
+                thread::spawn(move || {
+                    worker_manager.run_task(task);
+                });
             }
 
             info!("Starting job with ID {}.", job.id);
@@ -184,9 +181,9 @@ impl Scheduler {
 
         {
             let mut state = self.state.lock().unwrap();
-            state.add_job(scheduled_job).chain_err(
-                || "Error adding scheduled job to state store",
-            )?;
+            state
+                .add_job(scheduled_job)
+                .chain_err(|| "Error adding scheduled job to state store")?;
         }
 
         self.split_input(job);
@@ -196,9 +193,9 @@ impl Scheduler {
     pub fn cancel_job(&self, job_id: &str) -> Result<bool> {
         let cancelled = {
             let mut state = self.state.lock().unwrap();
-            state.cancel_job(job_id).chain_err(|| {
-                format!("Unable to cancel job with ID: {}", job_id)
-            })?
+            state
+                .cancel_job(job_id)
+                .chain_err(|| format!("Unable to cancel job with ID: {}", job_id))?
         };
         if !cancelled {
             info!("Unable to cancel job with ID {}", job_id);
@@ -207,9 +204,7 @@ impl Scheduler {
 
         let workers = self.worker_manager
             .get_workers_running_job(job_id)
-            .chain_err(|| {
-                format!("Unable to get list of workers running job {}", job_id)
-            })?;
+            .chain_err(|| format!("Unable to get list of workers running job {}", job_id))?;
 
         self.worker_manager
             .remove_queued_tasks_for_job(job_id)
@@ -238,9 +233,9 @@ impl Scheduler {
         report.mapreduce_id = job.id.clone();
         report.status = job.status;
         if job.status == pb::Status::FAILED {
-            report.failure_details = job.status_details.clone().unwrap_or_else(
-                || "Unknown.".to_owned(),
-            );
+            report.failure_details = job.status_details
+                .clone()
+                .unwrap_or_else(|| "Unknown.".to_owned());
         }
         report.scheduled_timestamp = job.time_requested.timestamp();
         report.output_directory = job.output_directory.clone();
@@ -256,9 +251,9 @@ impl Scheduler {
 
     pub fn get_mapreduce_status(&self, mapreduce_id: &str) -> Result<pb::MapReduceReport> {
         let state = self.state.lock().unwrap();
-        let job = state.get_job(mapreduce_id).chain_err(
-            || "Error getting map reduce status.",
-        )?;
+        let job = state
+            .get_job(mapreduce_id)
+            .chain_err(|| "Error getting map reduce status.")?;
         Ok(self.get_status_for_job(job))
     }
 
@@ -326,9 +321,9 @@ impl SimpleStateHandling<Error> for Scheduler {
 
     fn load_state(&self, data: serde_json::Value) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.load_state(data).chain_err(
-            || "Error loading scheduler state.",
-        )?;
+        state
+            .load_state(data)
+            .chain_err(|| "Error loading scheduler state.")?;
 
         let in_progress_tasks = state.get_in_progress_tasks();
         for task in in_progress_tasks {
@@ -345,7 +340,6 @@ impl SimpleStateHandling<Error> for Scheduler {
         Ok(())
     }
 }
-
 
 pub fn run_task_update_loop(scheduler: Arc<Scheduler>, worker_manager: &Arc<WorkerManager>) {
     let receiver = worker_manager.get_update_receiver();

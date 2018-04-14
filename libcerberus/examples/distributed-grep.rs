@@ -31,16 +31,14 @@ impl Map for GrepMapper {
     where
         E: EmitIntermediate<Self::Key, Self::Value>,
     {
-        let regex = Regex::new(REGEX).chain_err(
-            || "Error creating regex object.",
-        )?;
+        let regex = Regex::new(REGEX).chain_err(|| "Error creating regex object.")?;
 
         for line in input.value.lines() {
             if regex.is_match(line) {
                 let word = get_longest_word(line);
-                emitter.emit(word.len(), line.to_owned()).chain_err(
-                    || "Error emitting map key-value pair.",
-                )?;
+                emitter
+                    .emit(word.len(), line.to_owned())
+                    .chain_err(|| "Error emitting map key-value pair.")?;
             }
         }
         Ok(())
@@ -61,9 +59,7 @@ impl Reduce<usize, String> for GrepReducer {
 }
 
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    env_logger::init().chain_err(|| "Failed to initialise logging.")?;
 
     let grep_mapper = GrepMapper;
     let grep_reducer = GrepReducer;

@@ -9,7 +9,7 @@ use std::path::Path;
 use clap::ArgMatches;
 
 use errors::*;
-use util::distributed_filesystem::{NetworkFileSystemMasterInterface, FileSystemMasterInterface};
+use util::distributed_filesystem::{FileSystemMasterInterface, NetworkFileSystemMasterInterface};
 
 const MEGA_BYTE: u64 = 1000 * 1000;
 const MAX_UPLOAD_SIZE: u64 = MEGA_BYTE * 32;
@@ -18,9 +18,7 @@ fn get_local_files(path: &Path) -> Result<Vec<String>> {
     let mut files = Vec::new();
 
     if path.is_dir() {
-        let entries = fs::read_dir(path).chain_err(
-            || "Unable to read local file directroy",
-        )?;
+        let entries = fs::read_dir(path).chain_err(|| "Unable to read local file directroy")?;
 
         for entry in entries {
             let entry: DirEntry = entry.chain_err(|| "Error reading input directory")?;
@@ -42,14 +40,10 @@ fn upload_local_file(
     remote_path: &str,
 ) -> Result<()> {
     println!("Uploading File {} to Cluster", local_path);
-    let file = File::open(local_path).chain_err(|| {
-        format!("unable to open file {}", local_path)
-    })?;
+    let file = File::open(local_path).chain_err(|| format!("unable to open file {}", local_path))?;
 
     let mut start_byte = 0;
-    let metadata = fs::metadata(local_path).chain_err(
-        || "Error getting metadata",
-    )?;
+    let metadata = fs::metadata(local_path).chain_err(|| "Error getting metadata")?;
     let file_length = metadata.len();
     let mut first = true; // Allow uploading empty files
 
@@ -58,9 +52,9 @@ fn upload_local_file(
         first = false;
 
         let mut data = vec![0; min(MAX_UPLOAD_SIZE, file_length - start_byte) as usize];
-        let bytes_read = buf_reader.read(&mut data).chain_err(|| {
-            format!("unable to read content of {}", local_path)
-        })?;
+        let bytes_read = buf_reader
+            .read(&mut data)
+            .chain_err(|| format!("unable to read content of {}", local_path))?;
 
         master_interface
             .upload_file_chunk(remote_path, start_byte, data)
@@ -68,7 +62,6 @@ fn upload_local_file(
 
         start_byte += bytes_read as u64;
     }
-
 
     Ok(())
 }
@@ -84,9 +77,9 @@ fn get_upload_file_path(local_path: &str, remote_path: Option<&str>) -> Result<S
         return Ok(remote_path_str.to_owned());
     }
 
-    let local_file_name = Path::new(&local_path).file_name().chain_err(
-        || "Error getting file name to upload",
-    )?;
+    let local_file_name = Path::new(&local_path)
+        .file_name()
+        .chain_err(|| "Error getting file name to upload")?;
 
     let remote_path = remote_path.join(local_file_name);
     Ok(remote_path.to_string_lossy().to_string())
@@ -95,20 +88,16 @@ fn get_upload_file_path(local_path: &str, remote_path: Option<&str>) -> Result<S
 pub fn upload(master_addr: &SocketAddr, args: &ArgMatches) -> Result<()> {
     println!("Uploading File(s) to Cluster...");
 
-    let local_path = args.value_of("local_path").chain_err(
-        || "Local path can not be empty",
-    )?;
+    let local_path = args.value_of("local_path")
+        .chain_err(|| "Local path can not be empty")?;
 
     let remote_path = args.value_of("remote_path");
 
-    let local_files = get_local_files(Path::new(local_path)).chain_err(
-        || "Error getting files to uplaod to cluster",
-    )?;
+    let local_files = get_local_files(Path::new(local_path))
+        .chain_err(|| "Error getting files to uplaod to cluster")?;
 
     if local_files.is_empty() {
-        return Err(
-            "No local file found to upload. Is the directory empty?".into(),
-        );
+        return Err("No local file found to upload. Is the directory empty?".into());
     } else if let Some(remote_path_str) = remote_path {
         if local_files.len() > 1 {
             let remote_path = Path::new(remote_path_str);
@@ -120,14 +109,12 @@ pub fn upload(master_addr: &SocketAddr, args: &ArgMatches) -> Result<()> {
         }
     }
 
-    let master_interface =
-        NetworkFileSystemMasterInterface::new(*master_addr)
-            .chain_err(|| "Error creating distributed filesystem master interface")?;
+    let master_interface = NetworkFileSystemMasterInterface::new(*master_addr)
+        .chain_err(|| "Error creating distributed filesystem master interface")?;
 
     for local_path in local_files {
-        let remote_path_str = get_upload_file_path(&local_path, remote_path).chain_err(
-            || "Error getting file path to upload",
-        )?;
+        let remote_path_str = get_upload_file_path(&local_path, remote_path)
+            .chain_err(|| "Error getting file path to upload")?;
 
         upload_local_file(&master_interface, &local_path, &remote_path_str)
             .chain_err(|| "Error uploading local file")?;

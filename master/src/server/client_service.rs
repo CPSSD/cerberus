@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use grpc::{SingleResponse, Error, RequestOptions};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use common::{Job, JobOptions};
 use scheduling::Scheduler;
-use util::output_error;
 use util::data_layer::AbstractionLayer;
+use util::output_error;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
@@ -143,21 +143,20 @@ impl grpc_pb::MapReduceService for ClientService {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::channel;
-    use std::thread;
+    use cerberus_proto::mapreduce::Status as MapReduceStatus;
+    use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use cerberus_proto::worker as wpb;
     use common::{Job, Task, Worker};
     use errors::*;
     use scheduling::TaskProcessor;
-    use cerberus_proto::worker as wpb;
-    use cerberus_proto::mapreduce::Status as MapReduceStatus;
-    use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use std::sync::mpsc::channel;
+    use std::thread;
     use util::data_layer::NullAbstractionLayer;
-    use worker_management::WorkerManager;
     use worker_communication::WorkerInterface;
+    use worker_management::WorkerManager;
 
     struct NullTaskProcessor;
 
