@@ -356,6 +356,19 @@ impl State {
         ));
     }
 
+    pub fn requeue_slow_task(&mut self, task_id: &str) -> Result<()> {
+        let task = self.tasks
+            .get(task_id)
+            .chain_err(|| format!("No task found with id {}", task_id))?;
+
+        self.priority_task_queue.push(PriorityTask::new(
+            task_id.clone().to_string(),
+            REQUEUED_TASK_PRIORITY * task.job_priority,
+        ));
+
+        Ok(())
+    }
+
     // Unassign a task assigned to a worker and put the task back in the queue.
     pub fn unassign_worker(&mut self, worker_id: &str) -> Result<()> {
         let worker = self.workers
@@ -382,9 +395,8 @@ impl State {
         let assigned_task = {
             if let Some(scheduled_task) = self.tasks.get_mut(task_id) {
                 scheduled_task.status = TaskStatus::InProgress;
-                if scheduled_task.time_started == None {
-                    scheduled_task.time_started = Some(Utc::now());
-                }
+                scheduled_task.time_started = Some(Utc::now());
+                scheduled_task.requeued = false;
                 scheduled_task.assigned_worker_id = worker_id.to_owned();
 
                 scheduled_task.clone()
