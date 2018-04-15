@@ -47,9 +47,10 @@ impl Map for GrepMapper {
 
 struct GrepReducer;
 impl Reduce<usize, String> for GrepReducer {
+    type Output = String;
     fn reduce<E>(&self, input: IntermediateInputKV<usize, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<String>,
+        E: EmitFinal<Self::Output>,
     {
         for val in input.values {
             emitter.emit(val).chain_err(|| "Error emitting value.")?;

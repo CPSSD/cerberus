@@ -141,7 +141,7 @@ where
 
     let mut output_objects = Vec::new();
     for input_kv in input_kvs {
-        let mut output_object = FinalOutputObject::<V>::default();
+        let mut output_object = FinalOutputObject::<R::Output>::default();
         reducer
             .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
             .chain_err(|| "Error running reduce operation.")?;

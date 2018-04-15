@@ -146,9 +146,10 @@ impl Combine<u32, String> for RatingAggregatorCombiner {
 
 struct RatingAggregatorReducer;
 impl Reduce<u32, String> for RatingAggregatorReducer {
+    type Output = String;
     fn reduce<E>(&self, input: IntermediateInputKV<u32, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<String>,
+        E: EmitFinal<Self::Output>,
     {
         let mut combine_result = do_rating_combine(input)?;
 

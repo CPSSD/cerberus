@@ -28,9 +28,10 @@ impl Map for WordCountMapper {
 
 struct WordCountReducer;
 impl Reduce<String, u64> for WordCountReducer {
+    type Output = u64;
     fn reduce<E>(&self, input: IntermediateInputKV<String, u64>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<u64>,
+        E: EmitFinal<Self::Output>,
     {
         let mut total: u64 = 0;
         for val in input.values {

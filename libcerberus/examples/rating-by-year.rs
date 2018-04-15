@@ -76,9 +76,10 @@ impl Partition<String, f64> for RatingByYearPartitioner {
 
 struct RatingByYearReducer;
 impl Reduce<String, f64> for RatingByYearReducer {
+    type Output = f64;
     fn reduce<E>(&self, input: IntermediateInputKV<String, f64>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<f64>,
+        E: EmitFinal<Self::Output>,
     {
         for val in input.values {
             emitter.emit(val).chain_err(|| "Error emitting value.")?;
