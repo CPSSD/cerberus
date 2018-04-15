@@ -108,14 +108,26 @@ impl WorkerManager {
 
     pub fn process_reduce_task_result(&self, reduce_result: &pb::ReduceResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        let task = state
+        info!(
+            "Got result for reduce task {} from {}",
+            reduce_result.task_id, reduce_result.worker_id
+        );
+
+        let task_option = state
             .process_reduce_task_result(reduce_result)
             .chain_err(|| "Error processing reduce result.")?;
 
-        info!(
-            "Got result for reduce task {} from {}",
-            task.id, reduce_result.worker_id
-        );
+        state
+            .set_worker_operation_completed(
+                reduce_result.get_worker_id(),
+                reduce_result.get_status(),
+            )
+            .chain_err(|| "Error processing reduce result.")?;
+
+        let task = match task_option {
+            Some(task) => task,
+            None => return Ok(()),
+        };
 
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
             let task_update_sender = self.task_update_sender.lock().unwrap();
@@ -124,25 +136,28 @@ impl WorkerManager {
                 .chain_err(|| "Error processing reduce result.")?;
         }
 
-        state
-            .set_worker_operation_completed(
-                reduce_result.get_worker_id(),
-                reduce_result.get_status(),
-            )
-            .chain_err(|| "Error processing reduce result.")?;
         Ok(())
     }
 
     pub fn process_map_task_result(&self, map_result: &pb::MapResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        let task = state
+        info!(
+            "Got result for map task {} from {}",
+            map_result.task_id, map_result.worker_id
+        );
+
+        let task_option = state
             .process_map_task_result(map_result)
             .chain_err(|| "Error processing map result.")?;
 
-        info!(
-            "Got result for map task {} from {}",
-            task.id, map_result.worker_id
-        );
+        state
+            .set_worker_operation_completed(map_result.get_worker_id(), map_result.get_status())
+            .chain_err(|| "Error processing map result.")?;
+
+        let task = match task_option {
+            Some(task) => task,
+            None => return Ok(()),
+        };
 
         if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
             let task_update_sender = self.task_update_sender.lock().unwrap();
@@ -150,10 +165,6 @@ impl WorkerManager {
                 .send(task)
                 .chain_err(|| "Error processing map result.")?;
         }
-
-        state
-            .set_worker_operation_completed(map_result.get_worker_id(), map_result.get_status())
-            .chain_err(|| "Error processing map result.")?;
 
         Ok(())
     }

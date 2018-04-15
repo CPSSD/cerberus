@@ -11,6 +11,7 @@ use data_layer::AbstractionLayer;
 use distributed_filesystem::{FileSystemMasterInterface, FileSystemWorkerInterface,
                              LocalFileManager};
 use errors::*;
+use logging::output_error;
 
 const MAX_GET_DATA_RETRIES: usize = 3;
 const MEGA_BYTE: u64 = 1000 * 1000;
@@ -254,10 +255,18 @@ impl AbstractionLayer for DFSAbstractionLayer {
         chunk_start: u64,
         chunk_end: u64,
         worker_id: &str,
-    ) -> Result<u64> {
-        let file_chunks = self.master_interface
+    ) -> u64 {
+        let file_chunks = match self.master_interface
             .get_file_chunks(&path.to_string_lossy())
-            .chain_err(|| "Could not get file locations")?;
+        {
+            Ok(chunks) => chunks,
+            Err(err) => {
+                output_error(&err.chain_err(|| {
+                    format!("Error getting data closeness score for {:?}", path)
+                }));
+                return 0;
+            }
+        };
 
         let mut score: u64 = 0;
 
@@ -271,6 +280,6 @@ impl AbstractionLayer for DFSAbstractionLayer {
             }
         }
 
-        Ok(score)
+        score
     }
 }

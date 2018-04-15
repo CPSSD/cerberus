@@ -304,7 +304,7 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
         _chunk_start: u64,
         _chunk_end: u64,
         _worker_id: &str,
-    ) -> Result<u64> {
-        Ok(1)
+    ) -> u64 {
+        1
     }
 }

@@ -42,7 +42,7 @@ impl Map for NGramsMapper {
 }
 
 fn get_index(c: char) -> u64 {
-    // Characters (0 -> 9, a -> z) can be converted to a digit. 
+    // Characters (0 -> 9, a -> z) can be converted to a digit.
     // 36 different possible values.
     match c.to_digit(36) {
         Some(d) => u64::from(d),
@@ -56,8 +56,7 @@ fn get_place_in_range(x: u64, max_x: u64, start_range: u64, end_range: u64) -> u
         return end_range;
     }
     let range = end_range - start_range;
-    let new_value = ((x * range) / max_x) + start_range;
-    return new_value;
+    ((x * range) / max_x) + start_range
 }
 
 struct NGramsPartitioner;

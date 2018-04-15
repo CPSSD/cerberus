@@ -34,5 +34,5 @@ pub trait AbstractionLayer {
         chunk_start: u64,
         chunk_end: u64,
         worker_id: &str,
-    ) -> Result<u64>;
+    ) -> u64;
 }

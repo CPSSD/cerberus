@@ -20,7 +20,7 @@ pub enum TaskStatus {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TaskType {
     Map,
     Reduce,
