@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use futures::future;
 use futures::prelude::*;
+#[cfg(target_os = "linux")]
 use libc::_SC_CLK_TCK;
+#[cfg(target_os = "linux")]
 use procinfo::pid::stat_self;
 use serde_json;
 use uuid::Uuid;
@@ -72,11 +74,17 @@ pub fn failure_details_from_error(err: &Error) -> String {
     failure_details
 }
 
+#[cfg(target_os = "linux")]
 pub fn get_cpu_time() -> u64 {
     // We can panic in this case. This is beyond our control and would mostly be caused by a very
     // critical error.
     let stat = stat_self().unwrap();
     (stat.utime + stat.stime + stat.cstime + stat.cutime) as u64 / (_SC_CLK_TCK as u64)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn get_cpu_time() -> u64 {
+    0
 }
 
 impl OperationHandler {
