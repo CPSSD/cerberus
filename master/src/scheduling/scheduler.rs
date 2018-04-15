@@ -333,16 +333,15 @@ impl Scheduler {
         let mut slow_tasks = Vec::new();
 
         for task in scheduled_job.tasks.values_mut() {
-            if task.task_type == task_type {
-                if task.status == TaskStatus::InProgress && !task.requeued {
-                    let seconds_running = task.get_seconds_running()
-                        .chain_err(|| "Error getting seconds since task started running")?;
+            if task.task_type == task_type && task.status == TaskStatus::InProgress
+                && !task.requeued
+            {
+                let seconds_running = task.get_seconds_running()
+                    .chain_err(|| "Error getting seconds since task started running")?;
 
-                    if seconds_running > (average_completion_time * SLOW_TASK_COMPLETION_MULTIPLIER)
-                    {
-                        slow_tasks.push(task.id.clone());
-                        task.requeued = true;
-                    }
+                if seconds_running > (average_completion_time * SLOW_TASK_COMPLETION_MULTIPLIER) {
+                    slow_tasks.push(task.id.clone());
+                    task.requeued = true;
                 }
             }
         }
@@ -358,7 +357,7 @@ impl Scheduler {
 
         let mut slow_tasks = Vec::new();
 
-        for mut job in scheduled_jobs.iter_mut() {
+        for mut job in &mut scheduled_jobs {
             if job.job.map_tasks_completed != job.job.map_tasks_total {
                 let completed_percentage =
                     (job.job.map_tasks_completed * 100) / job.job.map_tasks_total;
@@ -444,7 +443,7 @@ pub fn run_scheduler_loop(scheduler: Arc<Scheduler>, worker_manager: Arc<WorkerM
         let slow_tasks_result = scheduler.get_slow_running_tasks();
         match slow_tasks_result {
             Ok(slow_tasks) => {
-                for task_id in slow_tasks.iter() {
+                for task_id in &slow_tasks {
                     let requeue_result = worker_manager.requeue_slow_task(task_id);
                     if let Err(err) = requeue_result {
                         output_error(&err.chain_err(|| "Error requeuing slow task"));

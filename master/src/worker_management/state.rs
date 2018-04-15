@@ -171,17 +171,15 @@ impl State {
         Ok(())
     }
 
-    pub fn process_reduce_task_result(&mut self, reduce_result: &pb::ReduceResult) -> Result<Task> {
+    pub fn process_reduce_task_result(
+        &mut self,
+        reduce_result: &pb::ReduceResult,
+    ) -> Result<Option<Task>> {
         if reduce_result.status == pb::ResultStatus::SUCCESS {
-            let mut scheduled_task = self.tasks.remove(reduce_result.get_task_id()).chain_err(
-                || {
-                    format!(
-                        "Task with ID {} not found, Worker ID: {}.",
-                        reduce_result.get_task_id(),
-                        reduce_result.get_worker_id()
-                    )
-                },
-            )?;
+            let mut scheduled_task = match self.tasks.remove(reduce_result.get_task_id()) {
+                Some(task) => task,
+                None => return Ok(None),
+            };
 
             if scheduled_task.id != reduce_result.task_id {
                 return Err("Task id does not match expected task id.".into());
@@ -190,7 +188,7 @@ impl State {
             scheduled_task.status = TaskStatus::Complete;
             scheduled_task.time_completed = Some(Utc::now());
             scheduled_task.cpu_time = reduce_result.get_cpu_time();
-            return Ok(scheduled_task);
+            return Ok(Some(scheduled_task));
         }
 
         self.task_failed(
@@ -200,15 +198,12 @@ impl State {
         ).chain_err(|| "Error marking task as failed")
     }
 
-    pub fn process_map_task_result(&mut self, map_result: &pb::MapResult) -> Result<Task> {
+    pub fn process_map_task_result(&mut self, map_result: &pb::MapResult) -> Result<Option<Task>> {
         if map_result.status == pb::ResultStatus::SUCCESS {
-            let mut scheduled_task = self.tasks.remove(map_result.get_task_id()).chain_err(|| {
-                format!(
-                    "Task with ID {} not found, Worker ID: {}.",
-                    map_result.get_task_id(),
-                    map_result.get_worker_id()
-                )
-            })?;
+            let mut scheduled_task = match self.tasks.remove(map_result.get_task_id()) {
+                Some(task) => task,
+                None => return Ok(None),
+            };
 
             if scheduled_task.id != map_result.task_id {
                 return Err("Task id does not match expected task id.".into());
@@ -230,7 +225,7 @@ impl State {
             self.completed_tasks
                 .insert(scheduled_task.id.clone(), scheduled_task.clone());
 
-            return Ok(scheduled_task);
+            return Ok(Some(scheduled_task));
         }
 
         self.task_failed(
@@ -245,19 +240,17 @@ impl State {
         worker_id: &str,
         task_id: &str,
         failure_details: &str,
-    ) -> Result<(Task)> {
+    ) -> Result<Option<Task>> {
         let worker = self.workers
             .get_mut(worker_id)
             .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
         worker.current_task_id = String::new();
 
-        let mut assigned_task = self.tasks.remove(task_id).chain_err(|| {
-            format!(
-                "Task with ID {} not found, Worker ID: {}.",
-                task_id, worker_id
-            )
-        })?;
+        let mut assigned_task = match self.tasks.remove(task_id) {
+            Some(task) => task,
+            None => return Ok(None),
+        };
 
         if failure_details != "" {
             assigned_task.failure_details = Some(failure_details.to_owned());
@@ -276,7 +269,7 @@ impl State {
             ));
         }
 
-        Ok(assigned_task)
+        Ok(Some(assigned_task))
     }
 
     pub fn get_workers_running_job(&self, job_id: &str) -> Result<Vec<String>> {
@@ -362,7 +355,7 @@ impl State {
             .chain_err(|| format!("No task found with id {}", task_id))?;
 
         self.priority_task_queue.push(PriorityTask::new(
-            task_id.clone().to_string(),
+            task_id.to_string(),
             REQUEUED_TASK_PRIORITY * task.job_priority,
         ));
 
@@ -391,7 +384,7 @@ impl State {
     }
 
     // Assigns a given task_id to a worker
-    fn assign_worker_task(&mut self, worker_id: &str, task_id: &str) -> Result<(Task)> {
+    fn assign_worker_task(&mut self, worker_id: &str, task_id: &str) -> Result<Task> {
         let assigned_task = {
             if let Some(scheduled_task) = self.tasks.get_mut(task_id) {
                 scheduled_task.status = TaskStatus::InProgress;
@@ -414,52 +407,47 @@ impl State {
         Ok(assigned_task)
     }
 
-    fn get_data_score(&self, map_request: &pb::PerformMapRequest, worker_id: &str) -> Result<u64> {
+    fn get_data_score(&self, map_request: &pb::PerformMapRequest, worker_id: &str) -> u64 {
         let mut score: u64 = 0;
         for input_location in map_request.get_input().get_input_locations() {
-            score += self.data_layer
-                .get_data_closeness(
-                    Path::new(&input_location.input_path),
-                    input_location.start_byte,
-                    input_location.end_byte,
-                    worker_id,
-                )
-                .chain_err(|| {
-                    format!(
-                        "Could not get closeness for file {} and worker {}",
-                        input_location.input_path, worker_id
-                    )
-                })?;
+            score += self.data_layer.get_data_closeness(
+                Path::new(&input_location.input_path),
+                input_location.start_byte,
+                input_location.end_byte,
+                worker_id,
+            );
         }
 
-        Ok(score)
+        score
     }
 
-    fn get_data_score_if_map(&self, task_id: &str, worker_id: &str) -> Result<u64> {
+    fn get_data_score_if_map(&self, task_id: &str, worker_id: &str) -> u64 {
         let task = match self.tasks.get(task_id) {
             Some(task) => task,
-            None => return Err(format!("Task with ID {} not found.", task_id).into()),
+            // This should never happen, as we already check if the tasks exists before here.
+            None => {
+                warn!(
+                    "Unable to get data score. Task not found with id {}",
+                    task_id
+                );
+                return 0;
+            }
         };
 
-        let data_score = match task.map_request {
-            Some(ref map_request) => self.get_data_score(map_request, worker_id).chain_err(|| {
-                format!(
-                    "Could not get data closeness score for task_id {} and worker_id {}",
-                    task.id, worker_id
-                )
-            })?,
+        match task.map_request {
+            Some(ref map_request) => self.get_data_score(map_request, worker_id),
             None => 0,
-        };
-
-        Ok(data_score)
+        }
     }
 
-    fn get_best_task_for_worker(&mut self, worker_id: &str) -> Result<Option<PriorityTask>> {
+    fn get_best_task_for_worker(&mut self, worker_id: &str) -> Option<PriorityTask> {
         let mut tasks_to_consider = Vec::new();
 
         for _ in 0..MAX_TASKS_TO_CONSIDER {
             if let Some(task) = self.priority_task_queue.pop() {
-                tasks_to_consider.push(task);
+                if self.tasks.contains_key(&task.id) {
+                    tasks_to_consider.push(task);
+                }
             } else {
                 break;
             }
@@ -476,9 +464,7 @@ impl State {
                 }
             }
 
-            let data_score = self.get_data_score_if_map(&task.id, worker_id)
-                .chain_err(|| "Unable to get data score")?;
-
+            let data_score = self.get_data_score_if_map(&task.id, worker_id);
             if data_score > best_data_score || best_task.is_none() {
                 best_data_score = data_score;
                 best_task = Some(task.clone());
@@ -496,14 +482,13 @@ impl State {
             }
         }
 
-        Ok(best_task)
+        best_task
     }
 
     // Tries to assign a worker the next task in the queue.
     // Returns the task if one exists.
-    pub fn try_assign_worker_task(&mut self, worker_id: &str) -> Result<(Option<Task>)> {
-        let task_option = self.get_best_task_for_worker(worker_id)
-            .chain_err(|| "Could not get task for worker")?;
+    pub fn try_assign_worker_task(&mut self, worker_id: &str) -> Result<Option<Task>> {
+        let task_option = self.get_best_task_for_worker(worker_id);
 
         let scheduled_task_id: String = match task_option {
             Some(priority_task) => {

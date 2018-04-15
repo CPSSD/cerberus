@@ -126,8 +126,8 @@ impl AbstractionLayer for NFSAbstractionLayer {
         _chunk_start: u64,
         _chunk_end: u64,
         _worker_id: &str,
-    ) -> Result<u64> {
+    ) -> u64 {
         // Each file is equally close on NFS
-        Ok(1)
+        1
     }
 }
