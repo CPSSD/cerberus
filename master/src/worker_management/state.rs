@@ -53,10 +53,8 @@ impl State {
         }
     }
 
-    pub fn remove_queued_tasks_for_job(&mut self, job_id: &str) -> Result<()> {
+    pub fn remove_queued_tasks_for_job(&mut self, job_id: &str) {
         let mut new_priority_queue: BinaryHeap<PriorityTask> = BinaryHeap::new();
-
-        self.tasks.retain(|_, v| v.job_id != job_id);
 
         for priority_task in self.priority_task_queue.drain() {
             if let Some(task) = self.tasks.get_mut(&priority_task.id.clone()) {
@@ -67,11 +65,9 @@ impl State {
         }
 
         self.priority_task_queue = new_priority_queue;
-
-        Ok(())
     }
 
-    fn get_in_progress_tasks_for_job(&self, job_id: &str) -> Result<Vec<String>> {
+    fn get_in_progress_tasks_for_job(&self, job_id: &str) -> Vec<String> {
         let mut tasks: Vec<String> = Vec::new();
 
         for task in self.tasks.values() {
@@ -80,7 +76,7 @@ impl State {
             }
         }
 
-        Ok(tasks)
+        tasks
     }
 
     pub fn get_worker_count(&self) -> u32 {
@@ -270,21 +266,6 @@ impl State {
         }
 
         Ok(Some(assigned_task))
-    }
-
-    pub fn get_workers_running_job(&self, job_id: &str) -> Result<Vec<String>> {
-        let mut worker_ids = Vec::new();
-
-        let workers = self.get_workers();
-        for worker in workers {
-            if let Some(task) = self.tasks.get(&worker.current_task_id) {
-                if task.job_id == job_id {
-                    worker_ids.push(worker.worker_id.clone());
-                }
-            }
-        }
-
-        Ok(worker_ids)
     }
 
     // Mark that a given worker has returned a result for it's task.
@@ -507,18 +488,27 @@ impl State {
         }
     }
 
-    // Clears the workers current_task_id and returns the previous value.
-    pub fn cancel_task_for_worker(&mut self, worker_id: &str) -> Result<String> {
-        let worker = self.workers
-            .get_mut(worker_id)
-            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
+    pub fn cancel_job(&mut self, job_id: &str) -> Vec<(String, String)> {
+        let mut workers_running_job = Vec::new();
 
-        let previous_task_id = worker.current_task_id.clone();
-        worker.current_task_id = String::new();
+        // Remove assigned workers
+        for worker in self.workers.values_mut() {
+            if let Some(task) = self.tasks.get(&worker.current_task_id) {
+                if task.job_id == job_id {
+                    workers_running_job
+                        .push((worker.worker_id.clone(), worker.current_task_id.clone()));
+                    worker.current_task_id = String::new();
+                }
+            }
+        }
 
-        self.tasks.remove(&previous_task_id);
+        // Remove queued tasks
+        self.remove_queued_tasks_for_job(job_id);
 
-        Ok(previous_task_id)
+        // Remove tasks
+        self.tasks.retain(|_, v| v.job_id != job_id);
+
+        workers_running_job
     }
 
     pub fn has_task(&self, task_id: &str) -> bool {
@@ -566,8 +556,7 @@ impl State {
             .chain_err(|| format!("Unable to get map task with ID {}", task_id))?
             .clone();
 
-        let queued_tasks = self.get_in_progress_tasks_for_job(&map_task.job_id)
-            .chain_err(|| format!("Unable to get queued tasks for job {}", map_task.job_id))?;
+        let queued_tasks = self.get_in_progress_tasks_for_job(&map_task.job_id);
 
         let mut remove_tasks: Vec<String> = Vec::new();
         for queued_task_id in queued_tasks.clone() {
@@ -587,8 +576,7 @@ impl State {
             }
         }
 
-        self.remove_tasks_from_queue(&remove_tasks)
-            .chain_err(|| "Unable to remove tasks from queue")?;
+        self.remove_tasks_from_queue(&remove_tasks);
 
         // Reschedule the map task
         let mut new_map_task = map_task.clone();
@@ -647,7 +635,7 @@ impl State {
         }
     }
 
-    pub fn remove_tasks_from_queue(&mut self, task_ids: &[String]) -> Result<()> {
+    pub fn remove_tasks_from_queue(&mut self, task_ids: &[String]) {
         let mut new_priority_queue: BinaryHeap<PriorityTask> = BinaryHeap::new();
 
         for task_id in task_ids {
@@ -661,7 +649,6 @@ impl State {
         }
 
         self.priority_task_queue = new_priority_queue;
-        Ok(())
     }
 }
 

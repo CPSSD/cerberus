@@ -206,17 +206,9 @@ impl Scheduler {
             return Ok(false);
         }
 
-        let workers = self.worker_manager
-            .get_workers_running_job(job_id)
-            .chain_err(|| format!("Unable to get list of workers running job {}", job_id))?;
-
         self.worker_manager
-            .remove_queued_tasks_for_job(job_id)
-            .chain_err(|| "Unable to remove queued task from state")?;
-
-        self.worker_manager
-            .cancel_workers_tasks(workers)
-            .chain_err(|| "Unable to cancel task on workers")?;
+            .cancel_job(job_id)
+            .chain_err(|| "Error cancelling job")?;
 
         info!("Succesfully cancelled job {}", job_id);
         Ok(cancelled)
