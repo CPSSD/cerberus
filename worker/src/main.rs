@@ -12,6 +12,7 @@ extern crate grpc;
 extern crate libc;
 #[macro_use]
 extern crate log;
+#[cfg(target_os = "linux")]
 extern crate procinfo;
 extern crate protobuf;
 extern crate serde;
