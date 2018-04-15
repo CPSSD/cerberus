@@ -26,6 +26,11 @@
         <div class="container-grid" id="tasks"></div>
       </div>
     </div>
+    <div class="logs">Master Logs
+      <div class="logs-scroll">
+        <p class="logs-text" id="master-logs"></p>
+      </div>
+    </div>
   </div>
 
   <div class="schedule-button" onClick="toggleScheduleForm()">
@@ -33,7 +38,7 @@
   </div>
 
   <div class="hidden-form" id="schedule-form">
-    <a class="exit-form" href='#' onclick="toggleScheduleForm()">&times;</a>
+    <a class="exit-form" href="#" onclick="toggleScheduleForm()">&times;</a>
     <div class="schedule-form">Schedule MapReduce
       <hr>
       <form id="schedule-job">
@@ -66,6 +71,18 @@
 
         <input type="submit" id="submit-job" value="Schedule MapReduce">
       </form>
+    </div>
+  </div>
+
+  <div class="hidden-logs" id="worker-logs">
+    <a class="exit-form" href="#" onclick="closeWorkerLogs()">&times;</a>
+    <div class="schedule-form">Worker Logs
+      <hr>
+      <div class="logs" id="worker-logs-box">Worker ID
+        <div class="logs-scroll" id="worker-scroll-box">
+          <p class="logs-text" id="worker-logs-text"></p>
+        </div>
+      </div>
     </div>
   </div>
 

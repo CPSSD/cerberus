@@ -22,7 +22,7 @@ pub struct MasterResources {
 }
 
 impl MasterResources {
-    pub fn new(matches: &ArgMatches) -> Result<Self> {
+    pub fn new(matches: &ArgMatches, log_file_path: &str) -> Result<Self> {
         let (worker_info_sender, worker_info_receiver) = channel();
 
         let (data_abstraction_layer_arc, filesystem_manager) =
@@ -46,6 +46,7 @@ impl MasterResources {
                 &worker_manager,
                 &scheduler,
                 &data_abstraction_layer_arc,
+                log_file_path,
             ).chain_err(|| "Error initilizing cluster dashboard")?,
 
             grpc_server: initialize_grpc_server(

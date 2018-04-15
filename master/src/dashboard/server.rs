@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -10,6 +12,7 @@ use staticfile::Static;
 use urlencoded::UrlEncodedQuery;
 
 use common::{Job, JobOptions};
+use dashboard::fetch_logs::fetch_worker_log;
 use errors::*;
 use scheduling::Scheduler;
 use util::data_layer::AbstractionLayer;
@@ -20,11 +23,29 @@ use worker_management::WorkerManager;
 const DEFAULT_PRIORITY: u32 = 3;
 const DEFAULT_MAP_SIZE: u32 = 64;
 
+fn read_local_file<P: AsRef<Path>>(path: P) -> Result<String> {
+    debug!("Attempting to read local file: {:?}", path.as_ref());
+    let file = File::open(&path)
+        .chain_err(|| format!("unable to open file {}", path.as_ref().to_string_lossy()))?;
+
+    let mut buf_reader = BufReader::new(file);
+    let mut value = String::new();
+    buf_reader.read_to_string(&mut value).chain_err(|| {
+        format!(
+            "unable to read content of {}",
+            path.as_ref().to_string_lossy()
+        )
+    })?;
+
+    Ok(value)
+}
+
 #[derive(Clone)]
 struct ApiHandler {
     scheduler_arc: Arc<Scheduler>,
     worker_manager_arc: Arc<WorkerManager>,
     data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+    log_file_path: String,
 }
 
 impl ApiHandler {
@@ -188,6 +209,23 @@ impl ApiHandler {
         Ok(Response::with((iron::status::Ok, "{{ success: true }}")))
     }
 
+    fn get_master_logs(&self, _req: &mut Request) -> Result<Response> {
+        match read_local_file(&self.log_file_path) {
+            Ok(log_file_contents) => Ok(Response::with((iron::status::Ok, log_file_contents))),
+            Err(err) => Err(err.chain_err(|| "Unable to read master log file")),
+        }
+    }
+
+    fn get_worker_logs(&self, req: &mut Request) -> Result<Response> {
+        let worker_id = self.get_parameter(req, "worker_id")
+            .chain_err(|| "Failed to get worker_id")?;
+
+        let log_contents = fetch_worker_log(&worker_id, &self.worker_manager_arc)
+            .chain_err(|| format!("Failed to get log for worker with id {}", worker_id))?;
+
+        Ok(Response::with((iron::status::Ok, log_contents)))
+    }
+
     fn handle_endpoint(&self, endpoint: &str, req: &mut Request) -> IronResult<Response> {
         let result = {
             match endpoint {
@@ -196,6 +234,8 @@ impl ApiHandler {
                 "jobs" => self.jobs(req),
                 "canceljob" => self.cancel_job(req),
                 "schedule" => self.schedule_job(req),
+                "logs" => self.get_master_logs(req),
+                "workerlogs" => self.get_worker_logs(req),
                 _ => Err("Invalid endpoint".into()),
             }
         };
@@ -236,11 +276,13 @@ impl DashboardServer {
         scheduler_arc: Arc<Scheduler>,
         worker_manager_arc: Arc<WorkerManager>,
         data_abstraction_layer_arc: Arc<AbstractionLayer + Send + Sync>,
+        log_file_path: String,
     ) -> Result<Self> {
         let handler = ApiHandler {
             scheduler_arc,
             worker_manager_arc,
             data_abstraction_layer_arc,
+            log_file_path,
         };
 
         let mut router = Router::new();

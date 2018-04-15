@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
@@ -457,6 +458,11 @@ impl WorkerManager {
 
         let mut state = self.state.lock().unwrap();
         state.handle_worker_report(request)
+    }
+
+    pub fn get_worker_address(&self, worker_id: &str) -> Result<SocketAddr> {
+        let state = self.state.lock().unwrap();
+        state.get_worker_address(worker_id)
     }
 }
 

@@ -265,3 +265,49 @@ a.exit-form {
   position: absolute;
   text-decoration: None;
 }
+
+.logs {
+  background-color: #ffffff;
+  border-color: #bbdefb;
+  border-style: double;
+  border-width: medium;
+  color: #212121;
+  float: left;
+  font-size: 20px;
+  font-weight: bold;
+  height: 400px;
+  overflow: hidden;
+  padding: 10px;
+  text-align: center;
+  width: 100%;
+}
+
+.logs-scroll {
+  background-color: #ffffff;
+  border: none;
+  height: 370px;
+  overflow-y: scroll;
+}
+
+.logs-text {
+  font-size: 16px;
+  font-weight: normal;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.hidden-logs {
+  background-color: #bbdefb;
+  border-color: black;
+  border-radius: 5px;
+  border-width: 1px;
+  box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
+  height: 480px;
+  left: 50%;
+  margin-left: -175px;
+  min-height: 300px;
+  position: fixed;
+  top: 15%;
+  visibility: hidden;
+  width: 700px;
+}

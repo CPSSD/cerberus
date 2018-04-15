@@ -39,6 +39,64 @@ function addButton(text, clickedFuncCreator, container) {
     .appendTo(container);
 }
 
+function showWorkerLogs(workerId, logsText) {
+  var workerLogsText = $("#worker-logs-text");
+  workerLogsText.text(logsText);
+
+  var workerScroll = $("#worker-scroll-box");
+
+  var logsBox = $("#worker-logs-box");
+  logsBox.text("Worker ID: " + workerId);
+
+  workerScroll.appendTo(logsBox);
+
+  var logsView = $("#worker-logs");
+  logsView.css({
+    "visibility": "visible",
+  });
+}
+
+function closeWorkerLogs() {
+  var logsView = $("#worker-logs");
+  logsView.css({
+    "visibility": "hidden",
+  })
+}
+
+function showLogsFunction(workerId) {
+  return function(button) {
+    return function() {
+      button.attr("disabled", true);
+      button.text("Requesting logs");
+      button.css({
+        "background-color": "#B3E5FC",
+      });
+
+      $.ajax({
+        url: "/api/workerlogs/query?worker_id=" + encodeURIComponent(workerId),
+        dataType: "text",
+        success: function(logsText) {
+          showWorkerLogs(workerId, logsText);
+          button.attr("disabled", false);
+          button.text("View Logs");
+          button.css({
+            "background-color": "#008CBA",
+          });
+        },
+        error: function(xhr, status, error) {
+          console.log("Error getting worker logs:");
+          console.log(error);
+          button.attr("disabled", false);
+          button.text("View Logs");
+          button.css({
+            "background-color": "#008CBA",
+          });
+        }
+      });
+    }
+  }
+}
+
 function updateWorkersList() {
   var workersBox = $("#workers");
 
@@ -57,6 +115,7 @@ function updateWorkersList() {
         addProperty("Operation Status", workerInfo.operation_status, container);
         addProperty("Current Task ID", workerInfo.current_task_id, container);
         addProperty("Task Assignments Failed", workerInfo.task_assignments_failed, container);
+        addButton("View Logs", showLogsFunction(workerInfo.worker_id), container.parent());
       });
     }
   });
@@ -136,10 +195,22 @@ function updateTasksList() {
   });
 }
 
+function updateMasterLog() {
+  var logs = $("#master-logs");
+  $.ajax({
+    url: "/api/logs",
+    dataType: "text",
+    success: function(logsText) {
+      logs.text(logsText);
+    }
+  });
+}
+
 function updateFunction() {
   updateWorkersList();
   updateJobsList();
   updateTasksList();
+  updateMasterLog();
 }
 
 function processScheduleMapReduceForm(e) {

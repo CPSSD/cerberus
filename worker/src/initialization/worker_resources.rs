@@ -21,7 +21,7 @@ pub struct WorkerResources {
 }
 
 impl WorkerResources {
-    pub fn new(matches: &ArgMatches) -> Result<Self> {
+    pub fn new(matches: &ArgMatches, log_file_path: &str) -> Result<Self> {
         let master_addr = SocketAddr::from_str(
             matches.value_of("master").unwrap_or(DEFAULT_MASTER_ADDR),
         ).chain_err(|| "Error parsing master address")?;
@@ -41,6 +41,7 @@ impl WorkerResources {
             grpc_server: initialize_grpc_server(
                 matches,
                 &operation_handler,
+                log_file_path,
                 local_file_manager.clone(),
             ).chain_err(|| "Error initializing grpc server")?,
 

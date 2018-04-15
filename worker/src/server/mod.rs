@@ -4,11 +4,14 @@ mod filesystem_service;
 /// `intermediate_data_service` is responsible for handing traffic coming from other workers
 /// requesting intermediate data created by the map task.
 mod intermediate_data_service;
+/// `log_service` is responsible for serving the log file of this worker to the master.
+mod log_service;
 /// `master_service` is responsible for handing data incoming from the master.
 mod master_service;
 
 pub use self::filesystem_service::FileSystemService;
 pub use self::intermediate_data_service::IntermediateDataService;
+pub use self::log_service::WorkerLogService;
 pub use self::master_service::ScheduleOperationService;
 
 use cerberus_proto::filesystem_grpc;
@@ -28,6 +31,7 @@ impl Server {
         port: u16,
         scheduler_service: ScheduleOperationService,
         interm_data_service: IntermediateDataService,
+        logs_service: WorkerLogService,
         filesystem_service: FileSystemService,
     ) -> Result<Self> {
         let mut server_builder = grpc::ServerBuilder::new_plain();
@@ -43,6 +47,10 @@ impl Server {
         // Register IntermediateDataService
         server_builder.add_service(worker_grpc::IntermediateDataServiceServer::new_service_def(
             interm_data_service,
+        ));
+        // Register WorkerLogService
+        server_builder.add_service(worker_grpc::WorkerLogServiceServer::new_service_def(
+            logs_service,
         ));
 
         // Register FileSystemService

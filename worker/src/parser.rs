@@ -74,6 +74,22 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .required(false),
         )
         .arg(
+            Arg::with_name("verbose-logging")
+                .long("verbose-logging")
+                .short("v")
+                .help("Removes all log filters")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("log-file-path")
+                .long("log-file-path")
+                .short("l")
+                .help("Location to write log file")
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("state-location")
                 .long("state-location")
                 .short("s")
