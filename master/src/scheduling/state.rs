@@ -307,12 +307,13 @@ impl State {
                 }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;
+                    scheduled_job.job.reduce_tasks_seconds_taken += task_running_seconds;
+
                     if scheduled_job.job.reduce_tasks_completed
                         == scheduled_job.job.reduce_tasks_total
                     {
                         scheduled_job.job.status = pb::Status::DONE;
                         scheduled_job.job.time_completed = Some(Utc::now());
-                        scheduled_job.job.reduce_tasks_seconds_taken += task_running_seconds;
                     }
                 }
             }
