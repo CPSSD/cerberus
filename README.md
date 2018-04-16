@@ -79,8 +79,8 @@ pip install boto3
 
 	| Template Name | Tag |
 	|----|----|
-	| Master | Key: "type", Value: "worker" |
-	| Worker | Key: "type", Value: "master" |
+	| Master | Key: "type", Value: "master" |
+	| Worker | Key: "type", Value: "worker" |
 
 6. **Deploy Instances**
 
