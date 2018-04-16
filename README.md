@@ -69,7 +69,7 @@ pip install boto3
 
 3. **Ensure that you push the latest version of the master/worker containers to DockerHub**
 
-	This can be done by running `./production-deployment` in the cerberus root directory.
+	This can be done by running `./production-deployment.sh` in the cerberus root directory.
 
 5. **Configure Launch Templates**
 
