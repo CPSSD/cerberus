@@ -66,6 +66,8 @@ pip install boto3
 	A sample file is located in aws/credentials. Simply replace *ACCESS_KEY_ID* and *SECRET_ACCESS_KEY* with their respective values.
 
 2. **Update parameters in aws.py script**
+	
+	You will need to create and download an EC2 key pair from AWS and update the python script to use your .pem file containing the created key.
 
 3. **Ensure that you push the latest version of the master/worker containers to DockerHub**
 
