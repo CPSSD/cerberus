@@ -1,16 +1,15 @@
+use std::error::Error;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
 
 use grpc::RequestOptions;
-use std::error::Error;
-
-use errors::*;
-use operations::io;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use cerberus_proto::worker_grpc::IntermediateDataService;
+use errors::*;
+use operations::io;
 use operations::OperationResources; // For pub functions only
 
 const INTERMEDIATE_DATA_RETRIES: u8 = 3;

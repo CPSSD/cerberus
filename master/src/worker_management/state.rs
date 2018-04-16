@@ -1,5 +1,6 @@
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -77,6 +78,14 @@ impl State {
         }
 
         tasks
+    }
+
+    pub fn get_worker_address(&self, worker_id: &str) -> Result<SocketAddr> {
+        let worker = self.workers
+            .get(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
+
+        Ok(worker.address.clone())
     }
 
     pub fn get_worker_count(&self) -> u32 {

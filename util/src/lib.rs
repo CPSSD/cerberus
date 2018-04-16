@@ -1,8 +1,8 @@
 extern crate cerberus_proto;
 extern crate chrono;
-extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
+extern crate fern;
 extern crate grpc;
 #[macro_use]
 extern crate log;

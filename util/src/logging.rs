@@ -1,33 +1,55 @@
-use std::env;
+use std::fs;
+use std::io;
+use std::path::Path;
 
 use chrono::Utc;
-use env_logger::LogBuilder;
 use error_chain::ChainedError;
-use log::LogRecord;
+use fern;
+use log;
 
 use errors::*;
 
-// This makes the default logging level info for everything but the grpc modules which will use
-// error. This is because grpc modules output an unnecessary level of logging for info.
-const DEFAULT_LOG_CONFIG: &str = "info,httpbis=error,grpc=error";
+pub fn init_logger(log_file_path: &str, verbose_logging: bool) -> Result<()> {
+    let mut log_directory = Path::new(log_file_path).to_path_buf();
+    log_directory.pop();
+    fs::create_dir_all(log_directory).chain_err(|| "Error creating logs output directory")?;
 
-pub fn init_logger() -> Result<()> {
-    let format = |record: &LogRecord| {
-        format!(
-            "{}:{}:{}: {}",
-            record.level(),
-            Utc::now().format("%T%.3f"),
-            record.location().module_path(),
-            record.args()
-        )
-    };
-    let log_config = env::var("RUST_LOG").unwrap_or_else(|_| DEFAULT_LOG_CONFIG.to_owned());
+    let log_file = fern::log_file(log_file_path)
+        .chain_err(|| format!("Error creating log file with path: {}", log_file_path))?;
 
-    LogBuilder::new()
-        .format(format)
-        .parse(log_config.as_str())
-        .init()
-        .chain_err(|| "Failed to build env_logger")?;
+    let mut fern_logger = fern::Dispatch::new().format(|out, _message, record| {
+        if let Some(path) = record.module_path() {
+            out.finish(format_args!(
+                "{}:{}:{}: {}",
+                record.level(),
+                Utc::now().format("%T%.3f"),
+                path,
+                record.args(),
+            ))
+        } else {
+            out.finish(format_args!(
+                "{}:{}: {}",
+                record.level(),
+                Utc::now().format("%T%.3f"),
+                record.args(),
+            ))
+        }
+    });
+
+    if verbose_logging {
+        fern_logger = fern_logger.level(log::LevelFilter::Off);
+    } else {
+        fern_logger = fern_logger
+            .level(log::LevelFilter::Info)
+            .level_for("httpbis", log::LevelFilter::Error)
+            .level_for("grpc", log::LevelFilter::Error);
+    }
+
+    fern_logger
+        .chain(io::stdout())
+        .chain(log_file)
+        .apply()
+        .chain_err(|| "Failed to initialize logging")?;
 
     Ok(())
 }
