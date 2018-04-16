@@ -62,9 +62,10 @@ tr:hover {
   border-radius: 5px;
   box-shadow: 0 4px 8px 0 rgba(0, 0, 0, .2);
   color: #212121;
-  float: left;
+  display: inline-block;
   margin-bottom: 20px;
   margin-right: 20px;
+  text-align: center;
   transition: .3s;
   width: 45%;
 }
@@ -80,6 +81,7 @@ tr:hover {
 .container-grid {
   display: auto;
   padding: 8px 16px;
+  text-align: left;
 }
 
 .lower {
@@ -304,7 +306,7 @@ a.exit-form {
   box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
   height: 480px;
   left: 50%;
-  margin-left: -175px;
+  margin-left: -350px;
   min-height: 300px;
   position: fixed;
   top: 15%;
