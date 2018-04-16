@@ -213,6 +213,14 @@ function updateFunction() {
   updateMasterLog();
 }
 
+var scheduleFormToggled = false;
+
+function toggleScheduleForm() {
+  scheduleFormToggled = !scheduleFormToggled;
+  var scheduleForm = document.getElementById("schedule-form");
+  scheduleForm.style.visibility = scheduleFormToggled ? "visible" : "hidden";
+}
+
 function processScheduleMapReduceForm(e) {
   if (e.preventDefault) {
     e.preventDefault();
@@ -260,20 +268,15 @@ function processScheduleMapReduceForm(e) {
     dataType: "json",
     complete: function() {
       submitButton.val("Succesfully scheduled");
+      if (scheduleFormToggled) {
+        toggleScheduleForm();
+      }
       restoreAnimation();
       updateFunction();
     }
   });
 
   return false;
-}
-
-var scheduleFormToggled = false;
-
-function toggleScheduleForm() {
-  scheduleFormToggled = !scheduleFormToggled;
-  var scheduleForm = document.getElementById("schedule-form");
-  scheduleForm.style.visibility = scheduleFormToggled ? "visible" : "hidden";
 }
 
 $(document).ready(function() {
