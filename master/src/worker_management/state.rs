@@ -20,6 +20,7 @@ const MAX_TASK_ASSIGNMENT_FAILURE: u16 = 5;
 const DEFAULT_TASK_PRIORITY: u32 = 10;
 const FAILED_TASK_PRIORITY: u32 = 20;
 const REQUEUED_TASK_PRIORITY: u32 = 15;
+const OVERSCHEDULED_TASK_PRIORITY: u32 = 9;
 
 // Max tasks to consider from the top of the task queue when trying to find the best task to assign.
 const MAX_TASKS_TO_CONSIDER: u32 = 5;
@@ -346,7 +347,7 @@ impl State {
 
         self.priority_task_queue.push(PriorityTask::new(
             task_id.to_string(),
-            REQUEUED_TASK_PRIORITY * task.job_priority,
+            OVERSCHEDULED_TASK_PRIORITY * task.job_priority,
         ));
 
         Ok(())
