@@ -25,10 +25,6 @@ const OVERSCHEDULED_TASK_PRIORITY: u32 = 9;
 // Max tasks to consider from the top of the task queue when trying to find the best task to assign.
 const MAX_TASKS_TO_CONSIDER: u32 = 5;
 
-// If a worker reports being available this many seconds after being assigned a task, assume that
-// the masters view of the worker is out of sync and reassign the task.
-const TIME_REASSIGN_REPORTING_AVAILABLE_S: i64 = 10;
-
 pub struct State {
     // A map of worker id to worker.
     workers: HashMap<String, Worker>,
@@ -153,16 +149,11 @@ impl State {
         worker.operation_status = operation_status;
         worker.status_last_updated = Utc::now();
 
-        // If a worker has not been recently assigned a task and is reporting available,
-        // we assume that the masters view of the workers current task is out of date and
-        // reassign the worker.
-        // If the worker has recently been assigned a task, it may not be reporting the most up to
-        // date status.
-        let time_since_task_assigned =
-            Utc::now().timestamp() - worker.task_last_updated.timestamp();
-        if time_since_task_assigned > TIME_REASSIGN_REPORTING_AVAILABLE_S
+        // If a worker is reporting available but the master thinks it is currently working on a
+        // task, we assume that the masters view of the worker is out of date and reassign the
+        // worker.
+        if !worker.current_task_id.is_empty() && !worker.assigning_task
             && worker_status == pb::WorkerStatus::AVAILABLE
-            && !worker.current_task_id.is_empty()
         {
             if let Some(assigned_task) = self.tasks.get_mut(&worker.current_task_id) {
                 self.priority_task_queue.push(PriorityTask::new(
@@ -392,7 +383,7 @@ impl State {
         let worker = self.workers
             .get_mut(worker_id)
             .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
-        worker.task_last_updated = Utc::now();
+        worker.assigning_task = true;
         worker.current_task_id = task_id.to_owned();
 
         Ok(assigned_task)
@@ -556,6 +547,15 @@ impl State {
             .get_mut(worker_id)
             .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
         worker.task_assignments_failed = 0;
+
+        Ok(())
+    }
+
+    pub fn assignment_complete(&mut self, worker_id: &str) -> Result<()> {
+        let worker = self.workers
+            .get_mut(worker_id)
+            .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
+        worker.assigning_task = false;
 
         Ok(())
     }

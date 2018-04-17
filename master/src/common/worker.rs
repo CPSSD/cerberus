@@ -35,11 +35,11 @@ pub struct Worker {
     pub operation_status: pb::OperationStatus,
     pub status_last_updated: DateTime<Utc>,
 
-    pub task_last_updated: DateTime<Utc>,
     pub current_task_id: String,
     pub worker_id: String,
 
     pub task_assignments_failed: u16,
+    pub assigning_task: bool,
 }
 
 impl Worker {
@@ -59,11 +59,11 @@ impl Worker {
             operation_status: pb::OperationStatus::UNKNOWN,
             status_last_updated: Utc::now(),
 
-            task_last_updated: Utc::now(),
             current_task_id: String::new(),
             worker_id,
 
             task_assignments_failed: 0,
+            assigning_task: false,
         })
     }
 
