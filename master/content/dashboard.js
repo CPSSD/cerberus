@@ -360,14 +360,6 @@ var taskProperties = [{
     key: "status",
   },
   {
-    name: "Output",
-    key: "output_directory",
-  },
-  {
-    name: "Status",
-    key: "status",
-  },
-  {
     name: "Failure Count",
     key: "failure_count",
   },
