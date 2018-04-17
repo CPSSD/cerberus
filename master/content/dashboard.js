@@ -420,7 +420,9 @@ function updateMasterLog() {
     url: "/api/logs",
     dataType: "text",
     success: function(logsText) {
-      logs.text(logsText);
+      if (logs.text().length < logsText.length) {
+        logs.text(logsText);
+      }
     }
   });
 }
