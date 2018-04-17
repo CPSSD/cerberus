@@ -17,19 +17,30 @@ PATH_TO_SSH_KEY = "key.pem"
 AWS_CREDENTIALS = "%s/.aws/credentials" % os.environ.get("HOME")
 
 # Setup our argument parser.
-parser = argparse.ArgumentParser(description='Manage AWS Deployments. Arguments ' \
-        'can be chained and will be run in the order displayed below.',
-        prog="aws-deploy.py")
-parser.add_argument('-k', '--kill', action='store_true',
-        help="Terminate all running servers.")
-parser.add_argument('-c', '--create', type=int, metavar='N',
-        help="Create servers. 1 Master and N workers.")
-parser.add_argument('-t', '--terminate', action='store_true',
-        help="Terminates containers on all running servers.")
-parser.add_argument('-d', '--deploy', type=str, choices=["DFS", "S3"], 
-        metavar='DATA_ABSTRACTION_LAYER', action='store',
-        help="Deploys containers on all running servers. Valid abstraction layers are DFS and S3")
-args = parser.parse_args()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Manage AWS Deployments. Arguments ' \
+            'can be chained and will be run in the order displayed below.',
+            prog="aws-deploy.py")
+    parser.add_argument('-k', '--kill', action='store_true',
+            help="Terminate all running servers.")
+    parser.add_argument('-c', '--create', type=int, metavar='N',
+            help="Create servers. 1 Master and N workers.")
+    parser.add_argument('-t', '--terminate', action='store_true',
+            help="Terminates containers on all running servers.")
+    parser.add_argument('-d', '--deploy', type=str, choices=["DFS", "S3"],
+            metavar='DATA_ABSTRACTION_LAYER', action='store',
+            help="Deploys containers on all running servers. Valid abstraction layers " \
+                 "are DFS and S3")
+    parser.add_argument('-w', '--worker_limit', type=int, action='store', default=0)
+    parser.add_argument('-m', '--master', type=str, action='store',
+            help="Deployed workers will connect to this master instead of deploying " \
+                 "a new one on AWS.")
+    parser.add_argument('--workers_only', action='store_true', default=False,
+            help="When this flag is set we will only create and deploy to workers" )
+    parser.add_argument('--deployment_credentials', type=str, default=AWS_CREDENTIALS,
+            help="Specifies the credentials to be used for deployment. Default value is " \
+                 "the local credentials. (This flag is only useful when deploying for S3)")
+    args = parser.parse_args()
 
 # Create our EC2 interface
 ec2 = boto3.resource('ec2', region_name=AWS_REGION)
@@ -49,29 +60,43 @@ master_tmpl = '%s -p %d:8081 -p %d:8082 %s:latest-master' % (
 worker_tmpl = '%s -p %d:3000 -e WORKER_IP="%%s" %s:latest-worker' % (
         common_tmpl, WORKER_PORT, DOCKER_REPO)
 
-def deploy_containers(data_abstraction_layer):
-    instances = get_instances(["master", "worker"])
-    wait_for_ips(instances["master"] + instances["worker"])
+def deploy_containers(data_abstraction_layer, worker_limit, master_ip,
+                      credentials_path=AWS_CREDENTIALS):
+    master_exists = master_ip != None
 
-    if not instances['master']:
+    required_instances = ["worker"]
+    if not master_exists:
+        required_instances += [ "master" ]
+
+    instances = get_instances(required_instances)
+    wait_for_ips(instances["worker"])
+    if not master_exists:
+        wait_for_ips(instances["master"])
+
+    if not master_exists and not 'master' in instances:
         print("Unable to deploy containers. No master instance was tagged.")
         return
 
-    master = instances['master'][0]
     workers = instances['worker']
 
+    if worker_limit != 0 and len(workers) > worker_limit:
+        workers = workers[:worker_limit]
+
     worker_ips = [ worker.public_ip_address for worker in workers ]
-    master_ip = master.public_ip_address
+    master_ip = master_ip or instances['master'][0].public_ip_address
 
     # TODO: Come up with a more secure solution to this
     # If we are using S3 as our DataAbstractionLayer then we need to send over our
     # credentials.
     if data_abstraction_layer == "S3":
-        send_credentials([master_ip] + worker_ips)
+        if not master_exists:
+            send_credentials([master_ip], credentials_path)
+        send_credentials(worker_ips, credentials_path)
 
     # Setup master
-    master_result = run_command(master_tmpl % (master_ip, data_abstraction_layer),
-                                [master_ip], hide_stdout=False, wait=True)
+    if not master_exists:
+        master_result = run_command(master_tmpl % (master_ip, data_abstraction_layer),
+                                    [master_ip], hide_stdout=False, wait=True)
 
     # Setup workers
     worker_results = []
@@ -83,16 +108,19 @@ def deploy_containers(data_abstraction_layer):
     for result in worker_results:
         result.wait()
 
-    print(format("\n%d workers deployed\nMaster deployed at %s" %
-                 (len(workers), master.public_ip_address)))
+    print(format("\n%d workers deployed" % len(workers)))
+    if master_exists:
+        print(format("Master was already deployed at %s" % master_ip))
+    else:
+        print(format("Master deployed at %s" % master_ip))
 
-def terminate_containers():
+def terminate_containers(remove_images=True):
     instances = get_instances(["master", "worker"])
     all_instances = instances["master"] + instances["worker"]
     for instance in all_instances:
-        terminate_containers_on_instance(instance)
+        terminate_containers_on_instance(instance, remove_images=remove_images)
 
-def terminate_containers_on_instance(instance):
+def terminate_containers_on_instance(instance, remove_images):
     ip = instance.public_ip_address
 
     # Removes all containers
@@ -100,8 +128,9 @@ def terminate_containers_on_instance(instance):
     cmd = "if [[ %s ]]; then sudo docker rm -f %s; fi" % (container_list, container_list)
 
     # Removes all images
-    image_list = "$(sudo docker images -q)"
-    cmd += "&& if [[ %s ]]; then sudo docker rmi -f %s; fi" % (image_list, image_list)
+    if remove_images:
+        image_list = "$(sudo docker images -q)"
+        cmd += "&& if [[ %s ]]; then sudo docker rmi -f %s; fi" % (image_list, image_list)
 
     run_command(cmd, [ip], hide_stdout=False, wait=True)
 
@@ -113,18 +142,22 @@ def kill_instances():
     print("Terminating instances with the following IDs:\n %s" % str(ids))
     ec2.instances.filter(InstanceIds=ids).terminate()
 
-def create_instances(worker_count):
-    print("Deploying 1 master and %d workers" % worker_count)
+def create_instances(worker_count, workers_only):
+    if workers_only:
+        print("Deploying %d workers" % worker_count)
+    else:
+        print("Deploying 1 master and %d workers" % worker_count)
 
     # Launch 1 master instance
-    master_response = ec2_client.run_instances(
-        LaunchTemplate={
-            'LaunchTemplateName': 'Master',
-        },
-        MaxCount=1,
-        MinCount=1,
-    )
-    print ("Launched master")
+    if not workers_only:
+        master_response = ec2_client.run_instances(
+            LaunchTemplate={
+                'LaunchTemplateName': 'Master',
+            },
+            MaxCount=1,
+            MinCount=1,
+        )
+        print ("Launched master")
 
     worker_response = ec2_client.run_instances(
         LaunchTemplate={
@@ -136,14 +169,19 @@ def create_instances(worker_count):
     print("Launched %d workers" % worker_count)
 
     # Wait for the instances to finish starting up.
-    master_id = master_response['Instances'][0]['InstanceId']
     worker_ids = [ inst['InstanceId'] for inst in worker_response['Instances'] ]
-    ids = worker_ids + [ master_id ]
+    ids = worker_ids
+    master_id = None
+    if not workers_only:
+        master_id = master_response['Instances'][0]['InstanceId']
+        ids += [ master_id ]
+
     time.sleep(3)
 
     print("Waiting for %d instances to start" % len(ids))
     ips = []
     for inst in ec2.instances.filter(InstanceIds=ids):
+        print("Waiting for instance to start running")
         inst.wait_until_running()
         inst.reload()
         print("Instance %s is now running on ip %s" % (
@@ -159,28 +197,34 @@ def create_instances(worker_count):
     # Make sure Docker is installed and running on all hosts.
     docker_result = run_command(docker_command, ips, hide_stdout=True, wait=True)
 
+    if workers_only:
+        return None
+    for inst in ec2.instances.filter(InstanceIds=[master_id]):
+        return inst.public_ip_address
 
 def wait_for_ssh(ip):
     attempts = 0
     while(attempts < 200):
+        print("Waiting for ssh (%d/200)" % attempts)
         cmd = [ "ssh", "-i", PATH_TO_SSH_KEY, "-o", "StrictHostKeyChecking=no",
                 "ec2-user@%s" % ip, "echo 'cerberus'" ]
         result = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 
-        if result.communicate()[0] == "cerberus\n":
+        data = result.communicate()
+        if b'cerberus' in data[0]:
             return True
         time.sleep(3)
 
         attempts += 1
     return False
 
-def send_credentials(ips):
+def send_credentials(ips, credentials_path):
     results = []
     run_command("sudo mkdir /home/ec2-user/.aws && sudo chown ec2-user /home/ec2-user/.aws",
                 ips, wait=True)
     for ip in ips:
         cmd = [ "scp", "-i", PATH_TO_SSH_KEY, "-o", "StrictHostKeyChecking=no",
-                AWS_CREDENTIALS, "ec2-user@%s:/home/ec2-user/.aws/credentials" % ip]
+                credentials_path, "ec2-user@%s:/home/ec2-user/.aws/credentials" % ip]
         print(cmd)
         results += [ subprocess.Popen(cmd) ]
     for result in results:
@@ -225,14 +269,21 @@ def get_instances(inst_type):
     return instances
 
 # Perform operations based on args.
-if args.kill:
-    kill_instances()
+if __name__ == '__main__':
+    if args.kill:
+        kill_instances()
 
-if args.create != None:
-    create_instances(args.create)
+    if args.create != None:
+        create_instances(args.create, args.workers_only)
 
-if args.terminate:
-    terminate_containers()
+    if args.terminate:
+        terminate_containers()
 
-if args.deploy:
-    deploy_containers(args.deploy)
+    if args.deploy:
+        if args.workers_only and not args.master:
+            print("Unable to deploy to workers without a valid master IP. " \
+                  "Expected --master to be set")
+        else:
+            deploy_containers(args.deploy, args.worker_limit, args.master,
+                              args.deployment_credentials)
+
