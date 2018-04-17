@@ -304,7 +304,7 @@ a.exit-form {
   border-radius: 5px;
   border-width: 1px;
   box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
-  height: 480px;
+  height: 525px;
   left: 50%;
   margin-left: -350px;
   min-height: 300px;
@@ -327,8 +327,6 @@ a.exit-form {
 }
 
 .worker-logs-copy-div {
-  margin-left: 60%;
-  margin-top: 5px;
-  position: absolute;
+  margin: 5px auto;
   width: 200px;
 }
