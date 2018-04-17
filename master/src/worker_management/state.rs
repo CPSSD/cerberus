@@ -86,7 +86,7 @@ impl State {
             .get(worker_id)
             .chain_err(|| format!("Worker with ID {} not found.", worker_id))?;
 
-        Ok(worker.address.clone())
+        Ok(worker.address)
     }
 
     pub fn get_worker_count(&self) -> u32 {

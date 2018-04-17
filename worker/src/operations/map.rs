@@ -155,6 +155,10 @@ fn combine_map_results(
         return Ok(());
     }
 
+    // Only need to run a combine if there are more than 1 map results. Otherwise the libcerberus
+    // binary will have already combined the results.
+    let run_combine = map_results_vec.len() > 1;
+
     // Map of partition to maps of key to value.
     let mut partition_map: PartitionMap = HashMap::new();
     for map_result in map_results_vec {
@@ -162,8 +166,10 @@ fn combine_map_results(
             .chain_err(|| "Error parsing map result")?;
     }
 
-    combine::optional_run_combine(resources, &mut partition_map)
-        .chain_err(|| "Error running combine operation.")?;
+    if run_combine {
+        combine::optional_run_combine(resources, &mut partition_map)
+            .chain_err(|| "Error running combine operation.")?;
+    }
 
     let mut map_result_files: HashMap<u64, String> = HashMap::new();
     for (partition, values) in partition_map {
