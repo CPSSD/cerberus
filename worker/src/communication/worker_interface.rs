@@ -30,10 +30,10 @@ impl WorkerInterface {
         let worker_addr =
             SocketAddr::from_str(split_path[0]).chain_err(|| "Unable to parse worker address")?;
         let file = format!("/{}", split_path[1]);
-        info!("getting {} from {}", &file, worker_addr);
+        debug!("getting {} from {}", &file, worker_addr);
 
         if file.contains(output_dir_uuid) {
-            info!("file {} is local, loading from disk", file);
+            debug!("file {} is local, loading from disk", file);
             return io::read_local(file).chain_err(|| "Unable to read from local disk");
         }
 

@@ -15,7 +15,7 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
         _o: RequestOptions,
         req: pb::IntermediateDataRequest,
     ) -> SingleResponse<pb::IntermediateData> {
-        info!("Serving file {}", &req.get_path());
+        debug!("Serving file {}", &req.get_path());
         match io::read_local(req.get_path()) {
             Ok(data) => {
                 let mut res = pb::IntermediateData::new();
