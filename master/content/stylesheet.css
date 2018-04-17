@@ -313,3 +313,22 @@ a.exit-form {
   visibility: hidden;
   width: 700px;
 }
+
+.hidden-text-area {
+  left: -9999px;
+  position: absolute;
+  top: 0;
+}
+
+.logs-copy-div {
+  margin-left: 85%;
+  position: absolute;
+  width: 200px;
+}
+
+.worker-logs-copy-div {
+  margin-left: 60%;
+  margin-top: 5px;
+  position: absolute;
+  width: 200px;
+}
