@@ -78,9 +78,6 @@
   </div>
 
   <div class="hidden-logs" id="worker-logs">
-    <div class="worker-logs-copy-div" id="worker-logs-copy">
-      <button class="button" onClick="copyWorkerLogs()">Copy To Clipboard</a>
-    </div>
     <a class="exit-form" onclick="closeWorkerLogs()">&times;</a>
     <div class="schedule-form">Worker Logs
       <hr>
@@ -88,6 +85,9 @@
         <div class="logs-scroll" id="worker-scroll-box">
           <p class="logs-text" id="worker-logs-text"></p>
         </div>
+      </div>
+      <div class="worker-logs-copy-div" id="worker-logs-copy">
+        <button class="button" onClick="copyWorkerLogs()">Copy To Clipboard</a>
       </div>
     </div>
   </div>
