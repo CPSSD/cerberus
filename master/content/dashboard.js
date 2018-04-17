@@ -427,6 +427,25 @@ function updateMasterLog() {
   });
 }
 
+function copyText(text) {
+  var textArea = document.getElementById("hidden-text-area");
+  textArea.textContent = text;
+  textArea.focus();
+  textArea.select();
+  document.execCommand("copy");
+  textArea.textContent = "";
+}
+
+function copyMasterLogs() {
+  var logs = $("#master-logs");
+  copyText(logs.text());
+}
+
+function copyWorkerLogs() {
+  var logs = $("#worker-logs-text");
+  copyText(logs.text());
+}
+
 function updateFunction() {
   updateWorkersList();
   updateJobsList();

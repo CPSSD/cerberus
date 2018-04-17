@@ -27,6 +27,9 @@
       </div>
     </div>
     <div class="logs">Master Logs
+      <div class="logs-copy-div">
+        <button class="button" onClick="copyMasterLogs()">Copy To Clipboard</a>
+      </div>
       <div class="logs-scroll">
         <p class="logs-text" id="master-logs"></p>
       </div>
@@ -75,6 +78,9 @@
   </div>
 
   <div class="hidden-logs" id="worker-logs">
+    <div class="worker-logs-copy-div" id="worker-logs-copy">
+      <button class="button" onClick="copyWorkerLogs()">Copy To Clipboard</a>
+    </div>
     <a class="exit-form" onclick="closeWorkerLogs()">&times;</a>
     <div class="schedule-form">Worker Logs
       <hr>
@@ -86,9 +92,12 @@
     </div>
   </div>
 
+  <textarea class="hidden-text-area" id="hidden-text-area"/>
+
   <div class="footer">
     <a href="https://github.com/CPSSD/cerberus/">Cerberus MapReduce Project on Github</a>
   </div>
+
 
 </body>
 
