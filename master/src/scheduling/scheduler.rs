@@ -157,21 +157,26 @@ impl Scheduler {
                 }
             };
 
-            let mut map_tasks: HashMap<String, Task> = HashMap::new();
+            info!("Starting job with ID {}.", job.id);
+            {
+                let mut map_tasks: HashMap<String, Task> = HashMap::new();
+                for task in &map_tasks_vec {
+                    map_tasks.insert(task.id.to_owned(), task.clone());
+                }
+
+                let mut state = state.lock().unwrap();
+                let result = state.input_splitting_complete(&job.id, map_tasks);
+                if let Err(err) = result {
+                    output_error(&err.chain_err(|| "Error creating map tasks for job."));
+                    return;
+                }
+            }
+
             for task in map_tasks_vec {
-                map_tasks.insert(task.id.to_owned(), task.clone());
                 let worker_manager = Arc::clone(&worker_manager);
                 thread::spawn(move || {
                     worker_manager.run_task(task);
                 });
-            }
-
-            info!("Starting job with ID {}.", job.id);
-
-            let mut state = state.lock().unwrap();
-            let result = state.input_splitting_complete(&job.id, map_tasks);
-            if let Err(err) = result {
-                output_error(&err.chain_err(|| "Error creating map tasks for job."));
             }
         });
     }
