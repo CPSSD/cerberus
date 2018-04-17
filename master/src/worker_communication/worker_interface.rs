@@ -37,9 +37,8 @@ impl WorkerInterface for WorkerInterfaceImpl {
     fn add_client(&self, worker: &Worker) -> Result<()> {
         let mut clients = self.clients.write().unwrap();
 
-        if clients.get(&worker.worker_id).is_some() {
-            return Err(format!("client already exists for worker {}", &worker.worker_id).into());
-        }
+        // If a client already exists for this worker, remove it.
+        clients.remove(&worker.worker_id);
 
         info!(
             "Worker is getting added: IP={} PORT={}",

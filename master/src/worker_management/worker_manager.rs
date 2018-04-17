@@ -77,6 +77,12 @@ impl WorkerManager {
     pub fn register_worker(&self, worker: Worker) -> Result<()> {
         let mut state = self.state.lock().unwrap();
 
+        if state.has_worker(&worker.worker_id) {
+            state
+                .remove_worker(&worker.worker_id)
+                .chain_err(|| "Error removing worker from state")?;
+        }
+
         self.worker_interface
             .add_client(&worker)
             .chain_err(|| "Error registering worker.")?;
@@ -434,33 +440,6 @@ impl WorkerManager {
         }
 
         Ok(json!(results_vec))
-    }
-
-    pub fn remove_worker_if_exist(&self, worker_id: &str) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-
-        if !state.has_worker(worker_id) {
-            return Ok(());
-        }
-
-        info!("Removing worker {} from list of active workers.", worker_id);
-
-        // Remove worker interface.
-        self.worker_interface
-            .remove_client(worker_id)
-            .chain_err(|| "Error removing worker client")?;
-
-        state
-            .remove_worker(worker_id)
-            .chain_err(|| "Error removing worker from state")?;
-
-        self.send_worker_info_update(WorkerInfoUpdate::new(
-            WorkerInfoUpdateType::Unavailable,
-            worker_id.to_string(),
-            None, /* address */
-        )).chain_err(|| "Error sending worker info update")?;
-
-        Ok(())
     }
 
     pub fn handle_worker_report(&self, request: &pb::ReportWorkerRequest) -> Result<()> {
