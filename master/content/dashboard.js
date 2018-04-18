@@ -21,16 +21,18 @@ function createCard(parent, halfSize) {
   return table;
 }
 
-function addProperty(name, value, container) {
+
+function addProperty(name, value, id, container) {
   var row = $("<tr/>").appendTo(container);
   $("<td>").text(name).appendTo(row);
-  $("<td>").text(value).appendTo(row);
+  $("<td>").text(value).attr("id", id).appendTo(row);
 }
 
-function addButton(text, clickedFuncCreator, container) {
+function addButton(text, clickedFuncCreator, id, container) {
   var button = $("<button/>")
     .addClass("button")
-    .text(text);
+    .text(text)
+    .attr("id", id);
 
   var clickedFunc = clickedFuncCreator(button);
 
@@ -39,6 +41,122 @@ function addButton(text, clickedFuncCreator, container) {
     .appendTo(container);
 }
 
+function createCardWithProperties(parent, infoTable, propertiesInfo, halfSize) {
+  var container = createCard(parent, halfSize);
+
+  for (var i in propertiesInfo) {
+    var propInfo = propertiesInfo[i];
+    addProperty(propInfo.name, infoTable[propInfo.key], propInfo.key, container);
+  }
+
+  return container;
+}
+
+function updateCard(container, infoTable, propertiesInfo, halfSize) {
+  if (halfSize) {
+    container.parent().parent().css({
+      "width": "22.5%",
+    });
+  } else {
+    container.parent().parent().css({
+      "width": "45%",
+    });
+  }
+
+  for (var i in propertiesInfo) {
+    var propInfo = propertiesInfo[i];
+    var elem = container.find("#" + propInfo.key);
+    elem.text(infoTable[propInfo.key]);
+  }
+}
+
+function showWorkerLogs(workerId, logsText) {
+  var workerLogsText = $("#worker-logs-text");
+  workerLogsText.text(logsText);
+
+  var workerScroll = $("#worker-scroll-box");
+
+  var logsBox = $("#worker-logs-box");
+  logsBox.text("Worker ID: " + workerId);
+
+  workerScroll.appendTo(logsBox);
+
+  var logsView = $("#worker-logs");
+  logsView.css({
+    "visibility": "visible",
+  });
+}
+
+function closeWorkerLogs() {
+  var logsView = $("#worker-logs");
+  logsView.css({
+    "visibility": "hidden",
+  })
+}
+
+function showLogsFunction(workerId) {
+  return function(button) {
+    return function() {
+      button.attr("disabled", true);
+      button.text("Requesting logs");
+      button.css({
+        "background-color": "#B3E5FC",
+      });
+
+      $.ajax({
+        url: "/api/workerlogs/query?worker_id=" + encodeURIComponent(workerId),
+        dataType: "text",
+        success: function(logsText) {
+          showWorkerLogs(workerId, logsText);
+          button.attr("disabled", false);
+          button.text("View Logs");
+          button.css({
+            "background-color": "#008CBA",
+          });
+        },
+        error: function(xhr, status, error) {
+          console.log("Error getting worker logs:");
+          console.log(error);
+          button.attr("disabled", false);
+          button.text("View Logs");
+          button.css({
+            "background-color": "#008CBA",
+          });
+        }
+      });
+    }
+  }
+}
+
+var workerProperties = [{
+    name: "Worker ID",
+    key: "worker_id",
+  },
+  {
+    name: "Address",
+    key: "address",
+  },
+  {
+    name: "Status",
+    key: "status",
+  },
+  {
+    name: "Operation Status",
+    key: "operation_status",
+  },
+  {
+    name: "Current Task ID",
+    key: "current_task_id",
+  },
+  {
+    name: "Task Assignments Failed",
+    key: "task_assignments_failed",
+  },
+];
+
+// Map of workerId to card
+var workerCardsMap = {};
+
 function updateWorkersList() {
   var workersBox = $("#workers");
 
@@ -46,18 +164,48 @@ function updateWorkersList() {
     url: "/api/workers",
     dataType: "json",
     success: function(workers) {
-      workersBox.empty();
+      var aliveWorkers = {};
 
       workers.forEach(function(workerInfo) {
-        var container = createCard(workersBox, /* halfSize = */ (workers.length > 6));
+        aliveWorkers[workerInfo.worker_id] = true;
 
-        addProperty("Worker ID", workerInfo.worker_id, container);
-        addProperty("Address", workerInfo.address, container);
-        addProperty("Status", workerInfo.status, container);
-        addProperty("Operation Status", workerInfo.operation_status, container);
-        addProperty("Current Task ID", workerInfo.current_task_id, container);
-        addProperty("Task Assignments Failed", workerInfo.task_assignments_failed, container);
+        if (workerCardsMap[workerInfo.worker_id]) {
+          var container = workerCardsMap[workerInfo.worker_id];
+
+          updateCard(
+            container,
+            workerInfo,
+            workerProperties,
+            /* halfSize = */
+            (workers.length > 6)
+          );
+        } else {
+          var container = createCardWithProperties(
+            workersBox,
+            workerInfo,
+            workerProperties,
+            /* halfSize = */
+            (workers.length > 6)
+          );
+
+          addButton(
+            "View Logs",
+            showLogsFunction(workerInfo.worker_id),
+            "view_logs",
+            container.parent()
+          );
+
+          workerCardsMap[workerInfo.worker_id] = container;
+        }
       });
+
+      for (var workerId in workerCardsMap) {
+        var card = workerCardsMap[workerId];
+        if (!aliveWorkers[workerId]) {
+          card.parent().parent().remove();
+          delete workerCardsMap[workerId];
+        }
+      }
     }
   });
 }
@@ -76,11 +224,61 @@ function cancelJobFunction(jobId) {
         dataType: "json",
         success: function() {
           updateJobsList();
+        },
+        error: function(xhr, status, error) {
+          console.log("Error canceling job:");
+          console.log(error);
+          button.attr("disabled", false);
+          button.text("Cancel Job");
+          button.css({
+            "background-color": "#008CBA",
+          });
         }
       });
     }
   }
 }
+
+var jobProperties = [{
+    name: "Job ID",
+    key: "job_id",
+  },
+  {
+    name: "Client ID",
+    key: "client_id",
+  },
+  {
+    name: "Priority",
+    key: "priority",
+  },
+  {
+    name: "Binary",
+    key: "binary_path",
+  },
+  {
+    name: "Input",
+    key: "input_directory",
+  },
+  {
+    name: "Output",
+    key: "output_directory",
+  },
+  {
+    name: "Status",
+    key: "status",
+  },
+  {
+    name: "Map Tasks Completed",
+    key: "map_tasks_text",
+  },
+  {
+    name: "Reduce Tasks Completed",
+    key: "reduce_tasks_text",
+  },
+];
+
+// Map of jobId to card
+var jobCardsMap = {};
 
 function updateJobsList() {
   var jobsBox = $("#jobs");
@@ -89,29 +287,86 @@ function updateJobsList() {
     url: "/api/jobs",
     dataType: "json",
     success: function(jobs) {
-      jobsBox.empty();
+      var jobsAlive = {};
 
       jobs.forEach(function(jobsInfo) {
-        var container = createCard(jobsBox);
+        jobsAlive[jobsInfo.job_id] = true;
 
-        addProperty("Job ID", jobsInfo.job_id, container);
-        addProperty("Client ID", jobsInfo.client_id, container);
-        addProperty("Priority", jobsInfo.priority, container);
-        addProperty("Binary", jobsInfo.binary_path, container);
-        addProperty("Input", jobsInfo.input_directory, container);
-        addProperty("Output", jobsInfo.output_directory, container);
-        addProperty("Status", jobsInfo.status, container);
-        var mapTasksText = jobsInfo.map_tasks_completed + "/" + jobsInfo.map_tasks_total;
-        addProperty("Map Tasks Completed", mapTasksText, container);
-        var reduceTasksText = jobsInfo.reduce_tasks_completed + "/" + jobsInfo.reduce_tasks_total;
-        addProperty("Reduce Tasks Completed", reduceTasksText, container);
-        if (jobsInfo.status == "IN_PROGRESS" || jobsInfo.status == "IN_QUEUE") {
-          addButton("Cancel Job", cancelJobFunction(jobsInfo.job_id), container.parent());
+        jobsInfo.map_tasks_text = jobsInfo.map_tasks_completed + "/" +
+          jobsInfo.map_tasks_total;
+        jobsInfo.reduce_tasks_text = jobsInfo.reduce_tasks_completed + "/" +
+          jobsInfo.reduce_tasks_total;
+
+        if (jobCardsMap[jobsInfo.job_id]) {
+          var container = jobCardsMap[jobsInfo.job_id];
+
+          updateCard(
+            container,
+            jobsInfo,
+            jobProperties
+          );
+
+          if (jobsInfo.status == "IN_PROGRESS" || jobsInfo.status == "IN_QUEUE") {
+            if (container.parent().find("#cancel_button").length == 0) {
+              addButton("Cancel Job", cancelJobFunction(jobsInfo.job_id), "cancel_button", container.parent());
+            }
+          } else {
+            container.parent().find("#cancel_button").remove();
+          }
+        } else {
+          var container = createCardWithProperties(jobsBox, jobsInfo, jobProperties);
+
+          if (jobsInfo.status == "IN_PROGRESS" || jobsInfo.status == "IN_QUEUE") {
+            addButton("Cancel Job",
+              cancelJobFunction(jobsInfo.job_id),
+              "cancel_button",
+              container.parent()
+            );
+          }
+
+          jobCardsMap[jobsInfo.job_id] = container;
         }
       });
+
+      for (var jobId in jobCardsMap) {
+        var card = jobCardsMap[jobId];
+        if (!jobsAlive[jobId]) {
+          card.parent().parent().remove();
+          delete jobCardsMap[jobId];
+        }
+      }
     }
   });
 }
+
+var taskProperties = [{
+    name: "Task ID",
+    key: "task_id",
+  },
+  {
+    name: "Job ID",
+    key: "job_id",
+  },
+  {
+    name: "Task Type",
+    key: "task_type",
+  },
+  {
+    name: "Assigned Worker ID",
+    key: "assigned_worker_id",
+  },
+  {
+    name: "Status",
+    key: "status",
+  },
+  {
+    name: "Failure Count",
+    key: "failure_count",
+  },
+];
+
+// Map of taskId to card
+var taskCardsMap = {};
 
 function updateTasksList() {
   var tasksBox = $("#tasks");
@@ -120,26 +375,82 @@ function updateTasksList() {
     url: "/api/tasks",
     dataType: "json",
     success: function(tasks) {
-      tasksBox.empty();
+      var tasksAlive = {};
 
       tasks.forEach(function(taskInfo) {
-        var container = createCard(tasksBox);
+        tasksAlive[taskInfo.task_id] = true;
 
-        addProperty("Task ID", taskInfo.task_id, container);
-        addProperty("Job ID", taskInfo.job_id, container);
-        addProperty("Task Type", taskInfo.task_type, container);
-        addProperty("Assigned Worker ID", taskInfo.assigned_worker_id, container);
-        addProperty("Status", taskInfo.status, container);
-        addProperty("Failure Count", taskInfo.failure_count, container);
+        if (taskCardsMap[taskInfo.task_id]) {
+          var container = taskCardsMap[taskInfo.task_id];
+
+          updateCard(
+            container,
+            taskInfo,
+            taskProperties
+          );
+        } else {
+          var container = createCardWithProperties(tasksBox, taskInfo, taskProperties);
+
+          taskCardsMap[taskInfo.task_id] = container;
+        }
       });
+
+      for (var taskId in taskCardsMap) {
+        var card = taskCardsMap[taskId];
+        if (!tasksAlive[taskId]) {
+          card.parent().parent().remove();
+          delete taskCardsMap[taskId];
+        }
+      }
     }
   });
+}
+
+function updateMasterLog() {
+  var logs = $("#master-logs");
+  $.ajax({
+    url: "/api/logs",
+    dataType: "text",
+    success: function(logsText) {
+      if (logs.text().length < logsText.length) {
+        logs.text(logsText);
+      }
+    }
+  });
+}
+
+function copyText(text) {
+  var textArea = document.getElementById("hidden-text-area");
+  textArea.textContent = text;
+  textArea.focus();
+  textArea.select();
+  document.execCommand("copy");
+  textArea.textContent = "";
+}
+
+function copyMasterLogs() {
+  var logs = $("#master-logs");
+  copyText(logs.text());
+}
+
+function copyWorkerLogs() {
+  var logs = $("#worker-logs-text");
+  copyText(logs.text());
 }
 
 function updateFunction() {
   updateWorkersList();
   updateJobsList();
   updateTasksList();
+  updateMasterLog();
+}
+
+var scheduleFormToggled = false;
+
+function toggleScheduleForm() {
+  scheduleFormToggled = !scheduleFormToggled;
+  var scheduleForm = document.getElementById("schedule-form");
+  scheduleForm.style.visibility = scheduleFormToggled ? "visible" : "hidden";
 }
 
 function processScheduleMapReduceForm(e) {
@@ -151,6 +462,7 @@ function processScheduleMapReduceForm(e) {
   var inputPath = encodeURIComponent($("#input").val());
   var outputPath = encodeURIComponent($("#output").val());
   var priority = encodeURIComponent($("#priority").val());
+  var map_size = encodeURIComponent($("#map_size").val());
 
   var submitButton = $("#submit-job");
   submitButton.attr("disabled", true);
@@ -179,27 +491,24 @@ function processScheduleMapReduceForm(e) {
     "binary_path=" + binaryPath +
     "&input_path=" + inputPath +
     "&output_path=" + outputPath +
-    "&priority=" + priority;
+    "&priority=" + priority +
+    "&map_size=" + map_size;
+
 
   $.ajax({
     url: requestUrl,
     dataType: "json",
     complete: function() {
       submitButton.val("Succesfully scheduled");
+      if (scheduleFormToggled) {
+        toggleScheduleForm();
+      }
       restoreAnimation();
       updateFunction();
     }
   });
 
   return false;
-}
-
-var scheduleFormToggled = false;
-
-function toggleScheduleForm() {
-  scheduleFormToggled = !scheduleFormToggled;
-  var scheduleForm = document.getElementById("schedule-form");
-  scheduleForm.style.visibility = scheduleFormToggled ? "visible" : "hidden";
 }
 
 $(document).ready(function() {

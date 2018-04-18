@@ -1,4 +1,4 @@
-use clap::{App, SubCommand, Arg, ArgMatches};
+use clap::{App, Arg, ArgMatches, SubCommand};
 
 pub fn parse_command_line<'a>() -> ArgMatches<'a> {
     App::new("cli")
@@ -48,6 +48,14 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                         .help("Priority of the MapReduce. Valid values are 1 to 10")
                         .takes_value(true)
                         .required(false),
+                )
+                .arg(
+                    Arg::with_name("map_size")
+                    .long("map_size")
+                    .short("m")
+                    .help("Set the size of Map tasks in megabytes")
+                    .takes_value(true)
+                    .required(false),
                 )
         )
         .subcommand(

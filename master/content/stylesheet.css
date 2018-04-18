@@ -62,9 +62,10 @@ tr:hover {
   border-radius: 5px;
   box-shadow: 0 4px 8px 0 rgba(0, 0, 0, .2);
   color: #212121;
-  float: left;
+  display: inline-block;
   margin-bottom: 20px;
   margin-right: 20px;
+  text-align: center;
   transition: .3s;
   width: 45%;
 }
@@ -80,6 +81,7 @@ tr:hover {
 .container-grid {
   display: auto;
   padding: 8px 16px;
+  text-align: left;
 }
 
 .lower {
@@ -240,7 +242,7 @@ div.hidden-form {
   border-radius: 5px;
   border-width: 1px;
   box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
-  height: 480px;
+  height: 540px;
   left: 50%;
   margin-left: -175px;
   min-height: 300px;
@@ -264,4 +266,67 @@ a.exit-form {
   margin-left: 90%;
   position: absolute;
   text-decoration: None;
+}
+
+.logs {
+  background-color: #ffffff;
+  border-color: #bbdefb;
+  border-style: double;
+  border-width: medium;
+  color: #212121;
+  float: left;
+  font-size: 20px;
+  font-weight: bold;
+  height: 400px;
+  overflow: hidden;
+  padding: 10px;
+  text-align: center;
+  width: 100%;
+}
+
+.logs-scroll {
+  background-color: #ffffff;
+  border: none;
+  height: 370px;
+  overflow-y: scroll;
+}
+
+.logs-text {
+  font-size: 16px;
+  font-weight: normal;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.hidden-logs {
+  background-color: #bbdefb;
+  border-color: black;
+  border-radius: 5px;
+  border-width: 1px;
+  box-shadow: 3px 4px 4px 0 rgba(0, 0, 0, .3);
+  height: 525px;
+  left: 50%;
+  margin-left: -350px;
+  min-height: 300px;
+  position: fixed;
+  top: 15%;
+  visibility: hidden;
+  width: 700px;
+}
+
+.hidden-text-area {
+  left: -9999px;
+  position: absolute;
+  top: 0;
+}
+
+.logs-copy-div {
+  margin-left: 85%;
+  position: absolute;
+  width: 200px;
+}
+
+.worker-logs-copy-div {
+  margin: 5px auto;
+  width: 200px;
 }

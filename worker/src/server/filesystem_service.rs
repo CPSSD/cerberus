@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use grpc::{SingleResponse, Error, RequestOptions};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use cerberus_proto::filesystem as pb;
 use cerberus_proto::filesystem_grpc as grpc_pb;
 use util::distributed_filesystem::LocalFileManager;
 use util::output_error;
 
-const NOT_DISTRIBUTED_FILESYSTEM: &str = "Worker is not running in distributed filesytem configuration";
+const NOT_DISTRIBUTED_FILESYSTEM: &str =
+    "Worker is not running in distributed filesytem configuration";
 const STORE_FILE_ERROR: &str = "Error processing store file request";
 const READ_FILE_ERROR: &str = "Error processing read file request";
 
@@ -39,11 +40,8 @@ impl grpc_pb::FileSystemWorkerService for FileSystemService {
             }
         };
 
-        if let Err(err) = local_file_manager.store_file_chunk(
-            &req.file_path,
-            req.start_byte,
-            &req.data,
-        )
+        if let Err(err) =
+            local_file_manager.store_file_chunk(&req.file_path, req.start_byte, &req.data)
         {
             output_error(&err.chain_err(|| "Error processing store file request."));
             return SingleResponse::err(Error::Other(STORE_FILE_ERROR));

@@ -12,7 +12,9 @@ mkdir -p state-integration-test/state
 
 # Launch the master.
 echo "Launching Master."
-./master --fresh --state-location="$PWD"/state-integration-test/state --port=10009 > state-integration-test/logs/master.log 2>&1 &
+./master --fresh --state-location="$PWD"/state-integration-test/state \
+    --dashboard-address="127.0.0.1:3005" \
+    --port=10009 > state-integration-test/logs/master.log 2>&1 &
 master_pid=$!
 
 local_ip="127.0.0.1"
@@ -44,7 +46,9 @@ $(kill -9 ${master_pid});
 sleep 1
 
 echo "Relaunching Master."
-./master --state-location="$PWD"/state-integration-test/state --port=10009 > state-integration-test/logs/master2.log 2>&1 &
+./master --state-location="$PWD"/state-integration-test/state \
+    --dashboard-address="127.0.0.1:3005" \
+    --port=10009 > state-integration-test/logs/master2.log 2>&1 &
 master_pid=$!
 
 sleep 1

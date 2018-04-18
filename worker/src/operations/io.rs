@@ -24,18 +24,16 @@ pub fn read_location(
         .read_file_location(path, input_location.start_byte, input_location.end_byte)
         .chain_err(|| "Error reading file location.")?;
 
-    let value = str::from_utf8(&buffer).chain_err(|| {
-        format!("Invalid string in file {}", input_location.get_input_path())
-    })?;
+    let value = str::from_utf8(&buffer)
+        .chain_err(|| format!("Invalid string in file {}", input_location.get_input_path()))?;
 
     Ok(value.to_owned())
 }
 
 pub fn read_local<P: AsRef<Path>>(path: P) -> Result<String> {
     debug!("Attempting to read local file: {:?}", path.as_ref());
-    let file = File::open(&path).chain_err(|| {
-        format!("unable to open file {}", path.as_ref().to_string_lossy())
-    })?;
+    let file = File::open(&path)
+        .chain_err(|| format!("unable to open file {}", path.as_ref().to_string_lossy()))?;
 
     let mut buf_reader = BufReader::new(file);
     let mut value = String::new();
@@ -57,9 +55,7 @@ pub fn write<P: AsRef<Path>>(
 ) -> Result<()> {
     data_abstraction_layer_arc
         .write_file(path.as_ref(), data)
-        .chain_err(|| {
-            format!("Unable to write file {}", path.as_ref().to_string_lossy())
-        })?;
+        .chain_err(|| format!("Unable to write file {}", path.as_ref().to_string_lossy()))?;
 
     Ok(())
 }
@@ -67,9 +63,8 @@ pub fn write<P: AsRef<Path>>(
 #[cfg_attr(test, mockable)]
 pub fn write_local<P: AsRef<Path>>(path: P, data: &[u8]) -> Result<()> {
     debug!("Attempting to write to local file: {:?}", path.as_ref());
-    let mut file = File::create(&path).chain_err(|| {
-        format!("unable to create file {}", path.as_ref().to_string_lossy())
-    })?;
+    let mut file = File::create(&path)
+        .chain_err(|| format!("unable to create file {}", path.as_ref().to_string_lossy()))?;
     file.write_all(data).chain_err(|| {
         format!(
             "unable to write content to {}",

@@ -10,7 +10,6 @@ CA4019 Project
 #### Development
 - Rust Nightly
 - Protobuf Compiler
-- net-tools (if running worker locally)
 
 #### Deployment
 - Docker
@@ -28,7 +27,7 @@ $ cargo build --all
 
 ---
 
-## Running benchmarks
+## Running AWS benchmarks
 
 The following dependancies are required to run the benchmarking script:
 - python3-tk
@@ -40,10 +39,8 @@ apt-get install python3-pip python3-tk
 pip3 install numpy matplotlib
 ```
 
-Run the benchmarking script with:
-```
-python3 benchmarks.py
-```
+The AWS benchmarking script is located at aws/benchmarking.py
+Run `cargo build --release` before running the script.
 
 ---
 
@@ -67,10 +64,12 @@ pip install boto3
 	A sample file is located in aws/credentials. Simply replace *ACCESS_KEY_ID* and *SECRET_ACCESS_KEY* with their respective values.
 
 2. **Update parameters in aws.py script**
+	
+	You will need to create and download an EC2 key pair from AWS and update the python script to use your .pem file containing the created key.
 
 3. **Ensure that you push the latest version of the master/worker containers to DockerHub**
 
-	This can be done by running `./production-deployment` in the cerberus root directory.
+	This can be done by running `./production-deployment.sh` in the cerberus root directory.
 
 5. **Configure Launch Templates**
 
@@ -80,8 +79,8 @@ pip install boto3
 
 	| Template Name | Tag |
 	|----|----|
-	| Master | Key: "type", Value: "worker" |
-	| Worker | Key: "type", Value: "master" |
+	| Master | Key: "type", Value: "master" |
+	| Worker | Key: "type", Value: "worker" |
 
 6. **Deploy Instances**
 

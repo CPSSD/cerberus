@@ -3,23 +3,23 @@ use std::io::{stdin, stdout};
 
 use chrono::prelude::*;
 use clap::{App, ArgMatches, SubCommand};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json;
 use uuid::Uuid;
 
+use super::VERSION;
 use combiner::Combine;
 use emitter::IntermediateVecEmitter;
 use errors::*;
 use intermediate::IntermediateInputKV;
 use io::*;
 use mapper::Map;
-use partition::{Partition, PartitionInputPairs};
+use partition::{Partition, PartitionInputKV};
 use reducer::Reduce;
 use registry::UserImplRegistry;
 use serialise::{FinalOutputObject, FinalOutputObjectEmitter, IntermediateOutputObject,
-                IntermediateOutputObjectEmitter, VecEmitter};
-use super::VERSION;
+                IntermediateOutputPair, VecEmitter};
 
 /// `parse_command_line` uses `clap` to parse the command-line arguments passed to the payload.
 ///
@@ -59,15 +59,13 @@ where
             Ok(())
         }
         Some("reduce") => {
-            run_reduce(registry.reducer).chain_err(
-                || "Error running reduce",
-            )?;
+            run_reduce(registry.reducer).chain_err(|| "Error running reduce")?;
             Ok(())
         }
         Some("combine") => {
-            let combiner = registry.combiner.chain_err(
-                || "Attempt to run combine command when combiner is not implemented",
-            )?;
+            let combiner = registry
+                .combiner
+                .chain_err(|| "Attempt to run combine command when combiner is not implemented")?;
             run_combine(combiner).chain_err(|| "Error running combine")?;
             Ok(())
         }
@@ -95,9 +93,7 @@ where
 {
     let mut source = stdin();
     let mut sink = stdout();
-    let input_kv = read_map_input(&mut source).chain_err(
-        || "Error getting input to map.",
-    )?;
+    let input_kv = read_map_input(&mut source).chain_err(|| "Error getting input to map.")?;
 
     let mut pairs_vec: Vec<(M::Key, M::Value)> = Vec::new();
 
@@ -106,21 +102,27 @@ where
         .chain_err(|| "Error running map operation.")?;
 
     if let Some(combiner) = combiner_option {
-        let new_pairs_vec = run_internal_combine(combiner, &mut pairs_vec).chain_err(
-            || "Error running combine on map results",
-        )?;
+        let new_pairs_vec = run_internal_combine(combiner, &mut pairs_vec)
+            .chain_err(|| "Error running combine on map results")?;
 
         pairs_vec = new_pairs_vec;
     }
 
     let mut output_object = IntermediateOutputObject::<M::Key, M::Value>::default();
 
-    partitioner
-        .partition(
-            PartitionInputPairs::new(pairs_vec),
-            IntermediateOutputObjectEmitter::new(&mut output_object),
-        )
-        .chain_err(|| "Error partitioning map output")?;
+    for pair in pairs_vec.drain(0..) {
+        let partition = partitioner
+            .partition(PartitionInputKV::new(&pair.0, &pair.1))
+            .chain_err(|| "Error partitioning map output")?;
+        let output_array = output_object
+            .partitions
+            .entry(partition)
+            .or_insert_with(Default::default);
+        output_array.push(IntermediateOutputPair {
+            key: pair.0,
+            value: pair.1,
+        });
+    }
 
     write_intermediate_output(&mut sink, &output_object)
         .chain_err(|| "Error writing map output to stdout.")?;
@@ -134,22 +136,20 @@ where
 {
     let mut source = stdin();
     let mut sink = stdout();
-    let input_kvs = read_intermediate_input(&mut source).chain_err(
-        || "Error getting input to reduce.",
-    )?;
+    let input_kvs =
+        read_intermediate_input(&mut source).chain_err(|| "Error getting input to reduce.")?;
 
     let mut output_objects = Vec::new();
     for input_kv in input_kvs {
-        let mut output_object = FinalOutputObject::<V>::default();
+        let mut output_object = FinalOutputObject::<R::Output>::default();
         reducer
             .reduce(input_kv, FinalOutputObjectEmitter::new(&mut output_object))
             .chain_err(|| "Error running reduce operation.")?;
         output_objects.push(output_object);
     }
 
-    write_reduce_output(&mut sink, &output_objects).chain_err(
-        || "Error writing reduce output to stdout.",
-    )?;
+    write_reduce_output(&mut sink, &output_objects)
+        .chain_err(|| "Error writing reduce output to stdout.")?;
     Ok(())
 }
 
@@ -161,9 +161,8 @@ where
 {
     let mut source = stdin();
     let mut sink = stdout();
-    let input_kvs = read_intermediate_input(&mut source).chain_err(
-        || "Error getting input to combine.",
-    )?;
+    let input_kvs =
+        read_intermediate_input(&mut source).chain_err(|| "Error getting input to combine.")?;
 
     let mut output_objects = Vec::new();
 
@@ -202,14 +201,12 @@ where
     let mut results = Vec::new();
 
     for (key_str, mut values) in kv_map.drain() {
-        let key_json: serde_json::Value = serde_json::from_str(&key_str).chain_err(
-            || "Error parsing combine key.",
-        )?;
+        let key_json: serde_json::Value =
+            serde_json::from_str(&key_str).chain_err(|| "Error parsing combine key.")?;
 
         // Retrieve the original key from the serialized version.
-        let key = serde_json::from_value(key_json.clone()).chain_err(
-            || "Error converting combine key string to key type",
-        )?;
+        let key = serde_json::from_value(key_json.clone())
+            .chain_err(|| "Error converting combine key string to key type")?;
 
         if values.len() > 1 {
             let input_kv = IntermediateInputKV { key, values };
@@ -221,9 +218,8 @@ where
                 .chain_err(|| "Error running combine operation.")?;
 
             for value in result_values {
-                let key = serde_json::from_value(key_json.clone()).chain_err(
-                    || "Error converting combine key string to key type",
-                )?;
+                let key = serde_json::from_value(key_json.clone())
+                    .chain_err(|| "Error converting combine key string to key type")?;
 
                 results.push((key, value));
             }

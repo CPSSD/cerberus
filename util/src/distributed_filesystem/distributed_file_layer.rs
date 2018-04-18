@@ -1,15 +1,21 @@
 use std::cmp::{max, min};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rand::random;
 
 use data_layer::AbstractionLayer;
-use distributed_filesystem::{LocalFileManager, FileSystemMasterInterface,
-                             FileSystemWorkerInterface};
+use distributed_filesystem::{FileSystemMasterInterface, FileSystemWorkerInterface,
+                             LocalFileManager};
 use errors::*;
+use logging::output_error;
 
 const MAX_GET_DATA_RETRIES: usize = 3;
+const MEGA_BYTE: u64 = 1000 * 1000;
+const MAX_LOCAL_FILE_CHUNK: u64 = MEGA_BYTE * 32;
 
 pub struct DFSAbstractionLayer {
     local_file_manager: Arc<LocalFileManager>,
@@ -42,7 +48,6 @@ impl DFSAbstractionLayer {
                     "Error getting remote data: Incomplete file location information.".into(),
                 );
             }
-
 
             let mut retries = MAX_GET_DATA_RETRIES;
             loop {
@@ -102,8 +107,8 @@ impl AbstractionLayer for DFSAbstractionLayer {
         let mut on_local_chunk = 0;
         let mut on_byte = start_byte;
         while on_byte < end_byte {
-            while on_local_chunk < local_file_chunks.len() &&
-                local_file_chunks[on_local_chunk].start_byte < on_byte
+            while on_local_chunk < local_file_chunks.len()
+                && local_file_chunks[on_local_chunk].start_byte < on_byte
             {
                 on_local_chunk += 1;
             }
@@ -144,25 +149,43 @@ impl AbstractionLayer for DFSAbstractionLayer {
     fn get_local_file(&self, path: &Path) -> Result<PathBuf> {
         debug!("Getting local file: {:?}", path);
 
-        if let Some(local_file_path) =
-            self.local_file_manager.get_local_file(
-                &path.to_string_lossy(),
-            )
+        if let Some(local_file_path) = self.local_file_manager
+            .get_local_file(&path.to_string_lossy())
         {
             return Ok(PathBuf::from(local_file_path));
         }
 
-        // TODO(conor): Improve this function to work for files that can not fit in memory.
-        let file_length = self.get_file_length(path).chain_err(
-            || "Error getting file length",
-        )?;
-        let data = self.read_file_location(path, 0, file_length).chain_err(
-            || "Error getting local file",
-        )?;
+        let mut start_byte = 0;
+        let file_length = self.get_file_length(path)
+            .chain_err(|| "Error getting file length")?;
 
         let local_file_path = self.local_file_manager
-            .write_local_file(&path.to_string_lossy(), &data)
-            .chain_err(|| "Error writing local file")?;
+            .get_new_local_file_path()
+            .chain_err(|| "Error getting local file path")?;
+
+        let mut options = OpenOptions::new();
+        options.read(true);
+        options.write(true);
+        options.truncate(true);
+        options.create(true);
+        options.mode(0o777);
+
+        let mut file = options
+            .open(local_file_path.to_owned())
+            .chain_err({ || format!("unable to create file {}", local_file_path) })?;
+
+        while start_byte < file_length {
+            let end_byte = min(file_length, start_byte + MAX_LOCAL_FILE_CHUNK);
+            let data = self.read_file_location(path, start_byte, file_length)
+                .chain_err(|| "Error getting local file")?;
+
+            file.write_all(&data)
+                .chain_err(|| format!("unable to write content to {}", local_file_path,))?;
+            start_byte = end_byte;
+        }
+
+        self.local_file_manager
+            .complete_local_file(&path.to_string_lossy(), &local_file_path);
 
         Ok(PathBuf::from(local_file_path))
     }
@@ -226,19 +249,37 @@ impl AbstractionLayer for DFSAbstractionLayer {
         Ok(())
     }
 
-    fn get_file_closeness(&self, path: &Path, worker_id: &str) -> Result<u64> {
-        let file_chunks = self.master_interface
+    fn get_data_closeness(
+        &self,
+        path: &Path,
+        chunk_start: u64,
+        chunk_end: u64,
+        worker_id: &str,
+    ) -> u64 {
+        let file_chunks = match self.master_interface
             .get_file_chunks(&path.to_string_lossy())
-            .chain_err(|| "Could not get file locations")?;
+        {
+            Ok(chunks) => chunks,
+            Err(err) => {
+                output_error(&err.chain_err(|| {
+                    format!("Error getting data closeness score for {:?}", path)
+                }));
+                return 0;
+            }
+        };
 
-        let mut score = 0;
+        let mut score: u64 = 0;
 
         for chunk in file_chunks {
             if chunk.workers.contains(&worker_id.to_string()) {
-                score += 1;
+                let overlap: i64 = min(chunk_end, chunk.end_byte) as i64
+                    - max(chunk_start, chunk.start_byte) as i64;
+                if overlap > 0 {
+                    score += overlap as u64;
+                }
             }
         }
 
-        Ok(score)
+        score
     }
 }

@@ -1,14 +1,14 @@
+use futures::{Future, Stream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use futures::{Future, Stream};
 
 use rusoto_core::Region;
-use rusoto_s3::{S3Client, S3};
 use rusoto_s3;
+use rusoto_s3::{S3, S3Client};
 
-use errors::*;
-use distributed_filesystem::LocalFileManager;
 use data_layer::abstraction_layer::AbstractionLayer;
+use distributed_filesystem::LocalFileManager;
+use errors::*;
 
 const S3_REGION: Region = Region::EuWest1;
 
@@ -28,9 +28,8 @@ impl AmazonS3AbstractionLayer {
             local_file_manager,
         };
 
-        let exists = s3.bucket_exists().chain_err(
-            || "Unable to check if bucket exists",
-        )?;
+        let exists = s3.bucket_exists()
+            .chain_err(|| "Unable to check if bucket exists")?;
         if !exists {
             return Err(format!("Bucket '{}' does not exist.", s3.bucket).into());
         }
@@ -41,25 +40,21 @@ impl AmazonS3AbstractionLayer {
     fn abstracted_path(&self, path: &Path) -> Result<String> {
         let stripped_path = {
             if path.starts_with("/") {
-                path.strip_prefix("/").chain_err(
-                    || "Unable to strip prefix from path",
-                )?
+                path.strip_prefix("/")
+                    .chain_err(|| "Unable to strip prefix from path")?
             } else {
                 path
             }
         };
         match stripped_path.to_str() {
             Some(string) => Ok(string.to_owned()),
-            None => Err(
-                format!("Unable to convert path '{:?}' to a String", path).into(),
-            ),
+            None => Err(format!("Unable to convert path '{:?}' to a String", path).into()),
         }
     }
 
     pub fn file_metadata(&self, path: &Path) -> Result<rusoto_s3::HeadObjectOutput> {
-        let abstracted_path = self.abstracted_path(path).chain_err(
-            || "Unable to convert PathBuf to a String",
-        )?;
+        let abstracted_path = self.abstracted_path(path)
+            .chain_err(|| "Unable to convert PathBuf to a String")?;
 
         let request = rusoto_s3::HeadObjectRequest {
             bucket: self.bucket.clone(),
@@ -88,9 +83,10 @@ impl AmazonS3AbstractionLayer {
     }
 
     pub fn bucket_exists(&self) -> Result<bool> {
-        let result = self.client.list_buckets().sync().chain_err(
-            || "Unable to retrieve bucket list",
-        )?;
+        let result = self.client
+            .list_buckets()
+            .sync()
+            .chain_err(|| "Unable to retrieve bucket list")?;
 
         match result.buckets {
             Some(buckets) => {
@@ -112,23 +108,23 @@ impl AmazonS3AbstractionLayer {
 
 impl AbstractionLayer for AmazonS3AbstractionLayer {
     fn get_file_length(&self, path: &Path) -> Result<u64> {
-        let metadata = self.file_metadata(path).chain_err(
-            || "Unable to get metadata for file",
-        )?;
+        let metadata = self.file_metadata(path)
+            .chain_err(|| "Unable to get metadata for file")?;
 
         if let Some(size) = metadata.content_length {
             return Ok(size as u64);
         }
 
-        Err(
-            format!("Unable to get content length of file: {:?}", path).into(),
-        )
+        Err(format!("Unable to get content length of file: {:?}", path).into())
     }
 
     fn read_file_location(&self, path: &Path, start_byte: u64, end_byte: u64) -> Result<Vec<u8>> {
-        let abstracted_path = self.abstracted_path(path).chain_err(
-            || "Unable to get abstracted path",
-        )?;
+        let abstracted_path = self.abstracted_path(path)
+            .chain_err(|| "Unable to get abstracted path")?;
+
+        // This range includes the start/end byte. Since we don't want to include the end byte
+        // we subtract 1 here.
+        let range: String = format!("bytes={}-{}", start_byte, end_byte - 1);
 
         let request = rusoto_s3::GetObjectRequest {
             bucket: self.bucket.clone(),
@@ -138,7 +134,7 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             if_unmodified_since: None,
             key: abstracted_path,
             part_number: None,
-            range: None,
+            range: Some(range),
             request_payer: None,
             response_cache_control: None,
             response_content_disposition: None,
@@ -152,33 +148,27 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             version_id: None,
         };
 
-        let response = self.client.get_object(&request).sync().chain_err(
-            || "Unable to get object",
-        )?;
+        let response = self.client
+            .get_object(&request)
+            .sync()
+            .chain_err(|| "Unable to get object")?;
 
         let streaming_body = match response.body {
             Some(body) => body,
             None => return Err("Object has no body".into()),
         };
 
-        // TODO(rhino): Make this more efficient
-        let result: Vec<u8> = streaming_body.concat2().wait().chain_err(
-            || "Unable to get body of file",
-        )?;
+        let result: Vec<u8> = streaming_body
+            .concat2()
+            .wait()
+            .chain_err(|| "Unable to get body of file")?;
 
-        let mut bytes: Vec<u8> = vec![];
-        let start = start_byte as usize;
-        let end = end_byte as usize;
-
-        bytes.extend_from_slice(&result[start..end]);
-
-        Ok(bytes)
+        Ok(result)
     }
 
     fn write_file(&self, path: &Path, data: &[u8]) -> Result<()> {
-        let abstracted_path = self.abstracted_path(path).chain_err(
-            || "Unable to get abstracted path",
-        )?;
+        let abstracted_path = self.abstracted_path(path)
+            .chain_err(|| "Unable to get abstracted path")?;
 
         let request = rusoto_s3::PutObjectRequest {
             bucket: self.bucket.clone(),
@@ -210,30 +200,27 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
             website_redirect_location: None,
         };
 
-        self.client.put_object(&request).wait().chain_err(
-            || "Unable to put object into bucket",
-        )?;
+        self.client
+            .put_object(&request)
+            .wait()
+            .chain_err(|| "Unable to put object into bucket")?;
         Ok(())
     }
 
     fn get_local_file(&self, path: &Path) -> Result<PathBuf> {
         // Return the path to the local file if we have it.
-        if let Some(local_file_path) =
-            self.local_file_manager.get_local_file(
-                &path.to_string_lossy(),
-            )
+        if let Some(local_file_path) = self.local_file_manager
+            .get_local_file(&path.to_string_lossy())
         {
             return Ok(PathBuf::from(local_file_path));
         }
 
         // Otherwise download the file and return it's path.
         info!("Downloading remote file: {:?}", path);
-        let file_length = self.get_file_length(path).chain_err(
-            || "Error getting file length",
-        )?;
-        let data = self.read_file_location(path, 0, file_length).chain_err(
-            || "Error reading remote file",
-        )?;
+        let file_length = self.get_file_length(path)
+            .chain_err(|| "Error getting file length")?;
+        let data = self.read_file_location(path, 0, file_length)
+            .chain_err(|| "Error reading remote file")?;
 
         let local_file_path = self.local_file_manager
             .write_local_file(&path.to_string_lossy(), &data)
@@ -244,9 +231,8 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
     }
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
-        let mut abstracted_path = self.abstracted_path(path).chain_err(
-            || "Unable to convert Path to a String",
-        )?;
+        let mut abstracted_path = self.abstracted_path(path)
+            .chain_err(|| "Unable to convert Path to a String")?;
         abstracted_path = format!("{}/", abstracted_path);
         let request = rusoto_s3::ListObjectsV2Request {
             bucket: self.bucket.clone(),
@@ -261,9 +247,10 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
         };
 
         let mut files: Vec<PathBuf> = vec![];
-        let response = self.client.list_objects_v2(&request).sync().chain_err(
-            || "Unable to get list of objects from bucket",
-        )?;
+        let response = self.client
+            .list_objects_v2(&request)
+            .sync()
+            .chain_err(|| "Unable to get list of objects from bucket")?;
         if let Some(contents) = response.contents {
             for object in contents {
                 if let Some(file_name) = object.key {
@@ -296,9 +283,8 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
     // S3 automatically creates folders if they don't exist, so we can just return true if the path
     // isn't a file.
     fn is_dir(&self, path: &Path) -> Result<(bool)> {
-        let is_file = self.is_file(path).chain_err(
-            || "Unable to check if path is a file",
-        )?;
+        let is_file = self.is_file(path)
+            .chain_err(|| "Unable to check if path is a file")?;
         Ok(!is_file)
     }
 
@@ -312,7 +298,13 @@ impl AbstractionLayer for AmazonS3AbstractionLayer {
     }
 
     // For S3 all files can be taken to be equally close to each worker.
-    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
-        Ok(1)
+    fn get_data_closeness(
+        &self,
+        _path: &Path,
+        _chunk_start: u64,
+        _chunk_end: u64,
+        _worker_id: &str,
+    ) -> u64 {
+        1
     }
 }

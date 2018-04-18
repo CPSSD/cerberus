@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::Future;
-use grpc::{RequestOptions, SingleResponse, Error};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;

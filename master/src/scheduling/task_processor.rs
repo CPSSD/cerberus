@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::cmp::max;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cerberus_proto::worker as pb;
 use common::{Job, Task};
-use util::data_layer::AbstractionLayer;
 use errors::*;
+use util::data_layer::AbstractionLayer;
 
-const MEGA_BYTE: u64 = 1000 * 1000;
-const MAP_INPUT_SIZE: u64 = MEGA_BYTE * 64;
 const CLOSEST_ENDLINE_STEP: u64 = 1000;
 const NEWLINE: u8 = 0x0A;
 
@@ -36,7 +34,9 @@ pub struct TaskProcessorImpl {
 
 impl TaskProcessorImpl {
     pub fn new(data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>) -> Self {
-        TaskProcessorImpl { data_abstraction_layer }
+        TaskProcessorImpl {
+            data_abstraction_layer,
+        }
     }
 
     /// `get_closest_endline` files the endline closest to the end of a given range for input file
@@ -71,7 +71,11 @@ impl TaskProcessorImpl {
 
     /// `read_input_file` reads a given input file and splits it into chunks for map tasks.
     /// If a file can fit into one map task, it will not be split.
-    fn read_input_file(&self, input_file_path: &PathBuf) -> Result<Vec<pb::InputLocation>> {
+    fn read_input_file(
+        &self,
+        input_file_path: &PathBuf,
+        map_input_size: u64,
+    ) -> Result<Vec<pb::InputLocation>> {
         let input_path_str = input_file_path.to_str().ok_or("Invalid input file path.")?;
 
         let mut input_locations = Vec::new();
@@ -81,9 +85,9 @@ impl TaskProcessorImpl {
             .get_file_length(input_file_path)
             .chain_err(|| "Error reading input file")?;
 
-        while end_byte - start_byte > MAP_INPUT_SIZE {
+        while end_byte - start_byte > map_input_size {
             let new_start_byte =
-                self.get_closest_endline(input_file_path, start_byte, start_byte + MAP_INPUT_SIZE)
+                self.get_closest_endline(input_file_path, start_byte, start_byte + map_input_size)
                     .chain_err(|| "Error reading input file")?;
             let mut input_location = pb::InputLocation::new();
             input_location.set_input_path(input_path_str.to_owned());
@@ -106,11 +110,15 @@ impl TaskProcessorImpl {
     }
 
     /// `get_map_task_infos` reads a directory and creates a set of `MapTaskFileInformations`
-    fn get_map_task_infos(&self, input_directory: &Path) -> Result<Vec<MapTaskInformation>> {
+    fn get_map_task_infos(
+        &self,
+        input_directory: &Path,
+        map_input_size: u64,
+    ) -> Result<Vec<MapTaskInformation>> {
         let mut map_task_infos = Vec::new();
 
         let mut map_task_info = MapTaskInformation {
-            bytes_remaining: MAP_INPUT_SIZE,
+            bytes_remaining: map_input_size,
 
             input_locations: Vec::new(),
         };
@@ -128,9 +136,8 @@ impl TaskProcessorImpl {
                 .is_file(path.as_path())
                 .chain_err(|| "Failed to check if path is a file")?
             {
-                let input_locations = self.read_input_file(&path).chain_err(
-                    || "Error reading input file.",
-                )?;
+                let input_locations = self.read_input_file(&path, map_input_size)
+                    .chain_err(|| "Error reading input file.")?;
 
                 for input_location in input_locations {
                     let bytes_to_read = input_location.end_byte - input_location.start_byte;
@@ -138,7 +145,7 @@ impl TaskProcessorImpl {
                         map_task_infos.push(map_task_info);
 
                         map_task_info = MapTaskInformation {
-                            bytes_remaining: MAP_INPUT_SIZE,
+                            bytes_remaining: map_input_size,
                             input_locations: Vec::new(),
                         };
                     }
@@ -149,7 +156,7 @@ impl TaskProcessorImpl {
             }
         }
 
-        if map_task_info.bytes_remaining != MAP_INPUT_SIZE {
+        if map_task_info.bytes_remaining != map_input_size {
             map_task_infos.push(map_task_info);
         }
 
@@ -159,8 +166,9 @@ impl TaskProcessorImpl {
 
 impl TaskProcessor for TaskProcessorImpl {
     fn create_map_tasks(&self, job: &Job) -> Result<Vec<Task>> {
-        let map_task_infos = self.get_map_task_infos(Path::new(&job.input_directory))
-            .chain_err(|| "Error creating map tasks")?;
+        let map_task_infos =
+            self.get_map_task_infos(Path::new(&job.input_directory), job.map_input_size)
+                .chain_err(|| "Error creating map tasks")?;
 
         // TODO(conor): Consider adding together any map tasks that can be combined here.
 
@@ -212,12 +220,12 @@ impl TaskProcessor for TaskProcessorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
-    use std::io::{Read, Write};
+    use common::{JobOptions, TaskType};
     use std::collections::HashSet;
     use std::fs;
     use std::fs::File;
-    use common::{JobOptions, TaskType};
+    use std::io::{Read, Write};
+    use std::path::Path;
     use util::data_layer::NullAbstractionLayer;
 
     #[test]
@@ -247,6 +255,7 @@ mod tests {
                 client_id: "test-client".to_owned(),
                 binary_path: "/tmp/bin".to_owned(),
                 input_directory: test_path.to_str().unwrap().to_owned(),
+                map_size: 64,
                 ..Default::default()
             },
             &data_abstraction_layer,
@@ -281,12 +290,8 @@ mod tests {
 
         // Either input file order is fine.
         let mut good_inputs = HashSet::new();
-        good_inputs.insert(
-            "this is the first test file\nthis is the second test file".to_owned(),
-        );
-        good_inputs.insert(
-            "this is the second test file\nthis is the first test file".to_owned(),
-        );
+        good_inputs.insert("this is the first test file\nthis is the second test file".to_owned());
+        good_inputs.insert("this is the second test file\nthis is the first test file".to_owned());
 
         println!("{}", map_input.clone());
 
@@ -306,6 +311,7 @@ mod tests {
                 client_id: "test-client".to_owned(),
                 binary_path: "/tmp/bin".to_owned(),
                 input_directory: "/tmp/inputdir".to_owned(),
+                map_size: 64,
                 ..Default::default()
             },
             &data_abstraction_layer,
@@ -318,20 +324,17 @@ mod tests {
 
         let mut map_task1 =
             Task::new_map_task("map-1", "/tmp/bin", vec![input_location.clone()], 1);
-        map_task1.map_output_files.insert(
-            0,
-            "/tmp/output/1".to_owned(),
-        );
-        map_task1.map_output_files.insert(
-            1,
-            "/tmp/output/2".to_owned(),
-        );
+        map_task1
+            .map_output_files
+            .insert(0, "/tmp/output/1".to_owned());
+        map_task1
+            .map_output_files
+            .insert(1, "/tmp/output/2".to_owned());
 
         let mut map_task2 = Task::new_map_task("map-2", "/tmp/bin", vec![input_location], 1);
-        map_task2.map_output_files.insert(
-            0,
-            "/tmp/output/3".to_owned(),
-        );
+        map_task2
+            .map_output_files
+            .insert(0, "/tmp/output/3".to_owned());
 
         let map_tasks: Vec<&Task> = vec![&map_task1, &map_task2];
         let mut reduce_tasks: Vec<Task> =

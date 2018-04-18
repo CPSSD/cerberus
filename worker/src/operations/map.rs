@@ -7,17 +7,20 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use bson;
+use futures::future;
+use futures::Future;
+use futures_cpupool::{CpuFuture, CpuPool};
 use serde_json;
 use uuid::Uuid;
 
-use errors::*;
-use cerberus_proto::worker as pb;
-use master_interface::MasterInterface;
 use super::combine;
 use super::io;
 use super::operation_handler;
 use super::operation_handler::{OperationResources, PartitionMap};
 use super::state::OperationState;
+use cerberus_proto::worker as pb;
+use communication::MasterInterface;
+use errors::*;
 use util::output_error;
 
 const WORKER_OUTPUT_DIRECTORY: &str = "/tmp/cerberus/";
@@ -29,9 +32,13 @@ pub struct MapInput {
     pub value: String,
 }
 
-fn log_map_operation_err(err: Error, operation_state_arc: &Arc<Mutex<OperationState>>) {
+fn log_map_operation_err(
+    err: Error,
+    operation_state_arc: &Arc<Mutex<OperationState>>,
+    task_id: &str,
+) {
     output_error(&err.chain_err(|| "Error running map operation."));
-    operation_handler::set_failed_status(operation_state_arc);
+    operation_handler::set_failed_status(operation_state_arc, task_id);
 }
 
 fn send_map_result(
@@ -45,9 +52,8 @@ fn send_map_result(
 }
 
 fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) -> Result<()> {
-    let parse_value: serde_json::Value = serde_json::from_str(map_result_string).chain_err(
-        || "Error parsing map response.",
-    )?;
+    let parse_value: serde_json::Value =
+        serde_json::from_str(map_result_string).chain_err(|| "Error parsing map response.")?;
 
     let partition_map_object = match parse_value["partitions"].as_object() {
         None => return Err("Error parsing partition map.".into()),
@@ -55,9 +61,10 @@ fn parse_map_results(map_result_string: &str, partition_map: &mut PartitionMap) 
     };
 
     for (partition_str, pairs) in partition_map_object.iter() {
-        let partition: u64 = partition_str.to_owned().parse().chain_err(
-            || "Error parsing map response.",
-        )?;
+        let partition: u64 = partition_str
+            .to_owned()
+            .parse()
+            .chain_err(|| "Error parsing map response.")?;
         let partition_hashmap = partition_map.entry(partition).or_insert_with(HashMap::new);
         if let serde_json::Value::Array(ref pairs) = *pairs {
             for pair in pairs {
@@ -77,29 +84,25 @@ fn map_operation_thread_impl(map_input_value: &bson::Document, mut child: Child)
         .chain_err(|| "Could not encode map_input as BSON.")?;
 
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(&input_buf[..]).chain_err(
-            || "Error writing to payload stdin.",
-        )?;
+        stdin
+            .write_all(&input_buf[..])
+            .chain_err(|| "Error writing to payload stdin.")?;
     } else {
         return Err("Error accessing stdin of payload binary.".into());
     }
 
-    let output = child.wait_with_output().chain_err(
-        || "Error waiting for payload result.",
-    )?;
+    let output = child
+        .wait_with_output()
+        .chain_err(|| "Error waiting for payload result.")?;
 
-    let output_str = String::from_utf8(output.stdout).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let output_str =
+        String::from_utf8(output.stdout).chain_err(|| "Error accessing payload output.")?;
 
-    let stderr_str = String::from_utf8(output.stderr).chain_err(
-        || "Error accessing payload output.",
-    )?;
+    let stderr_str =
+        String::from_utf8(output.stderr).chain_err(|| "Error accessing payload output.")?;
 
     if !stderr_str.is_empty() {
-        return Err(
-            format!("MapReduce binary failed with stderr:\n {}", stderr_str).into(),
-        );
+        return Err(format!("MapReduce binary failed with stderr:\n {}", stderr_str).into());
     }
 
     Ok(output_str)
@@ -115,31 +118,26 @@ pub fn perform_map(
         operation_state.initial_cpu_time = operation_handler::get_cpu_time();
     }
 
-    let input_files: Vec<String> = map_options
-        .get_input()
-        .get_input_locations()
-        .into_iter()
-        .map(|loc| loc.input_path.clone())
-        .collect();
-
-
     info!(
         "Performing map operation. mapper={} number of inputs={}",
         map_options.mapper_file_path,
         map_options.get_input().get_input_locations().len()
     );
 
-    debug!("Input files: {:?}", input_files);
+    {
+        let mut state = resources.operation_state.lock().unwrap();
+        if state.current_task_id != "" {
+            warn!("Map operation requested while worker is busy");
+            return Err("Worker is busy.".into());
+        }
 
-    if operation_handler::get_worker_status(&resources.operation_state) == pb::WorkerStatus::BUSY {
-        warn!("Map operation requested while worker is busy");
-        return Err("Worker is busy.".into());
+        state.current_task_id = map_options.task_id.clone();
+        state.operation_status = pb::OperationStatus::IN_PROGRESS;
     }
-    operation_handler::set_busy_status(&resources.operation_state);
 
     let result = internal_perform_map(map_options, resources, output_dir_uuid);
     if let Err(err) = result {
-        log_map_operation_err(err, &resources.operation_state);
+        log_map_operation_err(err, &resources.operation_state, &map_options.task_id);
         return Err("Error starting map operation.".into());
     }
 
@@ -151,25 +149,27 @@ fn combine_map_results(
     initial_cpu_time: u64,
     output_dir: &str,
     task_id: &str,
+    map_results_vec: Vec<String>,
 ) -> Result<()> {
-    // Map of partition to maps of key to value.
-    let mut partition_map: PartitionMap = HashMap::new();
-    let mut map_results_vec = Vec::new();
-    {
-        let mut operation_state = resources.operation_state.lock().unwrap();
-        for map_result in operation_state.intermediate_map_results.clone() {
-            map_results_vec.push(map_result);
-        }
-        operation_state.intermediate_map_results.clear();
+    if operation_handler::check_task_cancelled(&resources.operation_state, task_id) {
+        return Ok(());
     }
 
+    // Only need to run a combine if there are more than 1 map results. Otherwise the libcerberus
+    // binary will have already combined the results.
+    let run_combine = map_results_vec.len() > 1;
+
+    // Map of partition to maps of key to value.
+    let mut partition_map: PartitionMap = HashMap::new();
     for map_result in map_results_vec {
         parse_map_results(&map_result, &mut partition_map)
             .chain_err(|| "Error parsing map result")?;
     }
 
-    combine::optional_run_combine(resources, &mut partition_map)
-        .chain_err(|| "Error running combine operation.")?;
+    if run_combine {
+        combine::optional_run_combine(resources, &mut partition_map)
+            .chain_err(|| "Error running combine operation.")?;
+    }
 
     let mut map_result_files: HashMap<u64, String> = HashMap::new();
     for (partition, values) in partition_map {
@@ -192,10 +192,10 @@ fn combine_map_results(
     map_result.set_task_id(task_id.to_owned());
 
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
-        log_map_operation_err(err, &resources.operation_state);
+        log_map_operation_err(err, &resources.operation_state, task_id);
     } else {
         info!("Map operation completed sucessfully.");
-        operation_handler::set_complete_status(&resources.operation_state);
+        operation_handler::set_complete_status(&resources.operation_state, task_id);
     }
 
     Ok(())
@@ -209,11 +209,11 @@ fn process_map_operation_error(
 ) {
     {
         let mut operation_state = resources.operation_state.lock().unwrap();
-        if operation_state.map_operation_failed {
+        if operation_state.current_task_id != task_id {
             // Already processed an error, no need to send status again.
             return;
         }
-        operation_state.map_operation_failed = true;
+        operation_state.current_task_id = String::new();
     }
 
     let mut map_result = pb::MapResult::new();
@@ -225,49 +225,95 @@ fn process_map_operation_error(
     if let Err(err) = send_map_result(&resources.master_interface, map_result) {
         error!("Could not send map operation failed: {}", err);
     }
-    log_map_operation_err(err, &resources.operation_state);
+    log_map_operation_err(err, &resources.operation_state, task_id);
 }
 
-fn process_map_result(
-    result: Result<String>,
+fn run_map_input(
+    input_location: &pb::InputLocation,
+    map_options: &pb::PerformMapRequest,
     resources: &OperationResources,
-    initial_cpu_time: u64,
-    output_dir: &str,
-    task_id: &str,
-) {
-    // If we have cancelled the current task then we should avoid processing the map results.
-    if operation_handler::check_task_cancelled(&resources.operation_state, task_id) {
-        return;
+) -> Result<String> {
+    if operation_handler::check_task_cancelled(&resources.operation_state, &map_options.task_id) {
+        return Ok(String::new());
     }
 
-    match result {
-        Ok(map_result) => {
-            let finished = {
-                let mut operation_state = resources.operation_state.lock().unwrap();
+    info!(
+        "Running map task for {} ({} - > {})",
+        input_location.input_path, input_location.start_byte, input_location.end_byte
+    );
 
-                if operation_state.map_operation_failed {
-                    // The map operation has failed, no need to continue.
-                    return;
-                }
+    let map_input_value = io::read_location(&resources.data_abstraction_layer, input_location)
+        .chain_err(|| "unable to open input file")?;
 
-                operation_state.intermediate_map_results.push(map_result);
-                operation_state.waiting_map_operations -= 1;
-                operation_state.waiting_map_operations == 0
-            };
+    let absolute_path = resources
+        .data_abstraction_layer
+        .get_local_file(Path::new(map_options.get_mapper_file_path()))
+        .chain_err(|| "Unable to get absolute path")?;
 
-            if finished {
-                info!("Map operations finished");
-                let result = combine_map_results(resources, initial_cpu_time, output_dir, task_id);
+    let child = Command::new(absolute_path)
+        .arg("map")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .chain_err(|| "Failed to start map operation process.")?;
 
-                if let Err(err) = result {
-                    process_map_operation_error(err, resources, initial_cpu_time, task_id);
-                }
+    let map_input = MapInput {
+        key: input_location.get_input_path().to_owned(),
+        value: map_input_value,
+    };
+
+    let serialized_map_input =
+        bson::to_bson(&map_input).chain_err(|| "Could not serialize map input to bson.")?;
+
+    let map_input_document;
+    if let bson::Bson::Document(document) = serialized_map_input {
+        map_input_document = document;
+    } else {
+        return Err("Could not convert map input to bson::Document.".into());
+    }
+
+    map_operation_thread_impl(&map_input_document, child)
+}
+
+fn handle_map_results(
+    map_options: &pb::PerformMapRequest,
+    initial_cpu_time: u64,
+    resources: &OperationResources,
+    output_dir_uuid: &str,
+    map_result_futures: Vec<CpuFuture<String, String>>,
+) {
+    let mut output_path = PathBuf::new();
+    output_path.push(WORKER_OUTPUT_DIRECTORY);
+    output_path.push(output_dir_uuid);
+    output_path.push("map");
+    let output_path_str: String = (*output_path.to_string_lossy()).to_owned();
+
+    let results_future = future::join_all(map_result_futures);
+    let resources = resources.to_owned();
+    let map_options = map_options.to_owned();
+
+    thread::spawn(move || {
+        let map_results = results_future.wait();
+        if let Ok(map_output) = map_results {
+            let combine_result = combine_map_results(
+                &resources,
+                initial_cpu_time,
+                &output_path_str,
+                &map_options.task_id,
+                map_output,
+            );
+
+            if let Err(err) = combine_result {
+                process_map_operation_error(
+                    err,
+                    &resources,
+                    initial_cpu_time,
+                    &map_options.task_id,
+                );
             }
         }
-        Err(err) => {
-            process_map_operation_error(err, resources, initial_cpu_time, task_id);
-        }
-    }
+    });
 }
 
 // Internal implementation for performing a map task.
@@ -281,87 +327,50 @@ fn internal_perform_map(
     output_path.push(output_dir_uuid);
     output_path.push("map");
 
-    fs::create_dir_all(&output_path).chain_err(
-        || "Failed to create output directory",
-    )?;
+    fs::create_dir_all(&output_path).chain_err(|| "Failed to create output directory")?;
 
     let input_locations = map_options.get_input().get_input_locations();
     let initial_cpu_time;
 
     {
-        let mut operation_state = resources.operation_state.lock().unwrap();
-        operation_state.waiting_map_operations = input_locations.len();
-        operation_state.map_operation_failed = false;
-        operation_state.intermediate_map_results.clear();
-
+        let operation_state = resources.operation_state.lock().unwrap();
         initial_cpu_time = operation_state.initial_cpu_time;
     }
 
+    let cpu_pool = CpuPool::new_num_cpus();
+    let mut map_result_futures = Vec::new();
     for input_location in input_locations {
-        // Make sure the job hasn't been cancelled before continuing.
-        if operation_handler::check_task_cancelled(
-            &resources.operation_state,
-            &map_options.task_id,
-        )
-        {
-            return Ok(());
-        }
+        let resources = resources.to_owned();
+        let map_options = map_options.to_owned();
+        let input_location = input_location.to_owned();
 
-        info!(
-            "Running map task for {} ({} - > {})",
-            input_location.input_path,
-            input_location.start_byte,
-            input_location.end_byte
-        );
+        let map_result_future = cpu_pool.spawn_fn(move || {
+            let map_result = run_map_input(&input_location, &map_options, &resources);
 
-        let map_input_value = io::read_location(&resources.data_abstraction_layer, input_location)
-            .chain_err(|| "unable to open input file")?;
-
-        let absolute_path = resources
-            .data_abstraction_layer
-            .get_local_file(Path::new(map_options.get_mapper_file_path()))
-            .chain_err(|| "Unable to get absolute path")?;
-        let child = Command::new(absolute_path)
-            .arg("map")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .chain_err(|| "Failed to start map operation process.")?;
-
-        let map_input = MapInput {
-            key: input_location.get_input_path().to_owned(),
-            value: map_input_value,
-        };
-
-        let serialized_map_input = bson::to_bson(&map_input).chain_err(
-            || "Could not serialize map input to bson.",
-        )?;
-
-        let map_input_document;
-        if let bson::Bson::Document(document) = serialized_map_input {
-            map_input_document = document;
-        } else {
-            return Err("Could not convert map input to bson::Document.".into());
-        }
-
-        let output_path_str: String = (*output_path.to_string_lossy()).to_owned();
-        let task_id = map_options.task_id.clone();
-
-        let resources = resources.clone();
-
-        thread::spawn(move || {
-            let result = map_operation_thread_impl(&map_input_document, child);
-
-            process_map_result(
-                result,
-                &resources,
-                initial_cpu_time,
-                &output_path_str,
-                &task_id,
-            );
+            match map_result {
+                Ok(map_output) => future::ok(map_output),
+                Err(err) => {
+                    process_map_operation_error(
+                        err,
+                        &resources,
+                        initial_cpu_time,
+                        &map_options.task_id,
+                    );
+                    future::err::<String, String>("Running map input failed".into())
+                }
+            }
         });
+
+        map_result_futures.push(map_result_future);
     }
+
+    handle_map_results(
+        map_options,
+        initial_cpu_time,
+        resources,
+        output_dir_uuid,
+        map_result_futures,
+    );
 
     Ok(())
 }

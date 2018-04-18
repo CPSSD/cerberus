@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::cmp::{max, min};
+use std::collections::HashMap;
 use std::fs::{DirBuilder, File, OpenOptions};
-use std::io::{Read, Write, Seek, SeekFrom};
-use std::sync::RwLock;
-use std::path::PathBuf;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::path::PathBuf;
+use std::sync::RwLock;
 
 use uuid::Uuid;
 
@@ -49,9 +49,9 @@ impl LocalFileManager {
 
         let mut dir_builder = DirBuilder::new();
         let dir_builder = dir_builder.recursive(true).mode(0o777);
-        dir_builder.create(&storage_path).chain_err(
-            || "Failed to create storage directory",
-        )?;
+        dir_builder
+            .create(&storage_path)
+            .chain_err(|| "Failed to create storage directory")?;
 
         let file_name = Uuid::new_v4().to_string();
         storage_path.push(file_name);
@@ -64,15 +64,13 @@ impl LocalFileManager {
             storage_path.to_string_lossy()
         );
 
-        let mut file = File::create(storage_path.clone()).chain_err(
-            || "Unable to create file",
-        )?;
+        let mut file = File::create(storage_path.clone()).chain_err(|| "Unable to create file")?;
         file.write_all(data).chain_err(|| "Unable to write data")?;
 
         let mut local_file_map = self.local_file_map.write().unwrap();
-        let chunks = local_file_map.entry(file_path.to_owned()).or_insert_with(
-            Vec::new,
-        );
+        let chunks = local_file_map
+            .entry(file_path.to_owned())
+            .or_insert_with(Vec::new);
 
         let file_chunk = FileChunk {
             local_file_path: storage_path,
@@ -89,19 +87,31 @@ impl LocalFileManager {
         complete_file_map.get(file_path).map(|s| s.to_owned())
     }
 
-    pub fn write_local_file(&self, file_path: &str, data: &[u8]) -> Result<String> {
+    pub fn get_new_local_file_path(&self) -> Result<String> {
         let mut storage_path = PathBuf::new();
         storage_path.push(self.storage_directory.clone());
         storage_path.push(COMPLETE_SUB_DIR);
 
         let mut dir_builder = DirBuilder::new();
         let dir_builder = dir_builder.recursive(true).mode(0o777);
-        dir_builder.create(&storage_path).chain_err(
-            || "Failed to create storage directory",
-        )?;
+        dir_builder
+            .create(&storage_path)
+            .chain_err(|| "Failed to create storage directory")?;
 
         let file_name = Uuid::new_v4().to_string();
         storage_path.push(file_name);
+
+        Ok(storage_path.to_string_lossy().to_string())
+    }
+
+    pub fn complete_local_file(&self, file_path: &str, local_file_path: &str) {
+        let mut complete_file_map = self.complete_file_map.write().unwrap();
+        complete_file_map.insert(file_path.to_owned(), local_file_path.to_owned());
+    }
+
+    pub fn write_local_file(&self, file_path: &str, data: &[u8]) -> Result<String> {
+        let storage_path = self.get_new_local_file_path()
+            .chain_err(|| "Error writing local file")?;
 
         let mut options = OpenOptions::new();
         options.read(true);
@@ -110,18 +120,14 @@ impl LocalFileManager {
         options.create(true);
         options.mode(0o777);
 
-        let mut file = options.open(storage_path.clone()).chain_err(
-            || "Unable to create file",
-        )?;
+        let mut file = options
+            .open(storage_path.clone())
+            .chain_err(|| "Unable to create file")?;
         file.write_all(data).chain_err(|| "Unable to write data")?;
 
-        let mut complete_file_map = self.complete_file_map.write().unwrap();
-        complete_file_map.insert(
-            file_path.to_owned(),
-            storage_path.to_string_lossy().to_string(),
-        );
+        self.complete_local_file(file_path, &storage_path);
 
-        Ok(storage_path.to_string_lossy().to_string())
+        Ok(storage_path)
     }
 
     /// `read_file_chunk` reads a single file chunk known to exist requested by another worker.
@@ -134,11 +140,7 @@ impl LocalFileManager {
         let local_file_map = self.local_file_map.read().unwrap();
         let stored_chunks = match local_file_map.get(file_path) {
             Some(stored_chunks) => stored_chunks,
-            None => {
-                return Err(
-                    format!("No stored file chunks found for {}", file_path).into(),
-                )
-            }
+            None => return Err(format!("No stored file chunks found for {}", file_path).into()),
         };
 
         let mut file_chunk = None;
@@ -153,24 +155,18 @@ impl LocalFileManager {
             let bytes_to_read = end_byte - start_byte;
             let mut bytes = vec![0u8; bytes_to_read as usize];
 
-            let mut file = File::open(chunk.local_file_path.clone()).chain_err(|| {
-                format!("Error opening file chunk {:?}", chunk.local_file_path)
-            })?;
+            let mut file = File::open(chunk.local_file_path.clone())
+                .chain_err(|| format!("Error opening file chunk {:?}", chunk.local_file_path))?;
 
             file.seek(SeekFrom::Start(start_byte - chunk.start_byte))
-                .chain_err(|| {
-                    format!("Error reading file chunk {:?}", chunk.local_file_path)
-                })?;
+                .chain_err(|| format!("Error reading file chunk {:?}", chunk.local_file_path))?;
 
-            file.read_exact(&mut bytes).chain_err(|| {
-                format!("Error reading file chunk {:?}", chunk.local_file_path)
-            })?;
+            file.read_exact(&mut bytes)
+                .chain_err(|| format!("Error reading file chunk {:?}", chunk.local_file_path))?;
 
             return Ok(bytes);
         }
-        Err(
-            format!("Stored file chunk not found for {}", file_path).into(),
-        )
+        Err(format!("Stored file chunk not found for {}", file_path).into())
     }
 
     /// `read_local_file` reads the portion of the requested file that is stored localy and
@@ -256,9 +252,7 @@ impl SimpleStateHandling<Error> for LocalFileManager {
         let complete_file_map = self.complete_file_map.read().unwrap();
         let mut complete_file_vec: Vec<serde_json::Value> = Vec::new();
         for (remote_path, local_path) in complete_file_map.iter() {
-            complete_file_vec.push(
-                json!({"remote_path": remote_path, "local_path": local_path}),
-            );
+            complete_file_vec.push(json!({"remote_path": remote_path, "local_path": local_path}));
         }
 
         Ok(json!({

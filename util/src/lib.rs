@@ -1,8 +1,8 @@
 extern crate cerberus_proto;
 extern crate chrono;
-extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
+extern crate fern;
 extern crate grpc;
 #[macro_use]
 extern crate log;
@@ -13,10 +13,10 @@ extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate serde_json;
-extern crate uuid;
+extern crate futures;
 extern crate rusoto_core;
 extern crate rusoto_s3;
-extern crate futures;
+extern crate uuid;
 
 pub mod errors {
     error_chain!{}

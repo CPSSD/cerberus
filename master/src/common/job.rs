@@ -1,15 +1,17 @@
 use errors::*;
-use std::sync::Arc;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 
 use chrono::prelude::*;
 use serde_json;
 use uuid::Uuid;
 
+use cerberus_proto::mapreduce as pb;
 use util::data_layer::AbstractionLayer;
 use util::state::StateHandling;
-use cerberus_proto::mapreduce as pb;
+
+const MEGA_BYTE: u64 = 1000 * 1000;
 
 /// `JobOptions` stores arguments used to construct a `Job`.
 #[derive(Default)]
@@ -26,6 +28,8 @@ pub struct JobOptions {
     pub validate_paths: bool,
     /// Priority that should be applied to all tasks for the job.
     pub priority: u32,
+    /// Size of a Map task in megabytes.
+    pub map_size: u32,
 }
 
 impl From<pb::MapReduceRequest> for JobOptions {
@@ -41,6 +45,7 @@ impl From<pb::MapReduceRequest> for JobOptions {
             },
             validate_paths: true,
             priority: other.priority,
+            map_size: other.map_size,
         }
     }
 }
@@ -61,9 +66,11 @@ pub struct Job {
 
     pub map_tasks_completed: u32,
     pub map_tasks_total: u32,
+    pub map_tasks_seconds_taken: u32,
 
     pub reduce_tasks_completed: u32,
     pub reduce_tasks_total: u32,
+    pub reduce_tasks_seconds_taken: u32,
 
     pub time_requested: DateTime<Utc>,
     pub time_started: Option<DateTime<Utc>>,
@@ -71,17 +78,21 @@ pub struct Job {
 
     /// Total CPU time used by the job.
     pub cpu_time: u64,
+
+    /// Size of a Map task in bytes
+    pub map_input_size: u64,
 }
 
 #[derive(Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 /// `SerializableJobStatus` is the Serializable counterpart to `mapreduce_proto::Status`.
 pub enum SerializableJobStatus {
-    DONE,
-    IN_PROGRESS,
-    IN_QUEUE,
-    FAILED,
     UNKNOWN,
+    SPLITTING_INPUT,
+    IN_QUEUE,
+    IN_PROGRESS,
+    DONE,
+    FAILED,
     CANCELLED,
 }
 
@@ -111,20 +122,24 @@ impl Job {
 
             priority: options.priority,
 
-            status: pb::Status::IN_QUEUE,
+            status: pb::Status::SPLITTING_INPUT,
             status_details: None,
 
             map_tasks_completed: 0,
             map_tasks_total: 0,
+            map_tasks_seconds_taken: 0,
 
             reduce_tasks_completed: 0,
             reduce_tasks_total: 0,
+            reduce_tasks_seconds_taken: 0,
 
             time_requested: Utc::now(),
             time_started: None,
             time_completed: None,
 
             cpu_time: 0,
+
+            map_input_size: u64::from(options.map_size) * MEGA_BYTE,
         })
     }
 
@@ -133,14 +148,11 @@ impl Job {
         data_abstraction_layer: &Arc<AbstractionLayer + Send + Sync>,
     ) -> Result<Self> {
         let validate_paths = options.validate_paths;
-        let job = Job::new_no_validate(options).chain_err(
-            || "Unable to create job",
-        )?;
+        let job = Job::new_no_validate(options).chain_err(|| "Unable to create job")?;
 
         if validate_paths {
-            job.validate_input(data_abstraction_layer).chain_err(
-                || "Error validating input",
-            )?;
+            job.validate_input(data_abstraction_layer)
+                .chain_err(|| "Error validating input")?;
         }
         Ok(job)
     }
@@ -151,19 +163,17 @@ impl Job {
     ) -> Result<()> {
         // Validate the existence of the input directory and the binary file.
         let input_path = Path::new(&self.input_directory);
-        let is_dir = data_abstraction_layer.is_dir(input_path).chain_err(
-            || "Error checking if path is a directory",
-        )?;
+        let is_dir = data_abstraction_layer
+            .is_dir(input_path)
+            .chain_err(|| "Error checking if path is a directory")?;
         if !is_dir {
-            return Err(
-                format!("Input directory does not exist: {:?}", input_path).into(),
-            );
+            return Err(format!("Input directory does not exist: {:?}", input_path).into());
         }
 
         let binary_path = Path::new(&self.binary_path);
-        let is_file = data_abstraction_layer.is_file(binary_path).chain_err(
-            || "Error checking if path is a file",
-        )?;
+        let is_file = data_abstraction_layer
+            .is_file(binary_path)
+            .chain_err(|| "Error checking if path is a file")?;
         if !is_file {
             return Err(format!("Binary does not exist: {:?}", binary_path).into());
         }
@@ -187,12 +197,11 @@ impl Job {
             .stderr(Stdio::piped())
             .spawn()
             .chain_err(|| "Unable to run sanity-check on binary")?;
-        let output = child.wait_with_output().chain_err(
-            || "Error waiting for output from binary",
-        )?;
-        let output_str = String::from_utf8(output.stdout).chain_err(
-            || "Unable to read output from binary",
-        )?;
+        let output = child
+            .wait_with_output()
+            .chain_err(|| "Error waiting for output from binary")?;
+        let output_str =
+            String::from_utf8(output.stdout).chain_err(|| "Unable to read output from binary")?;
 
         if output_str.contains("sanity located") {
             Ok(())
@@ -204,6 +213,7 @@ impl Job {
     fn status_from_state(&self, state: &SerializableJobStatus) -> pb::Status {
         match *state {
             SerializableJobStatus::DONE => pb::Status::DONE,
+            SerializableJobStatus::SPLITTING_INPUT => pb::Status::SPLITTING_INPUT,
             SerializableJobStatus::IN_PROGRESS => pb::Status::IN_PROGRESS,
             SerializableJobStatus::IN_QUEUE => pb::Status::IN_QUEUE,
             SerializableJobStatus::FAILED => pb::Status::FAILED,
@@ -215,6 +225,7 @@ impl Job {
     pub fn get_serializable_status(&self) -> SerializableJobStatus {
         match self.status {
             pb::Status::DONE => SerializableJobStatus::DONE,
+            pb::Status::SPLITTING_INPUT => SerializableJobStatus::SPLITTING_INPUT,
             pb::Status::IN_PROGRESS => SerializableJobStatus::IN_PROGRESS,
             pb::Status::IN_QUEUE => SerializableJobStatus::IN_QUEUE,
             pb::Status::FAILED => SerializableJobStatus::FAILED,
@@ -236,14 +247,14 @@ impl StateHandling<Error> for Job {
             output_directory: serde_json::from_value(data["output_directory"].clone())
                 .chain_err(|| "Unable to convert output dir")?,
             validate_paths: false,
-            priority: serde_json::from_value(data["priority"].clone()).chain_err(
-                || "Unable to convert priority",
-            )?,
+            priority: serde_json::from_value(data["priority"].clone())
+                .chain_err(|| "Unable to convert priority")?,
+            map_size: serde_json::from_value(data["map_size"].clone())
+                .chain_err(|| "Unable to convert map_size")?,
         };
 
-        let mut job = Job::new_no_validate(options).chain_err(
-            || "Unable to create map reduce job",
-        )?;
+        let mut job =
+            Job::new_no_validate(options).chain_err(|| "Unable to create map reduce job")?;
 
         job.load_state(data).chain_err(|| "Unable to load state")?;
 
@@ -267,15 +278,18 @@ impl StateHandling<Error> for Job {
             "output_directory": self.output_directory,
 
             "priority": self.priority,
+            "map_size": self.map_input_size / MEGA_BYTE,
 
             "status": self.get_serializable_status(),
             "status_details": self.status_details,
 
             "map_tasks_completed": self.map_tasks_completed,
             "map_tasks_total": self.map_tasks_total,
+            "map_tasks_seconds_taken": self.map_tasks_seconds_taken,
 
             "reduce_tasks_completed": self.reduce_tasks_completed,
             "reduce_tasks_total": self.reduce_tasks_total,
+            "reduce_tasks_seconds_taken": self.reduce_tasks_seconds_taken,
 
             "time_requested": self.time_requested.timestamp(),
             "time_started": time_started,
@@ -284,14 +298,10 @@ impl StateHandling<Error> for Job {
     }
 
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
-        self.id = serde_json::from_value(data["id"].clone()).chain_err(
-            || "Unable to convert id",
-        )?;
+        self.id = serde_json::from_value(data["id"].clone()).chain_err(|| "Unable to convert id")?;
 
-        let status: SerializableJobStatus =
-            serde_json::from_value(data["status"].clone()).chain_err(
-                || "Unable to convert mapreduce status",
-            )?;
+        let status: SerializableJobStatus = serde_json::from_value(data["status"].clone())
+            .chain_err(|| "Unable to convert mapreduce status")?;
         self.status = self.status_from_state(&status);
         self.status_details = serde_json::from_value(data["status_details"].clone())
             .chain_err(|| "Unable to convert status_details.")?;
@@ -300,12 +310,18 @@ impl StateHandling<Error> for Job {
             .chain_err(|| "Unable to convert map_tasks_complete")?;
         self.map_tasks_total = serde_json::from_value(data["map_tasks_total"].clone())
             .chain_err(|| "Unable to convert map_tasks_total")?;
+        self.map_tasks_seconds_taken =
+            serde_json::from_value(data["map_tasks_seconds_taken"].clone())
+                .chain_err(|| "Unable to convert map_tasks_seconds_taken")?;
 
         self.reduce_tasks_completed = serde_json::from_value(
             data["reduce_tasks_completed"].clone(),
         ).chain_err(|| "Unable to convert reduce_tasks_complete")?;
         self.reduce_tasks_total = serde_json::from_value(data["reduce_tasks_total"].clone())
             .chain_err(|| "Unable to convert reduce_tasks_total")?;
+        self.reduce_tasks_seconds_taken =
+            serde_json::from_value(data["reduce_tasks_seconds_taken"].clone())
+                .chain_err(|| "Unable to convert reduce_tasks_seconds_taken")?;
 
         let time_requested: i64 = serde_json::from_value(data["time_requested"].clone())
             .chain_err(|| "Unable to convert time_requested")?;
@@ -352,8 +368,8 @@ mod tests {
     #[test]
     fn test_defaults() {
         let job = Job::new_no_validate(get_test_job_options()).unwrap();
-        // Assert that the default status for a map reduce job is Queued.
-        assert_eq!(pb::Status::IN_QUEUE, job.status);
+        // Assert that the default status for a map reduce job is splitting input.
+        assert_eq!(pb::Status::SPLITTING_INPUT, job.status);
         // Assert that completed tasks starts at 0.
         assert_eq!(0, job.map_tasks_completed);
         assert_eq!(0, job.reduce_tasks_completed);
@@ -372,6 +388,7 @@ mod tests {
             output_directory: Some("/tmp/output/".to_owned()),
             validate_paths: false,
             priority: 1,
+            map_size: 64,
         }).unwrap();
 
         assert_eq!("/tmp/input/output/", job1.output_directory);

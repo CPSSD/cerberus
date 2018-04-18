@@ -3,8 +3,8 @@ use std::sync::RwLock;
 
 use grpc::RequestOptions;
 
-use errors::*;
 use common::Worker;
+use errors::*;
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
@@ -26,7 +26,6 @@ pub struct WorkerInterfaceImpl {
     clients: RwLock<HashMap<String, grpc_pb::ScheduleOperationServiceClient>>,
 }
 
-
 /// `WorkerInterfaceImpl` is used to schedule `MapReduce` operations on the workers.
 impl WorkerInterfaceImpl {
     pub fn new() -> Self {
@@ -38,11 +37,8 @@ impl WorkerInterface for WorkerInterfaceImpl {
     fn add_client(&self, worker: &Worker) -> Result<()> {
         let mut clients = self.clients.write().unwrap();
 
-        if clients.get(&worker.worker_id).is_some() {
-            return Err(
-                format!("client already exists for worker {}", &worker.worker_id).into(),
-            );
-        }
+        // If a client already exists for this worker, remove it.
+        clients.remove(&worker.worker_id);
 
         info!(
             "Worker is getting added: IP={} PORT={}",

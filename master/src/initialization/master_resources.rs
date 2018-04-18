@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 
 use clap::ArgMatches;
 
@@ -7,7 +7,7 @@ use dashboard::DashboardServer;
 use errors::*;
 use initialization;
 use initialization::{initialize_dashboard_server, initialize_grpc_server, initialize_state_handler};
-use scheduling::{TaskProcessorImpl, Scheduler};
+use scheduling::{Scheduler, TaskProcessorImpl};
 use server::Server;
 use state::StateHandler;
 use worker_communication::WorkerInterfaceImpl;
@@ -22,7 +22,7 @@ pub struct MasterResources {
 }
 
 impl MasterResources {
-    pub fn new(matches: &ArgMatches) -> Result<Self> {
+    pub fn new(matches: &ArgMatches, log_file_path: &str) -> Result<Self> {
         let (worker_info_sender, worker_info_receiver) = channel();
 
         let (data_abstraction_layer_arc, filesystem_manager) =
@@ -35,9 +35,9 @@ impl MasterResources {
             worker_info_sender,
         ));
 
-        let task_processor = Arc::new(TaskProcessorImpl::new(
-            Arc::clone(&data_abstraction_layer_arc),
-        ));
+        let task_processor = Arc::new(TaskProcessorImpl::new(Arc::clone(
+            &data_abstraction_layer_arc,
+        )));
         let scheduler = Arc::new(Scheduler::new(Arc::clone(&worker_manager), task_processor));
 
         Ok(MasterResources {
@@ -46,6 +46,7 @@ impl MasterResources {
                 &worker_manager,
                 &scheduler,
                 &data_abstraction_layer_arc,
+                log_file_path,
             ).chain_err(|| "Error initilizing cluster dashboard")?,
 
             grpc_server: initialize_grpc_server(

@@ -51,27 +51,32 @@ use std::sync::Arc;
 
 use errors::*;
 use initialization::MasterResources;
-use scheduling::run_task_update_loop;
 use util::init_logger;
-use worker_management::{run_health_check_loop, run_task_assigment_loop};
+
+const DEFAULT_LOG_FILE_PATH: &str = "/tmp/cerberus/logs/master.log";
 
 fn run() -> Result<()> {
     println!("Cerberus Master!");
-    init_logger().chain_err(|| "Failed to initialise logging.")?;
-
     let matches = parser::parse_command_line();
-    let resources = MasterResources::new(&matches).chain_err(
-        || "Error initilizing master",
-    )?;
+
+    let log_file_path = matches
+        .value_of("log-file-path")
+        .unwrap_or(DEFAULT_LOG_FILE_PATH);
+
+    init_logger(log_file_path, matches.is_present("verbose-logging"))
+        .chain_err(|| "Failed to initialise logging.")?;
+
+    let resources =
+        MasterResources::new(&matches, log_file_path).chain_err(|| "Error initilizing master")?;
 
     // Startup worker management loops
-    run_task_assigment_loop(Arc::clone(&resources.worker_manager));
-    run_health_check_loop(Arc::clone(&resources.worker_manager));
+    worker_management::run_task_assigment_loop(Arc::clone(&resources.worker_manager));
+    worker_management::run_health_check_loop(Arc::clone(&resources.worker_manager));
 
     // Startup scheduler loop
-    run_task_update_loop(
+    scheduling::run_scheduler_loop(
         Arc::clone(&resources.scheduler),
-        &Arc::clone(&resources.worker_manager),
+        Arc::clone(&resources.worker_manager),
     );
 
     main_loop::run_main_loop(resources)

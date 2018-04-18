@@ -4,7 +4,7 @@ use chrono::prelude::*;
 use serde_json;
 
 use cerberus_proto::mapreduce as pb;
-use common::{Task, TaskType, TaskStatus, Job};
+use common::{Job, Task, TaskStatus, TaskType};
 use errors::*;
 use util::state::StateHandling;
 
@@ -17,17 +17,15 @@ pub struct ScheduledJob {
 
 impl ScheduledJob {
     fn process_json(data: &serde_json::Value) -> Result<(Job, HashMap<String, Task>)> {
-        let job = Job::new_from_json(data["job"].clone()).chain_err(
-            || "Unable to create map reduce job from json.",
-        )?;
+        let job = Job::new_from_json(data["job"].clone())
+            .chain_err(|| "Unable to create map reduce job from json.")?;
 
         let mut tasks = HashMap::new();
 
         if let serde_json::Value::Array(ref tasks_array) = data["tasks"] {
             for task in tasks_array {
-                let task = Task::new_from_json(task.clone()).chain_err(
-                    || "Unable to create map reduce task from json.",
-                )?;
+                let task = Task::new_from_json(task.clone())
+                    .chain_err(|| "Unable to create map reduce task from json.")?;
                 tasks.insert(task.id.to_owned(), task);
             }
         }
@@ -46,9 +44,8 @@ impl StateHandling<Error> for ScheduledJob {
     fn dump_state(&self) -> Result<serde_json::Value> {
         let mut tasks_json: Vec<serde_json::Value> = Vec::new();
         for task in self.tasks.values() {
-            tasks_json.push(task.dump_state().chain_err(
-                || "Error dumping scheduled job state.",
-            )?);
+            tasks_json.push(task.dump_state()
+                .chain_err(|| "Error dumping scheduled job state.")?);
         }
 
         Ok(json!({
@@ -81,19 +78,44 @@ impl State {
 
     pub fn add_job(&mut self, scheduled_job: ScheduledJob) -> Result<()> {
         if self.scheduled_jobs.contains_key(&scheduled_job.job.id) {
-            return Err(
-                format!(
-                    "Job with ID {} is already scheduled.",
-                    &scheduled_job.job.id
-                ).into(),
-            );
+            return Err(format!(
+                "Job with ID {} is already scheduled.",
+                &scheduled_job.job.id
+            ).into());
         }
 
-        self.scheduled_jobs.insert(
-            scheduled_job.job.id.to_owned(),
-            scheduled_job,
-        );
+        self.scheduled_jobs
+            .insert(scheduled_job.job.id.to_owned(), scheduled_job);
         Ok(())
+    }
+
+    pub fn input_splitting_complete(
+        &mut self,
+        job_id: &str,
+        map_tasks: HashMap<String, Task>,
+    ) -> Result<()> {
+        let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
+            Some(scheduled_job) => scheduled_job,
+            None => return Err(format!("Job with ID {} is not found.", &job_id).into()),
+        };
+
+        if scheduled_job.job.status != pb::Status::CANCELLED {
+            scheduled_job.job.status = pb::Status::IN_QUEUE;
+            scheduled_job.job.map_tasks_total = map_tasks.len() as u32;
+            scheduled_job.tasks = map_tasks;
+        }
+        Ok(())
+    }
+
+    // Returns a vector of jobs in the SPLITTING_INPUT phase.
+    pub fn get_splitting_jobs(&self) -> Vec<Job> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values() {
+            if scheduled_job.job.status == pb::Status::SPLITTING_INPUT {
+                jobs.push(scheduled_job.job.clone());
+            }
+        }
+        jobs
     }
 
     pub fn update_job_started(&mut self, job_id: &str, time_started: DateTime<Utc>) -> Result<()> {
@@ -117,21 +139,28 @@ impl State {
         Ok(())
     }
 
-    pub fn cancel_job(&mut self, job_id: &str) -> Result<()> {
+    pub fn cancel_job(&mut self, job_id: &str) -> Result<bool> {
         let scheduled_job = match self.scheduled_jobs.get_mut(job_id) {
             Some(job) => job,
             None => return Err(format!("Job with ID {} was not found.", &job_id).into()),
         };
 
-        if scheduled_job.job.status != pb::Status::FAILED {
+        if scheduled_job.job.status != pb::Status::FAILED
+            && scheduled_job.job.status != pb::Status::DONE
+        {
             scheduled_job.job.status = pb::Status::CANCELLED;
+
+            // Cancel each of the tasks for this job.
+            for task in scheduled_job.tasks.values_mut() {
+                task.status = TaskStatus::Cancelled;
+            }
         }
-        Ok(())
+        Ok(scheduled_job.job.status == pb::Status::CANCELLED)
     }
 
-    pub fn get_job(&self, job_id: &str) -> Result<Job> {
+    pub fn get_job(&self, job_id: &str) -> Result<&Job> {
         match self.scheduled_jobs.get(job_id) {
-            Some(scheduled_job) => Ok(scheduled_job.job.clone()),
+            Some(scheduled_job) => Ok(&scheduled_job.job),
             None => Err(format!("Job with ID {} is not found.", &job_id).into()),
         }
     }
@@ -145,11 +174,22 @@ impl State {
         jobs
     }
 
-    pub fn get_jobs(&self, client_id: &str) -> Vec<Job> {
+    pub fn get_in_progress_jobs_mut(&mut self) -> Vec<&mut ScheduledJob> {
+        let mut jobs = Vec::new();
+        for scheduled_job in self.scheduled_jobs.values_mut() {
+            if scheduled_job.job.status == pb::Status::IN_PROGRESS {
+                jobs.push(scheduled_job);
+            }
+        }
+
+        jobs
+    }
+
+    pub fn get_jobs(&self, client_id: &str) -> Vec<&Job> {
         let mut jobs = Vec::new();
         for scheduled_job in self.scheduled_jobs.values() {
             if scheduled_job.job.client_id == client_id {
-                jobs.push(scheduled_job.job.clone());
+                jobs.push(&scheduled_job.job);
             }
         }
 
@@ -194,9 +234,7 @@ impl State {
 
         for task in tasks {
             if scheduled_job.tasks.contains_key(&task.id) {
-                return Err(
-                    format!("Task with ID {} is already scheduled.", &task.id).into(),
-                );
+                return Err(format!("Task with ID {} is already scheduled.", &task.id).into());
             }
 
             match task.task_type {
@@ -216,9 +254,7 @@ impl State {
         };
 
         if !scheduled_job.tasks.contains_key(&task.id) {
-            return Err(
-                format!("Task with ID {} is does not exist.", &task.id).into(),
-            );
+            return Err(format!("Task with ID {} is does not exist.", &task.id).into());
         }
 
         scheduled_job.tasks.insert(task.id.to_owned(), task);
@@ -241,12 +277,14 @@ impl State {
 
     // Adds the information for a completed task and updates the job.
     pub fn add_completed_task(&mut self, task: Task) -> Result<()> {
-        self.update_job_started(
-            &task.job_id,
-            task.time_started.chain_err(
-                || "Time started is expected to exist.",
-            )?,
-        ).chain_err(|| "Error adding completed task.")?;
+        let time_started = task.time_started
+            .chain_err(|| "Time started is expected to exist.")?;
+
+        let task_running_seconds = task.get_seconds_running()
+            .chain_err(|| "Error getting seconds since task started running")?;
+
+        self.update_job_started(&task.job_id, time_started)
+            .chain_err(|| "Error adding completed task.")?;
 
         let scheduled_job = match self.scheduled_jobs.get_mut(&task.job_id) {
             Some(scheduled_job) => scheduled_job,
@@ -264,12 +302,15 @@ impl State {
                 TaskType::Map => {
                     if !task.has_completed_before {
                         scheduled_job.job.map_tasks_completed += 1;
+                        scheduled_job.job.map_tasks_seconds_taken += task_running_seconds;
                     }
                 }
                 TaskType::Reduce => {
                     scheduled_job.job.reduce_tasks_completed += 1;
-                    if scheduled_job.job.reduce_tasks_completed ==
-                        scheduled_job.job.reduce_tasks_total
+                    scheduled_job.job.reduce_tasks_seconds_taken += task_running_seconds;
+
+                    if scheduled_job.job.reduce_tasks_completed
+                        == scheduled_job.job.reduce_tasks_total
                     {
                         scheduled_job.job.status = pb::Status::DONE;
                         scheduled_job.job.time_completed = Some(Utc::now());
@@ -291,8 +332,9 @@ impl State {
     pub fn get_job_queue_size(&self) -> u32 {
         let mut job_count = 0;
         for scheduled_job in self.scheduled_jobs.values() {
-            if scheduled_job.job.status == pb::Status::IN_PROGRESS ||
-                scheduled_job.job.status == pb::Status::IN_QUEUE
+            let status = scheduled_job.job.status;
+            if status == pb::Status::IN_PROGRESS || status == pb::Status::IN_QUEUE
+                || status == pb::Status::SPLITTING_INPUT
             {
                 job_count += 1;
             }
@@ -321,9 +363,8 @@ impl StateHandling<Error> for State {
     fn dump_state(&self) -> Result<serde_json::Value> {
         let mut jobs_json: Vec<serde_json::Value> = Vec::new();
         for job in self.scheduled_jobs.values() {
-            jobs_json.push(job.dump_state().chain_err(
-                || "Unable to dump ScheduledJob state",
-            )?);
+            jobs_json.push(job.dump_state()
+                .chain_err(|| "Unable to dump ScheduledJob state")?);
         }
 
         Ok(json!({
@@ -334,13 +375,10 @@ impl StateHandling<Error> for State {
     fn load_state(&mut self, data: serde_json::Value) -> Result<()> {
         if let serde_json::Value::Array(ref jobs_array) = data["scheduled_jobs"] {
             for job in jobs_array {
-                let scheduled_job = ScheduledJob::new_from_json(job.clone()).chain_err(
-                    || "Unable to create ScheduledJob from json.",
-                )?;
-                self.scheduled_jobs.insert(
-                    scheduled_job.job.id.to_owned(),
-                    scheduled_job,
-                );
+                let scheduled_job = ScheduledJob::new_from_json(job.clone())
+                    .chain_err(|| "Unable to create ScheduledJob from json.")?;
+                self.scheduled_jobs
+                    .insert(scheduled_job.job.id.to_owned(), scheduled_job);
             }
         } else {
             return Err("Error processing scheduled_jobs array.".into());

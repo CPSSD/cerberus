@@ -1,6 +1,6 @@
-use std::fs::{File, DirEntry};
 use std::fs;
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::fs::{DirEntry, File};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use errors::*;
@@ -35,27 +35,23 @@ impl AbstractionLayer for NullAbstractionLayer {
         debug!("Reading file: {:?}", path);
 
         let mut file = self.open_file(path)?;
-        file.seek(SeekFrom::Start(start_byte)).chain_err(|| {
-            format!("Error reading file {:?}", path)
-        })?;
+        file.seek(SeekFrom::Start(start_byte))
+            .chain_err(|| format!("Error reading file {:?}", path))?;
 
         let mut bytes = vec![0; (end_byte - start_byte) as usize];
-        file.read_exact(&mut bytes).chain_err(|| {
-            format!("Error reading file {:?}", path)
-        })?;
+        file.read_exact(&mut bytes)
+            .chain_err(|| format!("Error reading file {:?}", path))?;
 
         Ok(bytes)
     }
 
     fn write_file(&self, path: &Path, data: &[u8]) -> Result<()> {
         debug!("Writing file: {}", path.to_string_lossy());
-        let mut file = File::create(&path).chain_err(|| {
-            format!("unable to create file {:?}", path)
-        })?;
+        let mut file =
+            File::create(&path).chain_err(|| format!("unable to create file {:?}", path))?;
 
-        file.write_all(data).chain_err(|| {
-            format!("unable to write content to {:?}", path)
-        })
+        file.write_all(data)
+            .chain_err(|| format!("unable to write content to {:?}", path))
     }
 
     fn get_local_file(&self, path: &Path) -> Result<PathBuf> {
@@ -63,9 +59,7 @@ impl AbstractionLayer for NullAbstractionLayer {
     }
 
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
-        let entries = fs::read_dir(path).chain_err(
-            || "Unable to read input directroy",
-        )?;
+        let entries = fs::read_dir(path).chain_err(|| "Unable to read input directroy")?;
         let mut pathbufs: Vec<PathBuf> = vec![];
         for entry in entries {
             let entry: DirEntry = entry.chain_err(|| "Error reading input directory")?;
@@ -91,7 +85,13 @@ impl AbstractionLayer for NullAbstractionLayer {
         fs::create_dir_all(path).chain_err(|| "Unable to create directories")
     }
 
-    fn get_file_closeness(&self, _path: &Path, _worker_id: &str) -> Result<u64> {
-        Ok(1)
+    fn get_data_closeness(
+        &self,
+        _path: &Path,
+        _chunk_start: u64,
+        _chunk_end: u64,
+        _worker_id: &str,
+    ) -> u64 {
+        1
     }
 }

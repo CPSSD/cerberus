@@ -38,17 +38,10 @@ build-docker-images: release
 	docker build -t cpssd/cerberus-master -f master/Dockerfile .
 	docker build -t cpssd/cerberus-worker -f worker/Dockerfile .
 
-
-docker-compose-up: clean-docker-images build-docker-images
-	docker-compose -f docker/docker-compose.yml -p cerberus up -d --scale worker=5 --force-recreate
-
-docker-compose-down:
-	docker-compose -f docker/docker-compose.yml -p cerberus down
-
 clean-docker-images:
 	docker rmi cpssd/cerberus-master -f
 	docker rmi cpssd/cerberus-worker -f
 
-clean-docker: docker-compose-down clean-docker-images
+clean-docker: clean-docker-images
 
 clean-all: clean-docker clean

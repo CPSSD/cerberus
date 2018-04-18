@@ -25,9 +25,7 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
             Arg::with_name("ip")
                 .long("ip")
                 .short("i")
-                .help(
-                    "Set the IP address that can be used to communicate with this worker",
-                )
+                .help("Set the IP address that can be used to communicate with this worker")
                 .takes_value(true)
                 .required(false),
         )
@@ -42,9 +40,7 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
         .arg(
             Arg::with_name("dfs")
                 .long("dfs")
-                .help(
-                    "Makes the worker run using the distributed file system for data access.",
-                )
+                .help("Makes the worker run using the distributed file system for data access.")
                 .takes_value(false)
                 .required(false),
         )
@@ -75,6 +71,22 @@ pub fn parse_command_line<'a>() -> ArgMatches<'a> {
                 .long("nodump")
                 .help("Skips state dumping")
                 .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("verbose-logging")
+                .long("verbose-logging")
+                .short("v")
+                .help("Removes all log filters")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("log-file-path")
+                .long("log-file-path")
+                .short("l")
+                .help("Location to write log file")
+                .takes_value(true)
                 .required(false),
         )
         .arg(

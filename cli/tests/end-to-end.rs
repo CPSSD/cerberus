@@ -1,6 +1,5 @@
 /// This is a set of tests which is ran against the CLI. It spawns a test server to which the CLI
 /// connects to.
-
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;

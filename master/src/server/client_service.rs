@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use grpc::{SingleResponse, Error, RequestOptions};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use common::{Job, JobOptions};
 use scheduling::Scheduler;
-use util::output_error;
 use util::data_layer::AbstractionLayer;
+use util::output_error;
 
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
@@ -72,41 +72,24 @@ impl grpc_pb::MapReduceService for ClientService {
         req: pb::MapReduceStatusRequest,
     ) -> SingleResponse<pb::MapReduceStatusResponse> {
         let mut response = pb::MapReduceStatusResponse::new();
-        let jobs: Vec<Job>;
+        let reports: Vec<pb::MapReduceReport>;
 
         if !req.client_id.is_empty() {
-            jobs = self.scheduler.get_mapreduce_client_status(&req.client_id);
+            reports = self.scheduler.get_mapreduce_client_status(&req.client_id);
         } else if !req.mapreduce_id.is_empty() {
             match self.scheduler.get_mapreduce_status(&req.mapreduce_id) {
                 Err(err) => {
                     output_error(&err.chain_err(|| "Error getting mapreduces status."));
                     return SingleResponse::err(Error::Other(JOB_RETRIEVAL_ERROR));
                 }
-                Ok(job) => jobs = vec![job],
+                Ok(report) => reports = vec![report],
             }
         } else {
             error!("Client requested job status without job id or client id.");
             return SingleResponse::err(Error::Other(MISSING_JOB_IDS));
         }
 
-        for job in jobs {
-            let mut report = pb::MapReduceReport::new();
-            report.mapreduce_id = job.id.clone();
-            report.status = job.status;
-            if job.status == pb::Status::FAILED {
-                report.failure_details = job.status_details.clone().unwrap_or_else(
-                    || "Unknown.".to_owned(),
-                );
-            }
-            report.scheduled_timestamp = job.time_requested.timestamp();
-            report.output_directory = job.output_directory.clone();
-            if let Some(time) = job.time_started {
-                report.started_timestamp = time.timestamp();
-            }
-            if let Some(time) = job.time_completed {
-                report.done_timestamp = time.timestamp();
-            }
-
+        for report in reports {
             response.reports.push(report);
         }
 
@@ -134,13 +117,16 @@ impl grpc_pb::MapReduceService for ClientService {
         };
         response.set_mapreduce_id(job_id.clone());
 
-        println!("Attempting to cancel MapReduce: {}", job_id);
+        info!("Attempting to cancel MapReduce: {}", job_id);
         let result = self.scheduler.cancel_job(job_id.as_ref());
-        if let Err(err) = result {
-            output_error(&err.chain_err(|| "Error cancelling MapReduce"));
-            return SingleResponse::err(Error::Other(JOB_CANCEL_ERROR));
-        }
-
+        let cancelled = match result {
+            Ok(success) => success,
+            Err(err) => {
+                output_error(&err.chain_err(|| "Error cancelling MapReduce"));
+                return SingleResponse::err(Error::Other(JOB_CANCEL_ERROR));
+            }
+        };
+        response.success = cancelled;
         SingleResponse::completed(response)
     }
 
@@ -157,21 +143,20 @@ impl grpc_pb::MapReduceService for ClientService {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::channel;
-    use std::thread;
+    use cerberus_proto::mapreduce::Status as MapReduceStatus;
+    use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use cerberus_proto::worker as wpb;
     use common::{Job, Task, Worker};
     use errors::*;
     use scheduling::TaskProcessor;
-    use cerberus_proto::worker as wpb;
-    use cerberus_proto::mapreduce::Status as MapReduceStatus;
-    use cerberus_proto::mapreduce_grpc::MapReduceService;
+    use std::sync::mpsc::channel;
+    use std::thread;
     use util::data_layer::NullAbstractionLayer;
-    use worker_management::WorkerManager;
     use worker_communication::WorkerInterface;
+    use worker_management::WorkerManager;
 
     struct NullTaskProcessor;
 
@@ -271,7 +256,7 @@ mod tests {
         let (_, mut item, _) = response.wait().unwrap();
         let status = item.reports.pop().unwrap().status;
 
-        assert_eq!(MapReduceStatus::IN_QUEUE, status)
+        assert_eq!(MapReduceStatus::SPLITTING_INPUT, status)
     }
 
     #[test]

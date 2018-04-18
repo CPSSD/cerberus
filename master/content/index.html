@@ -26,6 +26,14 @@
         <div class="container-grid" id="tasks"></div>
       </div>
     </div>
+    <div class="logs">Master Logs
+      <div class="logs-copy-div">
+        <button class="button" onClick="copyMasterLogs()">Copy To Clipboard</a>
+      </div>
+      <div class="logs-scroll">
+        <p class="logs-text" id="master-logs"></p>
+      </div>
+    </div>
   </div>
 
   <div class="schedule-button" onClick="toggleScheduleForm()">
@@ -33,7 +41,7 @@
   </div>
 
   <div class="hidden-form" id="schedule-form">
-    <a class="exit-form" href='#' onclick="toggleScheduleForm()">&times;</a>
+    <a class="exit-form" onclick="toggleScheduleForm()">&times;</a>
     <div class="schedule-form">Schedule MapReduce
       <hr>
       <form id="schedule-job">
@@ -61,14 +69,35 @@
           <option value="10">10</option>
         </select>
 
+        <label for="map_size">Map Size [Optional]</label>
+        <input type="text" id="map_size" name="map_size" placeholder="Map task size (in megabytes)...">
+
         <input type="submit" id="submit-job" value="Schedule MapReduce">
       </form>
     </div>
   </div>
 
+  <div class="hidden-logs" id="worker-logs">
+    <a class="exit-form" onclick="closeWorkerLogs()">&times;</a>
+    <div class="schedule-form">Worker Logs
+      <hr>
+      <div class="logs" id="worker-logs-box">Worker ID
+        <div class="logs-scroll" id="worker-scroll-box">
+          <p class="logs-text" id="worker-logs-text"></p>
+        </div>
+      </div>
+      <div class="worker-logs-copy-div" id="worker-logs-copy">
+        <button class="button" onClick="copyWorkerLogs()">Copy To Clipboard</a>
+      </div>
+    </div>
+  </div>
+
+  <textarea class="hidden-text-area" id="hidden-text-area"/>
+
   <div class="footer">
     <a href="https://github.com/CPSSD/cerberus/">Cerberus MapReduce Project on Github</a>
   </div>
+
 
 </body>
 

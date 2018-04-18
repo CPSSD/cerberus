@@ -3,18 +3,20 @@ use std::sync::{Arc, Mutex};
 
 use futures::future;
 use futures::prelude::*;
+#[cfg(target_os = "linux")]
 use libc::_SC_CLK_TCK;
+#[cfg(target_os = "linux")]
 use procinfo::pid::stat_self;
 use serde_json;
 use uuid::Uuid;
 
-use cerberus_proto::worker as pb;
-use errors::*;
-use master_interface::MasterInterface;
-use util::data_layer::AbstractionLayer;
 use super::map;
 use super::reduce;
 use super::state::OperationState;
+use cerberus_proto::worker as pb;
+use communication::MasterInterface;
+use errors::*;
+use util::data_layer::AbstractionLayer;
 
 pub type PartitionMap = HashMap<u64, HashMap<String, Vec<serde_json::Value>>>;
 
@@ -37,44 +39,20 @@ pub struct OperationHandler {
     data_abstraction_layer: Arc<AbstractionLayer + Send + Sync>,
 }
 
-pub fn get_worker_status(operation_state_arc: &Arc<Mutex<OperationState>>) -> pb::WorkerStatus {
-    let operation_state = operation_state_arc.lock().unwrap();
-
-    operation_state.worker_status
-}
-
-fn set_operation_handler_status(
-    operation_state_arc: &Arc<Mutex<OperationState>>,
-    worker_status: pb::WorkerStatus,
-    operation_status: pb::OperationStatus,
-) {
+pub fn set_complete_status(operation_state_arc: &Arc<Mutex<OperationState>>, task_id: &str) {
     let mut operation_state = operation_state_arc.lock().unwrap();
-    operation_state.worker_status = worker_status;
-    operation_state.operation_status = operation_status;
+    if operation_state.current_task_id == task_id {
+        operation_state.current_task_id = String::new();
+        operation_state.operation_status = pb::OperationStatus::COMPLETE;
+    }
 }
 
-pub fn set_complete_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
-    set_operation_handler_status(
-        operation_state_arc,
-        pb::WorkerStatus::AVAILABLE,
-        pb::OperationStatus::COMPLETE,
-    );
-}
-
-pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
-    set_operation_handler_status(
-        operation_state_arc,
-        pb::WorkerStatus::AVAILABLE,
-        pb::OperationStatus::FAILED,
-    );
-}
-
-pub fn set_cancelled_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
-    set_operation_handler_status(
-        operation_state_arc,
-        pb::WorkerStatus::AVAILABLE,
-        pb::OperationStatus::CANCELLED,
-    );
+pub fn set_failed_status(operation_state_arc: &Arc<Mutex<OperationState>>, task_id: &str) {
+    let mut operation_state = operation_state_arc.lock().unwrap();
+    if operation_state.current_task_id == task_id {
+        operation_state.current_task_id = String::new();
+        operation_state.operation_status = pb::OperationStatus::FAILED;
+    }
 }
 
 // Checks if the tasks is cancelled and handles this case. Returns true if the task was canceled.
@@ -82,22 +60,8 @@ pub fn check_task_cancelled(
     operation_state_arc: &Arc<Mutex<OperationState>>,
     task_id: &str,
 ) -> bool {
-    let cancelled = {
-        let operation_state = operation_state_arc.lock().unwrap();
-        operation_state.task_cancelled(task_id)
-    };
-    if cancelled {
-        set_cancelled_status(operation_state_arc);
-        println!("Succesfully cancelled task: {}", task_id);
-    }
-    cancelled
-}
-
-pub fn set_busy_status(operation_state_arc: &Arc<Mutex<OperationState>>) {
-    let mut operation_state = operation_state_arc.lock().unwrap();
-
-    operation_state.worker_status = pb::WorkerStatus::BUSY;
-    operation_state.operation_status = pb::OperationStatus::IN_PROGRESS;
+    let operation_state = operation_state_arc.lock().unwrap();
+    operation_state.task_cancelled(task_id)
 }
 
 pub fn failure_details_from_error(err: &Error) -> String {
@@ -110,11 +74,17 @@ pub fn failure_details_from_error(err: &Error) -> String {
     failure_details
 }
 
+#[cfg(target_os = "linux")]
 pub fn get_cpu_time() -> u64 {
     // We can panic in this case. This is beyond our control and would mostly be caused by a very
     // critical error.
     let stat = stat_self().unwrap();
     (stat.utime + stat.stime + stat.cstime + stat.cutime) as u64 / (_SC_CLK_TCK as u64)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn get_cpu_time() -> u64 {
+    0
 }
 
 impl OperationHandler {
@@ -135,7 +105,11 @@ impl OperationHandler {
     pub fn get_worker_status(&self) -> pb::WorkerStatus {
         let operation_state = self.operation_state.lock().unwrap();
 
-        operation_state.worker_status
+        if operation_state.current_task_id == "" {
+            return pb::WorkerStatus::AVAILABLE;
+        }
+
+        pb::WorkerStatus::BUSY
     }
 
     pub fn get_worker_operation_status(&self) -> pb::OperationStatus {
@@ -186,7 +160,10 @@ impl OperationHandler {
 
     pub fn cancel_task(&self, request: &pb::CancelTaskRequest) -> Result<()> {
         let mut operation_state = self.operation_state.lock().unwrap();
-        operation_state.last_cancelled_task_id = Some(request.task_id.clone());
+        if operation_state.current_task_id == request.task_id {
+            operation_state.current_task_id = String::new();
+            operation_state.operation_status = pb::OperationStatus::UNKNOWN;
+        }
 
         Ok(())
     }
@@ -195,9 +172,7 @@ impl OperationHandler {
         let worker_status = self.get_worker_status();
         let operation_status = self.get_worker_operation_status();
 
-        self.master_interface.update_worker_status(
-            worker_status,
-            operation_status,
-        )
+        self.master_interface
+            .update_worker_status(worker_status, operation_status)
     }
 }

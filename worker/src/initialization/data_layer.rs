@@ -1,13 +1,13 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::ArgMatches;
 
 use errors::*;
-use util::data_layer::{AbstractionLayer, AmazonS3AbstractionLayer, NullAbstractionLayer,
-                       NFSAbstractionLayer};
-use util::distributed_filesystem::{LocalFileManager, DFSAbstractionLayer,
+use util::data_layer::{AbstractionLayer, AmazonS3AbstractionLayer, NFSAbstractionLayer,
+                       NullAbstractionLayer};
+use util::distributed_filesystem::{DFSAbstractionLayer, LocalFileManager,
                                    NetworkFileSystemMasterInterface};
 
 const DEFAULT_DFS_DIRECTORY: &str = "/tmp/cerberus/dfs/";
@@ -35,10 +35,8 @@ pub fn get_data_abstraction_layer(
 
         let local_file_manager_arc = Arc::new(LocalFileManager::new(storage_dir));
 
-        let master_interface = Box::new(
-            NetworkFileSystemMasterInterface::new(master_addr)
-                .chain_err(|| "Error creating filesystem master interface.")?,
-        );
+        let master_interface = Box::new(NetworkFileSystemMasterInterface::new(master_addr)
+            .chain_err(|| "Error creating filesystem master interface.")?);
 
         data_abstraction_layer = Arc::new(DFSAbstractionLayer::new(
             Arc::clone(&local_file_manager_arc),

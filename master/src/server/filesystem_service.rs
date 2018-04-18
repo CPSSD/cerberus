@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use grpc::{SingleResponse, Error, RequestOptions};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use cerberus_proto::filesystem as pb;
 use cerberus_proto::filesystem_grpc as grpc_pb;
 use util::distributed_filesystem::FileSystemManager;
 use util::output_error;
 
-const NOT_DISTRIBUTED_FILESYSTEM: &str = "Master is not running in distributed filesytem configuration";
+const NOT_DISTRIBUTED_FILESYSTEM: &str =
+    "Master is not running in distributed filesytem configuration";
 const UPLOAD_FILE_ERROR: &str = "Error processing upload file request";
 const FILE_LOCATION_ERROR: &str = "Error processing file location request";
 
@@ -39,11 +40,8 @@ impl grpc_pb::FileSystemMasterService for FileSystemService {
             }
         };
 
-        if let Err(err) = filesystem_manager.upload_file_chunk(
-            &req.file_path,
-            req.start_byte,
-            &req.data,
-        )
+        if let Err(err) =
+            filesystem_manager.upload_file_chunk(&req.file_path, req.start_byte, &req.data)
         {
             output_error(&err.chain_err(|| "Error processing upload file request."));
             return SingleResponse::err(Error::Other(UPLOAD_FILE_ERROR));

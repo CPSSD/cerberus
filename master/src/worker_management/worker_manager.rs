@@ -1,6 +1,7 @@
-use std::{thread, time};
-use std::sync::{Arc, Mutex};
+use std::net::SocketAddr;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::{thread, time};
 
 use chrono::prelude::*;
 use futures::future;
@@ -14,7 +15,7 @@ use errors::*;
 use util::data_layer::AbstractionLayer;
 use util::distributed_filesystem::{WorkerInfoUpdate, WorkerInfoUpdateType};
 use util::output_error;
-use util::state::{StateHandling, SimpleStateHandling};
+use util::state::{SimpleStateHandling, StateHandling};
 use worker_communication::WorkerInterface;
 use worker_management::state::State;
 
@@ -56,9 +57,9 @@ impl WorkerManager {
 
     fn send_worker_info_update(&self, info_update: WorkerInfoUpdate) -> Result<()> {
         let worker_info_sender = self.worker_info_sender.lock().unwrap();
-        worker_info_sender.send(info_update).chain_err(
-            || "Error sending worker info update.",
-        )?;
+        worker_info_sender
+            .send(info_update)
+            .chain_err(|| "Error sending worker info update.")?;
 
         Ok(())
     }
@@ -76,16 +77,22 @@ impl WorkerManager {
     pub fn register_worker(&self, worker: Worker) -> Result<()> {
         let mut state = self.state.lock().unwrap();
 
-        self.worker_interface.add_client(&worker).chain_err(
-            || "Error registering worker.",
-        )?;
+        if state.has_worker(&worker.worker_id) {
+            state
+                .remove_worker(&worker.worker_id)
+                .chain_err(|| "Error removing worker from state")?;
+        }
+
+        self.worker_interface
+            .add_client(&worker)
+            .chain_err(|| "Error registering worker.")?;
 
         let worker_id = worker.worker_id.clone();
         let worker_address = Some(worker.address);
 
-        state.add_worker(worker).chain_err(
-            || "Error registering worker.",
-        )?;
+        state
+            .add_worker(worker)
+            .chain_err(|| "Error registering worker.")?;
 
         self.send_worker_info_update(WorkerInfoUpdate::new(
             WorkerInfoUpdateType::Available,
@@ -108,22 +115,14 @@ impl WorkerManager {
 
     pub fn process_reduce_task_result(&self, reduce_result: &pb::ReduceResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        let task = state.process_reduce_task_result(reduce_result).chain_err(
-            || "Error processing reduce result.",
-        )?;
-
         info!(
             "Got result for reduce task {} from {}",
-            task.id,
-            reduce_result.worker_id
+            reduce_result.task_id, reduce_result.worker_id
         );
 
-        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
-            let task_update_sender = self.task_update_sender.lock().unwrap();
-            task_update_sender.send(task).chain_err(
-                || "Error processing reduce result.",
-            )?;
-        }
+        let task_option = state
+            .process_reduce_task_result(reduce_result)
+            .chain_err(|| "Error processing reduce result.")?;
 
         state
             .set_worker_operation_completed(
@@ -131,31 +130,48 @@ impl WorkerManager {
                 reduce_result.get_status(),
             )
             .chain_err(|| "Error processing reduce result.")?;
+
+        let task = match task_option {
+            Some(task) => task,
+            None => return Ok(()),
+        };
+
+        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
+            let task_update_sender = self.task_update_sender.lock().unwrap();
+            task_update_sender
+                .send(task)
+                .chain_err(|| "Error processing reduce result.")?;
+        }
+
         Ok(())
     }
 
     pub fn process_map_task_result(&self, map_result: &pb::MapResult) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        let task = state.process_map_task_result(map_result).chain_err(
-            || "Error processing map result.",
-        )?;
-
         info!(
             "Got result for map task {} from {}",
-            task.id,
-            map_result.worker_id
+            map_result.task_id, map_result.worker_id
         );
 
-        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
-            let task_update_sender = self.task_update_sender.lock().unwrap();
-            task_update_sender.send(task).chain_err(
-                || "Error processing map result.",
-            )?;
-        }
+        let task_option = state
+            .process_map_task_result(map_result)
+            .chain_err(|| "Error processing map result.")?;
 
         state
             .set_worker_operation_completed(map_result.get_worker_id(), map_result.get_status())
             .chain_err(|| "Error processing map result.")?;
+
+        let task = match task_option {
+            Some(task) => task,
+            None => return Ok(()),
+        };
+
+        if task.status == TaskStatus::Complete || task.status == TaskStatus::Failed {
+            let task_update_sender = self.task_update_sender.lock().unwrap();
+            task_update_sender
+                .send(task)
+                .chain_err(|| "Error processing map result.")?;
+        }
 
         Ok(())
     }
@@ -174,15 +190,9 @@ impl WorkerManager {
         }
     }
 
-    pub fn cancel_workers_tasks(&self, workers: Vec<String>) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-
-        for worker_id in workers {
-            // Clear the task from the worker so that we can ignore it's result.
-            let task_id = state.cancel_task_for_worker(&worker_id).chain_err(|| {
-                format!("Error cancelling task on worker: {}", worker_id)
-            })?;
-
+    // Takes a list of worker id, task id pairs and tells each worker to stop running its tasks.
+    pub fn cancel_workers_tasks(&self, workers: Vec<(String, String)>) -> Result<()> {
+        for (worker_id, task_id) in workers {
             // Create a request to cancel the task the worker is currently running.
             let mut cancel_request = pb::CancelTaskRequest::new();
             cancel_request.task_id = task_id;
@@ -192,6 +202,18 @@ impl WorkerManager {
                 .cancel_task(cancel_request, &worker_id)
                 .chain_err(|| "Error telling worker to cancel task")?;
         }
+        Ok(())
+    }
+
+    pub fn cancel_job(&self, job_id: &str) -> Result<()> {
+        let workers_running_job = {
+            let mut state = self.state.lock().unwrap();
+            state.cancel_job(job_id)
+        };
+
+        self.cancel_workers_tasks(workers_running_job)
+            .chain_err(|| "Error cancelling tasks on workers")?;
+
         Ok(())
     }
 
@@ -235,12 +257,12 @@ impl WorkerManager {
             let state = self.state.lock().unwrap();
             let workers = state.get_workers();
             for worker in workers {
-                let time_since_worker_updated = Utc::now().timestamp() -
-                    worker.status_last_updated.timestamp();
+                let time_since_worker_updated =
+                    Utc::now().timestamp() - worker.status_last_updated.timestamp();
                 if time_since_worker_updated >= TIME_BEFORE_WORKER_TERMINATION_S {
                     workers_to_remove.push(worker.worker_id.to_owned());
-                } else if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S &&
-                           worker.current_task_id != ""
+                } else if time_since_worker_updated >= TIME_BEFORE_WORKER_TASK_REASSIGNMENT_S
+                    && worker.current_task_id != ""
                 {
                     workers_to_reassign.push(worker.worker_id.to_owned());
                 }
@@ -344,9 +366,12 @@ impl WorkerManager {
 
     pub fn handle_task_assignment_failure(&self, worker_id: &str) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.unassign_worker(worker_id).chain_err(|| {
-            format!("Failed to unassign task from worker {}", worker_id)
-        })?;
+        state
+            .assignment_complete(worker_id)
+            .chain_err(|| "Error marking task assigment complete")?;
+        state
+            .unassign_worker(worker_id)
+            .chain_err(|| format!("Failed to unassign task from worker {}", worker_id))?;
         state
             .increment_failed_task_assignments(worker_id)
             .chain_err(|| "Error when incrementing task assignment failures")
@@ -354,9 +379,12 @@ impl WorkerManager {
 
     pub fn handle_task_assignment_success(&self, worker_id: &str) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.reset_failed_task_assignments(worker_id).chain_err(
-            || "Error when recording task assignment success",
-        )
+        state
+            .assignment_complete(worker_id)
+            .chain_err(|| "Error marking task assigment complete")?;
+        state
+            .reset_failed_task_assignments(worker_id)
+            .chain_err(|| "Error when recording task assignment success")
     }
 
     pub fn run_task(&self, task: Task) {
@@ -369,14 +397,9 @@ impl WorkerManager {
         state.has_task(task_id)
     }
 
-    pub fn remove_queued_tasks_for_job(&self, job_id: &str) -> Result<()> {
+    pub fn requeue_slow_task(&self, task_id: &str) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.remove_queued_tasks_for_job(job_id)
-    }
-
-    pub fn get_workers_running_job(&self, job_id: &str) -> Result<Vec<String>> {
-        let state = self.state.lock().unwrap();
-        state.get_workers_running_job(job_id)
+        state.requeue_slow_task(task_id)
     }
 
     pub fn get_workers_info(&self) -> Result<serde_json::Value> {
@@ -419,43 +442,19 @@ impl WorkerManager {
         Ok(json!(results_vec))
     }
 
-    pub fn remove_worker_if_exist(&self, worker_id: &str) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-
-        if !state.has_worker(worker_id) {
-            return Ok(());
-        }
-
-        info!("Removing worker {} from list of active workers.", worker_id);
-
-        // Remove worker interface.
-        self.worker_interface.remove_client(worker_id).chain_err(
-            || "Error removing worker client",
-        )?;
-
-        state.remove_worker(worker_id).chain_err(
-            || "Error removing worker from state",
-        )?;
-
-        self.send_worker_info_update(WorkerInfoUpdate::new(
-            WorkerInfoUpdateType::Unavailable,
-            worker_id.to_string(),
-            None, /* address */
-        )).chain_err(|| "Error sending worker info update")?;
-
-        Ok(())
-    }
-
     pub fn handle_worker_report(&self, request: &pb::ReportWorkerRequest) -> Result<()> {
         info!(
             "Worker on '{}' failed to provide map output data to '{}' for task with ID {}",
-            request.report_address,
-            request.worker_id,
-            request.task_id,
+            request.report_address, request.worker_id, request.task_id,
         );
 
         let mut state = self.state.lock().unwrap();
         state.handle_worker_report(request)
+    }
+
+    pub fn get_worker_address(&self, worker_id: &str) -> Result<SocketAddr> {
+        let state = self.state.lock().unwrap();
+        state.get_worker_address(worker_id)
     }
 }
 
@@ -467,9 +466,9 @@ impl SimpleStateHandling<Error> for WorkerManager {
 
     fn load_state(&self, data: serde_json::Value) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        state.load_state(data).chain_err(
-            || "Error creating worker manager from state.",
-        )?;
+        state
+            .load_state(data)
+            .chain_err(|| "Error creating worker manager from state.")?;
 
         let mut workers_to_remove = Vec::new();
         {
@@ -484,17 +483,17 @@ impl SimpleStateHandling<Error> for WorkerManager {
                 )).chain_err(|| "Error sending worker info update")?;
 
                 if let Err(e) = add_client_result {
-                    output_error(&e.chain_err(
-                        || format!("Unable to reconnect to worker {}", worker.worker_id),
-                    ));
+                    output_error(&e.chain_err(|| {
+                        format!("Unable to reconnect to worker {}", worker.worker_id)
+                    }));
                     workers_to_remove.push(worker.worker_id.to_owned());
                 }
             }
         }
         for worker_id in workers_to_remove {
-            state.remove_worker(&worker_id).chain_err(
-                || "Error creating worker manager from state.",
-            )?;
+            state
+                .remove_worker(&worker_id)
+                .chain_err(|| "Error creating worker manager from state.")?;
 
             self.send_worker_info_update(WorkerInfoUpdate::new(
                 WorkerInfoUpdateType::Unavailable,
@@ -524,9 +523,7 @@ fn handle_task_assignment_result(
 ) {
     let worker_id = assignment_result.worker_id.clone();
     if let Err(err) = assignment_result.result {
-        output_error(&err.chain_err(
-            || format!("Error assigning task to worker {}", worker_id),
-        ));
+        output_error(&err.chain_err(|| format!("Error assigning task to worker {}", worker_id)));
         let result = worker_manager.handle_task_assignment_failure(&worker_id);
         if let Err(err) = result {
             output_error(&err.chain_err(|| "Error handling task assignment failure."));

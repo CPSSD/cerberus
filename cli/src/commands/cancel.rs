@@ -1,10 +1,10 @@
 use clap::ArgMatches;
 use grpc::RequestOptions;
 
-use common::get_client_id;
 use cerberus_proto::mapreduce as pb;
 use cerberus_proto::mapreduce_grpc as grpc_pb;
 use cerberus_proto::mapreduce_grpc::MapReduceService;
+use common::get_client_id;
 use errors::*;
 
 pub fn cancel(client: &grpc_pb::MapReduceServiceClient, args: Option<&ArgMatches>) -> Result<()> {
@@ -22,9 +22,13 @@ pub fn cancel(client: &grpc_pb::MapReduceServiceClient, args: Option<&ArgMatches
         .chain_err(|| "Failed to cancel MapReduce")?
         .1;
 
-    println!(
-        "Succesfully cancelled MapReduce with ID: {}",
-        resp.mapreduce_id
-    );
+    if resp.success {
+        println!(
+            "Succesfully cancelled MapReduce with ID: {}",
+            resp.mapreduce_id
+        );
+    } else {
+        println!("Unable to cancel MapReduce with ID: {}", resp.mapreduce_id);
+    }
     Ok(())
 }

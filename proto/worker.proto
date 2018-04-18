@@ -175,3 +175,14 @@ message IntermediateDataRequest {
 message IntermediateData {
   bytes data = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// WorkerLogService allows the master to get logs from workers.
+service WorkerLogService {
+  rpc GetWorkerLogs (EmptyMessage) returns (LogsResult);
+}
+
+message LogsResult {
+  string log_contents = 1;
+}

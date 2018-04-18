@@ -7,10 +7,12 @@ extern crate clap;
 #[macro_use]
 extern crate error_chain;
 extern crate futures;
+extern crate futures_cpupool;
 extern crate grpc;
 extern crate libc;
 #[macro_use]
 extern crate log;
+#[cfg(target_os = "linux")]
 extern crate procinfo;
 extern crate protobuf;
 extern crate serde;
@@ -37,14 +39,13 @@ mod errors {
     }
 }
 
+mod communication;
 mod initialization;
 mod main_loop;
-mod master_interface;
 mod operations;
+mod parser;
 mod server;
 mod state;
-mod parser;
-mod worker_interface;
 
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -54,16 +55,21 @@ use initialization::{register_worker, WorkerResources};
 use util::init_logger;
 
 const DEFAULT_WORKER_IP: &str = "[::]";
+const DEFAULT_LOG_FILE_PATH: &str = "/tmp/cerberus/logs/worker.log";
 
 fn run() -> Result<()> {
     println!("Cerberus Worker!");
-    init_logger().chain_err(|| "Failed to initialise logging.")?;
-
     let matches = parser::parse_command_line();
 
-    let mut resources = WorkerResources::new(&matches).chain_err(
-        || "Error initializing worker resources",
-    )?;
+    let log_file_path = matches
+        .value_of("log-file-path")
+        .unwrap_or(DEFAULT_LOG_FILE_PATH);
+
+    init_logger(log_file_path, matches.is_present("verbose-logging"))
+        .chain_err(|| "Failed to initialise logging.")?;
+
+    let mut resources = WorkerResources::new(&matches, log_file_path)
+        .chain_err(|| "Error initializing worker resources")?;
 
     let local_ip_addr = matches.value_of("ip").unwrap_or(DEFAULT_WORKER_IP);
     let local_addr = SocketAddr::from_str(&format!(

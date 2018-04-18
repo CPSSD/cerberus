@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use grpc::{RequestOptions, SingleResponse, Error};
+use grpc::{Error, RequestOptions, SingleResponse};
 
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
 use common::Worker;
-use worker_management::WorkerManager;
 use util;
+use worker_management::WorkerManager;
 
 pub struct WorkerService {
     worker_manager: Arc<WorkerManager>,
@@ -25,13 +25,6 @@ impl grpc_pb::WorkerService for WorkerService {
         request: pb::RegisterWorkerRequest,
     ) -> SingleResponse<pb::RegisterWorkerResponse> {
         let worker_id: String = request.get_worker_id().to_string();
-        if worker_id != "" {
-            if let Err(err) = self.worker_manager.remove_worker_if_exist(&worker_id) {
-                let response = SingleResponse::err(Error::Panic(err.to_string()));
-                util::output_error(&err.chain_err(|| "Unable to create new worker"));
-                return response;
-            }
-        }
 
         let worker = match Worker::new(request.get_worker_address().to_string(), worker_id) {
             Ok(worker) => worker,

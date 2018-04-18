@@ -53,9 +53,9 @@ impl Map for RatingByYearMapper {
             let movie_title = info[0][1..(info[0].len() - 1)].trim().to_owned();
             let rating: f64 = info[2].parse().chain_err(|| "Error parsing movie rating")?;
 
-            emitter.emit(movie_title, rating).chain_err(
-                || "Error emitting map key-value pair.",
-            )?;
+            emitter
+                .emit(movie_title, rating)
+                .chain_err(|| "Error emitting map key-value pair.")?;
         }
         Ok(())
     }
@@ -63,29 +63,23 @@ impl Map for RatingByYearMapper {
 
 struct RatingByYearPartitioner;
 impl Partition<String, f64> for RatingByYearPartitioner {
-    fn partition<E>(&self, input: PartitionInputPairs<String, f64>, mut emitter: E) -> Result<()>
-    where
-        E: EmitPartitionedIntermediate<String, f64>,
-    {
-        for (key, value) in input.pairs {
-            let year_str = key[(key.len() - 5)..(key.len() - 1)].to_owned();
-            let partition: u64 = year_str.parse().chain_err(|| {
-                format!("Error getting year from movie title {}, {}", key, year_str)
-            })?;
+    fn partition(&self, input: PartitionInputKV<String, f64>) -> Result<u64> {
+        let key = input.key;
+        let year_str = key[(key.len() - 5)..(key.len() - 1)].to_owned();
+        let partition: u64 = year_str
+            .parse()
+            .chain_err(|| format!("Error getting year from movie title {}, {}", key, year_str))?;
 
-            emitter.emit(partition, key, value).chain_err(
-                || "Error partitioning map output.",
-            )?;
-        }
-        Ok(())
+        Ok(partition)
     }
 }
 
 struct RatingByYearReducer;
 impl Reduce<String, f64> for RatingByYearReducer {
+    type Output = f64;
     fn reduce<E>(&self, input: IntermediateInputKV<String, f64>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<f64>,
+        E: EmitFinal<Self::Output>,
     {
         for val in input.values {
             emitter.emit(val).chain_err(|| "Error emitting value.")?;
@@ -96,9 +90,7 @@ impl Reduce<String, f64> for RatingByYearReducer {
 }
 
 fn run() -> Result<()> {
-    env_logger::init().chain_err(
-        || "Failed to initialise logging.",
-    )?;
+    env_logger::init().chain_err(|| "Failed to initialise logging.")?;
 
     let rby_mapper = RatingByYearMapper;
     let rby_reducer = RatingByYearReducer;

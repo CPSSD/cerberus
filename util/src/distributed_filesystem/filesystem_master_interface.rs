@@ -140,11 +140,8 @@ impl LocalFileSystemMasterInterface {
 
 impl FileSystemMasterInterface for LocalFileSystemMasterInterface {
     fn upload_file_chunk(&self, file_path: &str, start_byte: u64, data: Vec<u8>) -> Result<()> {
-        self.filesystem_manager.upload_file_chunk(
-            file_path,
-            start_byte,
-            &data,
-        )
+        self.filesystem_manager
+            .upload_file_chunk(file_path, start_byte, &data)
     }
 
     // Gets the locations for the entire file if end_byte is 0
@@ -154,11 +151,8 @@ impl FileSystemMasterInterface for LocalFileSystemMasterInterface {
         start_byte: u64,
         end_byte: u64,
     ) -> Result<pb::FileLocationResponse> {
-        self.filesystem_manager.get_file_location(
-            file_path,
-            start_byte,
-            end_byte,
-        )
+        self.filesystem_manager
+            .get_file_location(file_path, start_byte, end_byte)
     }
 
     fn get_file_chunks(&self, file_path: &str) -> Result<Vec<FileChunk>> {

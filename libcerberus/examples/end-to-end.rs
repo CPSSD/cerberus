@@ -21,43 +21,38 @@ impl Map for TestMapper {
 
 struct TestReducer;
 impl Reduce<String, String> for TestReducer {
+    type Output = String;
     fn reduce<E>(&self, input: IntermediateInputKV<String, String>, mut emitter: E) -> Result<()>
     where
-        E: EmitFinal<String>,
+        E: EmitFinal<Self::Output>,
     {
-        emitter.emit(input.values.iter().fold(
-            String::new(),
-            |acc, x| acc + x,
-        ))?;
+        emitter.emit(input.values.iter().fold(String::new(), |acc, x| acc + x))?;
         Ok(())
     }
 }
 
 struct TestPartitioner;
 impl Partition<String, String> for TestPartitioner {
-    fn partition<E>(&self, input: PartitionInputPairs<String, String>, mut emitter: E) -> Result<()>
-    where
-        E: EmitPartitionedIntermediate<String, String>,
-    {
-        for (key, value) in input.pairs {
-            let first_char = key.chars().nth(0).chain_err(
-                || "Cannot partition key of empty string.",
-            )?;
-            let partition = {
-                if first_char.is_lowercase() {
-                    if first_char > 'm' { 1 } else { 0 }
-                } else if first_char > 'M' {
+    fn partition(&self, input: PartitionInputKV<String, String>) -> Result<u64> {
+        let key = input.key;
+        let first_char = key.chars()
+            .nth(0)
+            .chain_err(|| "Cannot partition key of empty string.")?;
+        let partition = {
+            if first_char.is_lowercase() {
+                if first_char > 'm' {
                     1
                 } else {
                     0
                 }
-            };
+            } else if first_char > 'M' {
+                1
+            } else {
+                0
+            }
+        };
 
-            emitter.emit(partition, key, value).chain_err(
-                || "Error partitioning map output.",
-            )?;
-        }
-        Ok(())
+        Ok(partition)
     }
 }
 

@@ -26,9 +26,9 @@ impl Server {
     ) -> Result<Self> {
         let mut server_builder = grpc::ServerBuilder::new_plain();
         server_builder.http.set_port(port);
-        server_builder.http.set_cpu_pool_threads(
-            GRPC_THREAD_POOL_SIZE,
-        );
+        server_builder
+            .http
+            .set_cpu_pool_threads(GRPC_THREAD_POOL_SIZE);
 
         // Register the MapReduceService
         server_builder.add_service(mapreduce_grpc::MapReduceServiceServer::new_service_def(
@@ -42,15 +42,13 @@ impl Server {
 
         // Register the FileSystemService
         server_builder.add_service(
-            filesystem_grpc::FileSystemMasterServiceServer::new_service_def(
-                file_system_service,
-            ),
+            filesystem_grpc::FileSystemMasterServiceServer::new_service_def(file_system_service),
         );
 
         Ok(Server {
-            server: server_builder.build().chain_err(
-                || "Error building grpc server",
-            )?,
+            server: server_builder
+                .build()
+                .chain_err(|| "Error building grpc server")?,
         })
     }
 

@@ -1,10 +1,9 @@
 use grpc::{Error, RequestOptions, SingleResponse};
 
-use operations::io;
-
-use util;
 use cerberus_proto::worker as pb;
 use cerberus_proto::worker_grpc as grpc_pb;
+use operations::io;
+use util;
 
 const DATA_NOT_AVAILABLE: &str = "Data not available";
 
@@ -16,9 +15,7 @@ impl grpc_pb::IntermediateDataService for IntermediateDataService {
         _o: RequestOptions,
         req: pb::IntermediateDataRequest,
     ) -> SingleResponse<pb::IntermediateData> {
-        // TODO: After the unnecessary stuff is removed from the request path, add the absolute
-        //       path for this worker.
-        info!("Serving file {}", &req.get_path());
+        debug!("Serving file {}", &req.get_path());
         match io::read_local(req.get_path()) {
             Ok(data) => {
                 let mut res = pb::IntermediateData::new();
