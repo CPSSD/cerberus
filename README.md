@@ -27,7 +27,7 @@ $ cargo build --all
 
 ---
 
-## Running benchmarks
+## Running AWS benchmarks
 
 The following dependancies are required to run the benchmarking script:
 - python3-tk
@@ -39,10 +39,8 @@ apt-get install python3-pip python3-tk
 pip3 install numpy matplotlib
 ```
 
-Run the benchmarking script with:
-```
-python3 benchmarks.py
-```
+The AWS benchmarking script is located at aws/benchmarking.py
+Run `cargo build --release` before running the script.
 
 ---
 
