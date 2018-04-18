@@ -1,6 +1,6 @@
 [package]
 name = "util"
-version = "0.6.0"
+version = "1.0.0"
 authors = ["Cerberus Authors <cerberus@cpssd.net>"]
 
 [dependencies]
